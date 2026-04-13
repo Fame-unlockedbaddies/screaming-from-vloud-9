@@ -89,22 +89,38 @@ async function getCurrentAvatarThumbnail(userId) {
     const data = await res.json();
     return data.data?.[0]?.imageUrl || null;
   } catch (err) {
-    console.error("Current avatar thumbnail error:", err);
+    console.error("Current avatar thumbnail error:", err.message);
     return null;
   }
 }
 
+// Improved thumbnail function with retry + fallback
 async function getOutfitThumbnail(outfitId) {
-  try {
-    const res = await fetch(
-      `https://thumbnails.roblox.com/v1/outfits?outfitIds=${outfitId}&size=420x420&format=Png&isCircular=false`
-    );
-    const data = await res.json();
-    return data.data?.[0]?.imageUrl || null;
-  } catch (err) {
-    console.error(`Outfit thumbnail error ${outfitId}:`, err.message);
-    return null;
+  const primaryUrl = `https://thumbnails.roblox.com/v1/outfits?outfitIds=${outfitId}&size=420x420&format=Png&isCircular=false`;
+  const fallbackUrl = `https://www.roblox.com/outfit-thumbnail/image?outfitId=${outfitId}&width=420&height=420&format=png`;
+
+  for (let attempt = 1; attempt <= 3; attempt++) {
+    try {
+      const res = await fetch(primaryUrl);
+
+      if (res.ok) {
+        const data = await res.json();
+        if (data.data?.[0]?.imageUrl) {
+          console.log(`✅ Thumbnail success for outfit ${outfitId} (attempt ${attempt})`);
+          return data.data[0].imageUrl;
+        }
+      }
+    } catch (err) {
+      console.error(`Thumbnail attempt ${attempt} failed for outfit ${outfitId}:`, err.message);
+    }
+
+    // Small delay before retry
+    if (attempt < 3) await new Promise(r => setTimeout(r, 800));
   }
+
+  // Try old fallback URL as last resort
+  console.log(`⚠️ Using fallback thumbnail for outfit ${outfitId}`);
+  return fallbackUrl;
 }
 
 // ==================== COMMAND HANDLER ====================
@@ -129,7 +145,7 @@ client.on("interactionCreate", async (interaction) => {
     }
 
     let page = 0;
-    const totalPages = outfits.length + 1; // +1 for current avatar
+    const totalPages = outfits.length + 1;
 
     const makeEmbed = async (p) => {
       const embed = new EmbedBuilder()
@@ -137,41 +153,40 @@ client.on("interactionCreate", async (interaction) => {
         .setTimestamp();
 
       if (p === 0) {
-        // Current Avatar Page
+        // Current Avatar
         embed
           .setTitle(`${username}'s Current Avatar`)
-          .setDescription("This is their currently equipped avatar.")
+          .setDescription("Currently equipped avatar on Roblox.")
           .setFooter({ text: `Page 1 of ${totalPages}` });
 
         if (currentImage) embed.setImage(currentImage);
-        else embed.setDescription("⚠️ Could not load current avatar.");
+        else embed.setDescription("⚠️ Could not load current avatar image.");
       } else {
-        // Saved Outfits
+        // Saved Outfit
         const outfitIndex = p - 1;
         const outfit = outfits[outfitIndex];
         const imageUrl = await getOutfitThumbnail(outfit.id);
 
         embed
           .setTitle(`${username}'s Saved Outfits`)
-          .setDescription(`**Outfit Name:** ${outfit.name}`)
-          .setFooter({ text: `Outfit ${outfitIndex + 1} of ${outfits.length} • Page ${p + 1} of ${totalPages}` });
+          .setDescription(`**Outfit:** ${outfit.name}`)
+          .setFooter({ 
+            text: `Outfit ${outfitIndex + 1} of ${outfits.length} • Page ${p + 1} of ${totalPages}` 
+          });
 
-        if (imageUrl) embed.setImage(imageUrl);
-        else embed.setDescription("⚠️ Could not load outfit image.");
+        if (imageUrl) {
+          embed.setImage(imageUrl);
+        } else {
+          embed.setDescription("⚠️ Could not load this outfit image.");
+        }
       }
 
       return embed;
     };
 
     const row = new ActionRowBuilder().addComponents(
-      new ButtonBuilder()
-        .setCustomId("back")
-        .setLabel("◀ Previous")
-        .setStyle(ButtonStyle.Secondary),
-      new ButtonBuilder()
-        .setCustomId("next")
-        .setLabel("Next ▶")
-        .setStyle(ButtonStyle.Secondary)
+      new ButtonBuilder().setCustomId("back").setLabel("◀ Previous").setStyle(ButtonStyle.Secondary),
+      new ButtonBuilder().setCustomId("next").setLabel("Next ▶").setStyle(ButtonStyle.Secondary)
     );
 
     const initialEmbed = await makeEmbed(page);
@@ -181,16 +196,13 @@ client.on("interactionCreate", async (interaction) => {
     });
 
     const collector = msg.createMessageComponentCollector({
-      time: 120000, // 2 minutes
+      time: 120000,
       filter: i => i.user.id === interaction.user.id
     });
 
     collector.on("collect", async (btn) => {
-      if (btn.customId === "back") {
-        page = page > 0 ? page - 1 : totalPages - 1;
-      } else if (btn.customId === "next") {
-        page = page < totalPages - 1 ? page + 1 : 0;
-      }
+      if (btn.customId === "back") page = page > 0 ? page - 1 : totalPages - 1;
+      else if (btn.customId === "next") page = page < totalPages - 1 ? page + 1 : 0;
 
       const newEmbed = await makeEmbed(page);
       await btn.update({ embeds: [newEmbed], components: [row] });
@@ -201,8 +213,8 @@ client.on("interactionCreate", async (interaction) => {
     });
 
   } catch (error) {
-    console.error("Avatar history error:", error);
-    await interaction.editReply("❌ An error occurred while fetching avatar data.").catch(() => {});
+    console.error("Command error:", error);
+    await interaction.editReply("❌ Something went wrong while fetching the data.").catch(() => {});
   }
 });
 
