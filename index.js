@@ -12,15 +12,15 @@ const {
 
 const http = require("http");
 
-// ==================== KEEP-ALIVE SERVER FOR RENDER ====================
+// ==================== KEEP-ALIVE SERVER FOR FREE RENDER ====================
 const server = http.createServer((req, res) => {
   res.writeHead(200, { "Content-Type": "text/plain" });
   res.end("Discord bot is alive! ✅");
 });
 
-const PORT = process.env.PORT || 10000;   // Render often uses 10000
+const PORT = process.env.PORT || 10000;
 server.listen(PORT, () => {
-  console.log(`Keep-alive server running on port ${PORT}`);
+  console.log(`✅ Keep-alive server running on port ${PORT}`);
 });
 
 // ==================== DISCORD CLIENT ====================
@@ -31,7 +31,6 @@ const client = new Client({
 client.once("ready", async () => {
   console.log(`✅ Logged in as ${client.user.tag}`);
 
-  // Register slash commands
   const commands = [
     new SlashCommandBuilder()
       .setName("avatarhistory")
@@ -77,66 +76,105 @@ async function getOutfits(userId) {
   return data.data || [];
 }
 
+// Reliable thumbnail function (best for free hosting)
+async function getOutfitThumbnail(outfitId) {
+  try {
+    const res = await fetch(
+      `https://thumbnails.roblox.com/v1/outfits?outfitIds=${outfitId}&size=420x420&format=Png&isCircular=false`
+    );
+    
+    if (!res.ok) throw new Error("Thumbnail API failed");
+    
+    const data = await res.json();
+    return data.data?.[0]?.imageUrl || null;
+  } catch (err) {
+    console.error(`Thumbnail error for outfit ${outfitId}:`, err.message);
+    return null;
+  }
+}
+
 // ==================== COMMAND HANDLER ====================
 client.on("interactionCreate", async (interaction) => {
   if (!interaction.isChatInputCommand()) return;
   if (interaction.commandName !== "avatarhistory") return;
 
   const username = interaction.options.getString("username");
-  await interaction.deferReply();
+  await interaction.deferReply({ ephemeral: false });
 
-  const userId = await getUserId(username);
-  if (!userId) return interaction.editReply("User not found on Roblox.");
+  try {
+    const userId = await getUserId(username);
+    if (!userId) return interaction.editReply("❌ Roblox user not found.");
 
-  const outfits = await getOutfits(userId);
-  if (!outfits.length) return interaction.editReply("No outfits found.");
+    const outfits = await getOutfits(userId);
+    if (!outfits.length) return interaction.editReply("❌ No outfits found for this user.");
 
-  let page = 0;
+    let page = 0;
 
-  const makeEmbed = (i) => {
-    const outfit = outfits[i];
-    const imageUrl = `https://www.roblox.com/outfit-thumbnail/image?outfitId=${outfit.id}&width=420&height=420&format=png`;
+    const makeEmbed = async (i) => {
+      const outfit = outfits[i];
+      const imageUrl = await getOutfitThumbnail(outfit.id);
 
-    return new EmbedBuilder()
-      .setTitle(`${username}'s Outfits`)
-      .setImage(imageUrl)
-      .setColor(0xff69b4)
-      .setFooter({ text: `Outfit ${i + 1} of ${outfits.length}` });
-  };
+      const embed = new EmbedBuilder()
+        .setTitle(`${username}'s Outfits`)
+        .setColor(0xff69b4)
+        .setFooter({ 
+          text: `Outfit ${i + 1} of ${outfits.length} • ${outfit.name}` 
+        });
 
-  const row = new ActionRowBuilder().addComponents(
-    new ButtonBuilder()
-      .setCustomId("back")
-      .setLabel("◀ Back")
-      .setStyle(ButtonStyle.Secondary),
-    new ButtonBuilder()
-      .setCustomId("next")
-      .setLabel("Next ▶")
-      .setStyle(ButtonStyle.Secondary)
-  );
+      if (imageUrl) {
+        embed.setImage(imageUrl);
+      } else {
+        embed.setDescription("⚠️ Could not load the outfit image right now.");
+      }
 
-  const msg = await interaction.editReply({
-    embeds: [makeEmbed(page)],
-    components: [row]
-  });
+      return embed;
+    };
 
-  const collector = msg.createMessageComponentCollector({ time: 60000 });
+    const row = new ActionRowBuilder().addComponents(
+      new ButtonBuilder()
+        .setCustomId("back")
+        .setLabel("◀ Back")
+        .setStyle(ButtonStyle.Secondary),
+      new ButtonBuilder()
+        .setCustomId("next")
+        .setLabel("Next ▶")
+        .setStyle(ButtonStyle.Secondary)
+    );
 
-  collector.on("collect", async (btn) => {
-    if (btn.user.id !== interaction.user.id) return;
-
-    if (btn.customId === "back") page = page > 0 ? page - 1 : outfits.length - 1;
-    if (btn.customId === "next") page = page < outfits.length - 1 ? page + 1 : 0;
-
-    await btn.update({
-      embeds: [makeEmbed(page)],
+    // First message
+    const initialEmbed = await makeEmbed(page);
+    const msg = await interaction.editReply({
+      embeds: [initialEmbed],
       components: [row]
     });
-  });
 
-  collector.on("end", () => {
-    msg.edit({ components: [] }).catch(() => {});
-  });
+    const collector = msg.createMessageComponentCollector({
+      time: 90000, // 1.5 minutes (good for free tier)
+      filter: i => i.user.id === interaction.user.id
+    });
+
+    collector.on("collect", async (btn) => {
+      if (btn.customId === "back") {
+        page = page > 0 ? page - 1 : outfits.length - 1;
+      } else if (btn.customId === "next") {
+        page = page < outfits.length - 1 ? page + 1 : 0;
+      }
+
+      const newEmbed = await makeEmbed(page);
+      await btn.update({
+        embeds: [newEmbed],
+        components: [row]
+      });
+    });
+
+    collector.on("end", () => {
+      msg.edit({ components: [] }).catch(() => {});
+    });
+
+  } catch (error) {
+    console.error("Command error:", error);
+    await interaction.editReply("❌ Something went wrong while fetching the outfits.").catch(() => {});
+  }
 });
 
 // Login
