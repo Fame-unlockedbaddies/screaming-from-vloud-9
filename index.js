@@ -72,7 +72,7 @@ async function getOutfits(userId) {
     `https://avatar.roblox.com/v1/users/${userId}/outfits?limit=30&sortOrder=Asc`
   );
   const data = await res.json();
-  return data.data || [];
+  return data.data || [];   // Only returns currently saved outfits
 }
 
 async function getCurrentAvatarThumbnail(userId) {
@@ -88,7 +88,6 @@ async function getCurrentAvatarThumbnail(userId) {
   }
 }
 
-// Thumbnail function (with retry + fallback)
 async function getOutfitThumbnail(outfitId) {
   console.log(`Fetching thumbnail for outfit ${outfitId}...`);
 
@@ -101,7 +100,7 @@ async function getOutfitThumbnail(outfitId) {
         const data = await res.json();
         const imageUrl = data.data?.[0]?.imageUrl;
         if (imageUrl && !imageUrl.includes("pending")) {
-          console.log(`✅ Success with modern API for outfit ${outfitId}`);
+          console.log(`✅ Success (modern) for outfit ${outfitId}`);
           return imageUrl;
         }
       }
@@ -109,7 +108,6 @@ async function getOutfitThumbnail(outfitId) {
     if (attempt < 3) await new Promise(r => setTimeout(r, 1200));
   }
 
-  // Fallback
   const fallback = `https://www.roblox.com/outfit-thumbnail/image?outfitId=${outfitId}&width=420&height=420&format=png`;
   console.log(`⚠️ Using fallback for outfit ${outfitId}`);
   return fallback;
@@ -132,13 +130,15 @@ client.on("interactionCreate", async (interaction) => {
       getCurrentAvatarThumbnail(userId)
     ]);
 
-    const savedOutfitCount = outfits.length;
-    if (savedOutfitCount === 0 && !currentImage) {
-      return interaction.editReply("❌ No avatar data found for this user.");
+    const savedCount = outfits.length;
+
+    // If no current avatar and no saved outfits
+    if (savedCount === 0 && !currentImage) {
+      return interaction.editReply(`❌ No avatar data found for **${username}**.`);
     }
 
     let page = 0;
-    const totalPages = savedOutfitCount + 1;   // +1 for current avatar
+    const totalPages = savedCount + 1;   // Current avatar + saved outfits
 
     const makeEmbed = async (p) => {
       const embed = new EmbedBuilder()
@@ -146,16 +146,18 @@ client.on("interactionCreate", async (interaction) => {
         .setTimestamp();
 
       if (p === 0) {
-        // Current Avatar Page
+        // Current Avatar
         embed
           .setTitle(`${username}'s Current Avatar`)
-          .setDescription("This is their currently equipped avatar.")
-          .setFooter({ text: `Page 1 of ${totalPages} • ${savedOutfitCount} saved outfits` });
+          .setDescription("Currently equipped avatar on Roblox.")
+          .setFooter({ 
+            text: `Page 1 of ${totalPages} • ${savedCount} saved outfit${savedCount === 1 ? '' : 's'}` 
+          });
 
         if (currentImage) embed.setImage(currentImage);
-        else embed.setDescription("⚠️ Could not load current avatar.");
+        else embed.setDescription("⚠️ Could not load current avatar image.");
       } else {
-        // Saved Outfits
+        // Saved Outfit
         const idx = p - 1;
         const outfit = outfits[idx];
         const imageUrl = await getOutfitThumbnail(outfit.id);
@@ -164,7 +166,7 @@ client.on("interactionCreate", async (interaction) => {
           .setTitle(`${username}'s Saved Outfits`)
           .setDescription(`**Outfit Name:** ${outfit.name}`)
           .setFooter({ 
-            text: `Outfit ${idx + 1} of ${savedOutfitCount} • Page ${p} of ${totalPages}` 
+            text: `Outfit ${idx + 1} of ${savedCount} • Page ${p} of ${totalPages}` 
           })
           .setImage(imageUrl);
       }
@@ -193,11 +195,13 @@ client.on("interactionCreate", async (interaction) => {
       await btn.update({ embeds: [newEmbed], components: [row] });
     });
 
-    collector.on("end", () => msg.edit({ components: [] }).catch(() => {}));
+    collector.on("end", () => {
+      msg.edit({ components: [] }).catch(() => {});
+    });
 
   } catch (error) {
     console.error("Command error:", error);
-    interaction.editReply("❌ Error fetching avatar history.").catch(() => {});
+    interaction.editReply("❌ Something went wrong while fetching the data.").catch(() => {});
   }
 });
 
