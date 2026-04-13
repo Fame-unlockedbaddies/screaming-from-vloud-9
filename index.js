@@ -88,32 +88,34 @@ async function getCurrentAvatarThumbnail(userId) {
   }
 }
 
-// Best working method for outfit images in 2026 (direct CDN + retry)
+// Improved thumbnail function - tries multiple methods
 async function getOutfitThumbnail(outfitId) {
-  // Primary reliable method
-  const url = `https://thumbnails.roblox.com/v1/outfits?outfitIds=${outfitId}&size=420x420&format=Png&isCircular=false`;
+  console.log(`Fetching thumbnail for outfit ${outfitId}...`);
 
+  const modernUrl = `https://thumbnails.roblox.com/v1/outfits?outfitIds=${outfitId}&size=420x420&format=Png&isCircular=false`;
+
+  // Try modern API up to 3 times
   for (let attempt = 1; attempt <= 3; attempt++) {
     try {
-      const res = await fetch(url);
+      const res = await fetch(modernUrl);
       if (res.ok) {
         const data = await res.json();
         const imageUrl = data.data?.[0]?.imageUrl;
-        if (imageUrl) {
-          console.log(`✅ Outfit ${outfitId} image loaded (attempt ${attempt})`);
+        if (imageUrl && !imageUrl.includes("pending")) {
+          console.log(`✅ Success with modern API for outfit ${outfitId}`);
           return imageUrl;
         }
       }
     } catch (e) {
-      console.error(`Attempt ${attempt} failed for outfit ${outfitId}`);
+      // silent on retry
     }
-
-    if (attempt < 3) await new Promise(r => setTimeout(r, 1000)); // 1 second delay
+    if (attempt < 3) await new Promise(r => setTimeout(r, 1200));
   }
 
-  // Final fallback (old direct method - still works for many outfits)
-  console.log(`⚠️ Using fallback for outfit ${outfitId}`);
-  return `https://www.roblox.com/outfit-thumbnail/image?outfitId=${outfitId}&width=420&height=420&format=png`;
+  // Fallback 1: Old direct outfit thumbnail (still works for many outfits)
+  const fallback1 = `https://www.roblox.com/outfit-thumbnail/image?outfitId=${outfitId}&width=420&height=420&format=png`;
+  console.log(`⚠️ Using fallback 1 (old endpoint) for outfit ${outfitId}`);
+  return fallback1;
 }
 
 // ==================== COMMAND HANDLER ====================
@@ -146,16 +148,14 @@ client.on("interactionCreate", async (interaction) => {
         .setTimestamp();
 
       if (p === 0) {
-        // Current Avatar
         embed
           .setTitle(`${username}'s Current Avatar`)
-          .setDescription("This is their currently equipped look.")
-          .setFooter({ text: `Page 1/${totalPages}` });
+          .setDescription("Currently equipped avatar.")
+          .setFooter({ text: `Page 1 of ${totalPages}` });
 
         if (currentImage) embed.setImage(currentImage);
         else embed.setDescription("⚠️ Could not load current avatar.");
       } else {
-        // Saved Outfit
         const idx = p - 1;
         const outfit = outfits[idx];
         const imageUrl = await getOutfitThumbnail(outfit.id);
@@ -164,9 +164,9 @@ client.on("interactionCreate", async (interaction) => {
           .setTitle(`${username}'s Saved Outfits`)
           .setDescription(`**Outfit Name:** ${outfit.name}`)
           .setFooter({ 
-            text: `Outfit ${idx + 1} of ${outfits.length} • Page ${p + 1}/${totalPages}` 
+            text: `Outfit ${idx + 1} of ${outfits.length} • Page ${p + 1} of ${totalPages}` 
           })
-          .setImage(imageUrl);   // Always attempt to set it
+          .setImage(imageUrl);
       }
 
       return embed;
@@ -181,7 +181,7 @@ client.on("interactionCreate", async (interaction) => {
     const msg = await interaction.editReply({ embeds: [initialEmbed], components: [row] });
 
     const collector = msg.createMessageComponentCollector({
-      time: 180000, // 3 minutes
+      time: 180000,
       filter: i => i.user.id === interaction.user.id
     });
 
