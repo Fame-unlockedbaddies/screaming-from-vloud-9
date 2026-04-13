@@ -88,13 +88,12 @@ async function getCurrentAvatarThumbnail(userId) {
   }
 }
 
-// Improved thumbnail function - tries multiple methods
+// Thumbnail function (with retry + fallback)
 async function getOutfitThumbnail(outfitId) {
   console.log(`Fetching thumbnail for outfit ${outfitId}...`);
 
   const modernUrl = `https://thumbnails.roblox.com/v1/outfits?outfitIds=${outfitId}&size=420x420&format=Png&isCircular=false`;
 
-  // Try modern API up to 3 times
   for (let attempt = 1; attempt <= 3; attempt++) {
     try {
       const res = await fetch(modernUrl);
@@ -106,16 +105,14 @@ async function getOutfitThumbnail(outfitId) {
           return imageUrl;
         }
       }
-    } catch (e) {
-      // silent on retry
-    }
+    } catch (e) {}
     if (attempt < 3) await new Promise(r => setTimeout(r, 1200));
   }
 
-  // Fallback 1: Old direct outfit thumbnail (still works for many outfits)
-  const fallback1 = `https://www.roblox.com/outfit-thumbnail/image?outfitId=${outfitId}&width=420&height=420&format=png`;
-  console.log(`⚠️ Using fallback 1 (old endpoint) for outfit ${outfitId}`);
-  return fallback1;
+  // Fallback
+  const fallback = `https://www.roblox.com/outfit-thumbnail/image?outfitId=${outfitId}&width=420&height=420&format=png`;
+  console.log(`⚠️ Using fallback for outfit ${outfitId}`);
+  return fallback;
 }
 
 // ==================== COMMAND HANDLER ====================
@@ -135,12 +132,13 @@ client.on("interactionCreate", async (interaction) => {
       getCurrentAvatarThumbnail(userId)
     ]);
 
-    if (outfits.length === 0 && !currentImage) {
-      return interaction.editReply("❌ No avatar data found.");
+    const savedOutfitCount = outfits.length;
+    if (savedOutfitCount === 0 && !currentImage) {
+      return interaction.editReply("❌ No avatar data found for this user.");
     }
 
     let page = 0;
-    const totalPages = outfits.length + 1;
+    const totalPages = savedOutfitCount + 1;   // +1 for current avatar
 
     const makeEmbed = async (p) => {
       const embed = new EmbedBuilder()
@@ -148,14 +146,16 @@ client.on("interactionCreate", async (interaction) => {
         .setTimestamp();
 
       if (p === 0) {
+        // Current Avatar Page
         embed
           .setTitle(`${username}'s Current Avatar`)
-          .setDescription("Currently equipped avatar.")
-          .setFooter({ text: `Page 1 of ${totalPages}` });
+          .setDescription("This is their currently equipped avatar.")
+          .setFooter({ text: `Page 1 of ${totalPages} • ${savedOutfitCount} saved outfits` });
 
         if (currentImage) embed.setImage(currentImage);
         else embed.setDescription("⚠️ Could not load current avatar.");
       } else {
+        // Saved Outfits
         const idx = p - 1;
         const outfit = outfits[idx];
         const imageUrl = await getOutfitThumbnail(outfit.id);
@@ -164,7 +164,7 @@ client.on("interactionCreate", async (interaction) => {
           .setTitle(`${username}'s Saved Outfits`)
           .setDescription(`**Outfit Name:** ${outfit.name}`)
           .setFooter({ 
-            text: `Outfit ${idx + 1} of ${outfits.length} • Page ${p + 1} of ${totalPages}` 
+            text: `Outfit ${idx + 1} of ${savedOutfitCount} • Page ${p} of ${totalPages}` 
           })
           .setImage(imageUrl);
       }
