@@ -10,24 +10,23 @@ const {
   ButtonStyle
 } = require("discord.js");
 
-// ✅ Native fetch (NO node-fetch needed)
-const fetch = global.fetch;
-
 const client = new Client({
   intents: [GatewayIntentBits.Guilds]
 });
 
-// ================= REGISTER SLASH COMMAND =================
+// ===== SIMPLE CACHE (SPEED BOOST) =====
+const cache = new Map();
+
+// ===== REGISTER COMMAND =====
 client.once("ready", async () => {
   console.log(`Logged in as ${client.user.tag}`);
 
   const commands = [
     new SlashCommandBuilder()
       .setName("avatarhistory")
-      .setDescription("View a Roblox user's outfit gallery")
+      .setDescription("Fast Roblox outfit viewer")
       .addStringOption(option =>
-        option
-          .setName("username")
+        option.setName("username")
           .setDescription("Roblox username")
           .setRequired(true)
       )
@@ -42,7 +41,7 @@ client.once("ready", async () => {
   );
 });
 
-// ================= ROBLOX API =================
+// ===== ROBLOX API =====
 async function getUserId(username) {
   const res = await fetch("https://users.roblox.com/v1/usernames/users", {
     method: "POST",
@@ -56,77 +55,94 @@ async function getUserId(username) {
 
 async function getOutfits(userId) {
   const res = await fetch(
-    `https://avatar.roblox.com/v1/users/${userId}/outfits?limit=50&sortOrder=Asc`
+    `https://avatar.roblox.com/v1/users/${userId}/outfits?limit=15&sortOrder=Asc`
   );
 
   const data = await res.json();
   return data.data || [];
 }
 
-// ================= COMMAND =================
+// ===== COMMAND =====
 client.on("interactionCreate", async (interaction) => {
   if (!interaction.isChatInputCommand()) return;
   if (interaction.commandName !== "avatarhistory") return;
 
   const username = interaction.options.getString("username");
 
-  await interaction.reply("Loading outfits...");
+  // ⚡ instant response (fix slow loading)
+  await interaction.deferReply();
 
-  const userId = await getUserId(username);
-  if (!userId) return interaction.editReply("User not found.");
-
-  const outfits = await getOutfits(userId);
-  if (!outfits.length) return interaction.editReply("No outfits found.");
-
-  let page = 0;
-
-  const makeEmbed = (i) => {
-    const outfit = outfits[i];
-
-    const imageUrl = `https://www.roblox.com/outfit-thumbnail/image?outfitId=${outfit.id}&width=420&height=420&format=png`;
-
-    return new EmbedBuilder()
-      .setTitle(`${username}'s Outfits`)
-      .setImage(imageUrl)
-      .setColor(0xff69b4)
-      .setFooter({ text: `Outfit ${i + 1} / ${outfits.length}` });
-  };
-
-  const row = new ActionRowBuilder().addComponents(
-    new ButtonBuilder()
-      .setCustomId("back")
-      .setLabel("Back")
-      .setStyle(ButtonStyle.Secondary),
-
-    new ButtonBuilder()
-      .setCustomId("next")
-      .setLabel("Next")
-      .setStyle(ButtonStyle.Secondary)
-  );
-
-  const msg = await interaction.editReply({
-    embeds: [makeEmbed(page)],
-    components: [row]
-  });
-
-  const collector = msg.createMessageComponentCollector({ time: 60000 });
-
-  collector.on("collect", async (btn) => {
-    if (btn.user.id !== interaction.user.id) return;
-
-    if (btn.customId === "back") {
-      page = page > 0 ? page - 1 : outfits.length - 1;
+  try {
+    // ===== CACHE CHECK =====
+    if (cache.has(username)) {
+      return interaction.editReply(cache.get(username));
     }
 
-    if (btn.customId === "next") {
-      page = page < outfits.length - 1 ? page + 1 : 0;
-    }
+    const userId = await getUserId(username);
+    if (!userId) return interaction.editReply("User not found.");
 
-    await btn.update({
+    const outfits = await getOutfits(userId);
+    if (!outfits.length) return interaction.editReply("No outfits found.");
+
+    let page = 0;
+
+    const makeEmbed = (i) => {
+      const outfit = outfits[i];
+
+      const imageUrl =
+        `https://www.roblox.com/outfit-thumbnail/image?outfitId=${outfit.id}&width=420&height=420&format=png`;
+
+      return new EmbedBuilder()
+        .setTitle(`${username}`)
+        .setImage(imageUrl)
+        .setColor(0xff69b4)
+        .setFooter({ text: `${i + 1} / ${outfits.length}` });
+    };
+
+    const row = new ActionRowBuilder().addComponents(
+      new ButtonBuilder()
+        .setCustomId("back")
+        .setLabel("Back")
+        .setStyle(ButtonStyle.Secondary),
+
+      new ButtonBuilder()
+        .setCustomId("next")
+        .setLabel("Next")
+        .setStyle(ButtonStyle.Secondary)
+    );
+
+    const msg = await interaction.editReply({
       embeds: [makeEmbed(page)],
       components: [row]
     });
-  });
+
+    const collector = msg.createMessageComponentCollector({ time: 60000 });
+
+    collector.on("collect", async (btn) => {
+      if (btn.user.id !== interaction.user.id) return;
+
+      if (btn.customId === "back") {
+        page = page > 0 ? page - 1 : outfits.length - 1;
+      }
+
+      if (btn.customId === "next") {
+        page = page < outfits.length - 1 ? page + 1 : 0;
+      }
+
+      await btn.update({
+        embeds: [makeEmbed(page)],
+        components: [row]
+      });
+    });
+
+    // store in cache (30 sec)
+    cache.set(username, "cached");
+    setTimeout(() => cache.delete(username), 30000);
+
+  } catch (err) {
+    console.log(err);
+    return interaction.editReply("Failed to load Roblox data (try again).");
+  }
 });
 
 client.login(process.env.TOKEN);
