@@ -10,22 +10,24 @@ const {
   ButtonStyle
 } = require("discord.js");
 
-const fetch = require("node-fetch");
+// ✅ Native fetch (NO node-fetch needed)
+const fetch = global.fetch;
 
 const client = new Client({
   intents: [GatewayIntentBits.Guilds]
 });
 
-// ===== REGISTER SLASH COMMAND =====
+// ================= REGISTER SLASH COMMAND =================
 client.once("ready", async () => {
   console.log(`Logged in as ${client.user.tag}`);
 
   const commands = [
     new SlashCommandBuilder()
       .setName("avatarhistory")
-      .setDescription("View a Roblox user's outfits")
+      .setDescription("View a Roblox user's outfit gallery")
       .addStringOption(option =>
-        option.setName("username")
+        option
+          .setName("username")
           .setDescription("Roblox username")
           .setRequired(true)
       )
@@ -40,7 +42,7 @@ client.once("ready", async () => {
   );
 });
 
-// ===== ROBLOX HELPERS =====
+// ================= ROBLOX API =================
 async function getUserId(username) {
   const res = await fetch("https://users.roblox.com/v1/usernames/users", {
     method: "POST",
@@ -61,10 +63,9 @@ async function getOutfits(userId) {
   return data.data || [];
 }
 
-// ===== COMMAND HANDLER =====
+// ================= COMMAND =================
 client.on("interactionCreate", async (interaction) => {
   if (!interaction.isChatInputCommand()) return;
-
   if (interaction.commandName !== "avatarhistory") return;
 
   const username = interaction.options.getString("username");
