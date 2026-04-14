@@ -30,18 +30,46 @@ const client = new Client({
   ]
 });
 
-// In-memory TOS (resets when bot restarts)
+// In-memory TOS
 const tosAccepted = new Set();
 
-// ==================== ROBLOX COOKIE (Add in Render Environment Variables) ====================
-const ROBLOX_COOKIE = process.env.ROBLOX_COOKIE || "";
-if (ROBLOX_COOKIE) {
-  console.log("✅ Roblox cookie loaded");
-} else {
-  console.log("⚠️ No ROBLOX_COOKIE set — running without authentication");
-}
+client.once("ready", async () => {
+  console.log(`✅ Logged in as ${client.user.tag}`);
 
-// ==================== HELPER FUNCTIONS ====================
+  const commands = [
+    new SlashCommandBuilder()
+      .setName("roblox")
+      .setDescription("Roblox utilities")
+      .addSubcommand(sub =>
+        sub.setName("avatarhistory")
+          .setDescription("View full avatar history")
+          .addStringOption(o => o.setName("username").setDescription("Roblox username").setRequired(true))
+      )
+      .setIntegrationTypes(ApplicationIntegrationType.GuildInstall, ApplicationIntegrationType.UserInstall)
+      .setContexts(InteractionContextType.Guild, InteractionContextType.BotDM, InteractionContextType.PrivateChannel)
+      .toJSON(),
+
+    new SlashCommandBuilder()
+      .setName("snipe")
+      .setDescription("Advanced snipe - works in DMs & Group Chats")
+      .addStringOption(option =>
+        option.setName("target").setDescription("Roblox username").setRequired(true)
+      )
+      .setIntegrationTypes(ApplicationIntegrationType.GuildInstall, ApplicationIntegrationType.UserInstall)
+      .setContexts(InteractionContextType.Guild, InteractionContextType.BotDM, InteractionContextType.PrivateChannel)
+      .toJSON()
+  ];
+
+  const rest = new REST({ version: "10" }).setToken(process.env.TOKEN);
+  try {
+    await rest.put(Routes.applicationCommands(process.env.CLIENT_ID), { body: commands });
+    console.log("✅ Commands registered (DM + Group Chat support)");
+  } catch (error) {
+    console.error("❌ Command registration failed:", error);
+  }
+});
+
+// ==================== HELPER FUNCTIONS (No Cookie) ====================
 async function getUserId(username) {
   try {
     const res = await fetch("https://users.roblox.com/v1/usernames/users", {
@@ -56,15 +84,9 @@ async function getUserId(username) {
 
 async function getUserPresence(userId) {
   try {
-    const headers = {
-      "Content-Type": "application/json",
-      "User-Agent": "Roblox/WinInet"
-    };
-    if (ROBLOX_COOKIE) headers.Cookie = ROBLOX_COOKIE;
-
     const res = await fetch("https://presence.roblox.com/v1/presence/users", {
       method: "POST",
-      headers,
+      headers: { "Content-Type": "application/json", "User-Agent": "Roblox/WinInet" },
       body: JSON.stringify({ userIds: [parseInt(userId)] })
     });
     if (!res.ok) return null;
@@ -102,7 +124,6 @@ async function getAllPublicServers(universeId) {
       if (!res.ok) break;
       const data = await res.json();
       if (!data.data?.length) break;
-
       servers = servers.concat(data.data);
       if (!data.nextPageCursor) break;
       cursor = data.nextPageCursor;
@@ -112,49 +133,10 @@ async function getAllPublicServers(universeId) {
   return servers;
 }
 
-// ==================== READY EVENT & COMMAND REGISTRATION ====================
-client.once("ready", async () => {
-  console.log(`✅ Logged in as ${client.user.tag}`);
-
-  const commands = [
-    new SlashCommandBuilder()
-      .setName("roblox")
-      .setDescription("Roblox utilities")
-      .addSubcommand(sub =>
-        sub
-          .setName("avatarhistory")
-          .setDescription("View full avatar history")
-          .addStringOption(o => o.setName("username").setDescription("Roblox username").setRequired(true))
-      )
-      .setIntegrationTypes(ApplicationIntegrationType.GuildInstall, ApplicationIntegrationType.UserInstall)
-      .setContexts(InteractionContextType.Guild, InteractionContextType.BotDM, InteractionContextType.PrivateChannel)
-      .toJSON(),
-
-    new SlashCommandBuilder()
-      .setName("snipe")
-      .setDescription("Advanced Bloxiana-style snipe (works in DMs & Group Chats)")
-      .addStringOption(option =>
-        option.setName("target").setDescription("Roblox username").setRequired(true)
-      )
-      .setIntegrationTypes(ApplicationIntegrationType.GuildInstall, ApplicationIntegrationType.UserInstall)
-      .setContexts(InteractionContextType.Guild, InteractionContextType.BotDM, InteractionContextType.PrivateChannel)
-      .toJSON()
-  ];
-
-  const rest = new REST({ version: "10" }).setToken(process.env.TOKEN);
-  try {
-    await rest.put(Routes.applicationCommands(process.env.CLIENT_ID), { body: commands });
-    console.log("✅ Commands registered with full DM + Group Chat support");
-  } catch (error) {
-    console.error("❌ Command registration failed:", error);
-  }
-});
-
-// ==================== INTERACTION HANDLER ====================
+// ==================== COMMAND HANDLER ====================
 client.on("interactionCreate", async (interaction) => {
   if (!interaction.isChatInputCommand()) return;
 
-  // TOS for snipe
   if (interaction.commandName === "snipe") {
     const target = interaction.options.getString("target");
     const userId = interaction.user.id;
@@ -180,7 +162,6 @@ client.on("interactionCreate", async (interaction) => {
       return interaction.reply({ embeds: [tosEmbed], components: [row] });
     }
 
-    // ==================== ADVANCED SNIPE LOGIC ====================
     const startTime = Date.now();
     await interaction.deferReply();
 
@@ -188,7 +169,7 @@ client.on("interactionCreate", async (interaction) => {
       await interaction.editReply({
         embeds: [new EmbedBuilder()
           .setColor(0x00aaff)
-          .setTitle("🔍 Advanced Scanning...")
+          .setTitle("🔍 Scanning...")
           .setDescription(`Finding **${target}** and scanning all public servers...`)]
       });
 
@@ -208,7 +189,7 @@ client.on("interactionCreate", async (interaction) => {
       const placeId = presence.placeId || universeId;
 
       if (!universeId) {
-        return interaction.editReply("⚠️ Could not get Game ID due to Roblox privacy.");
+        return interaction.editReply("⚠️ Could not get Game ID (Roblox privacy limitation).");
       }
 
       const [gameName, servers] = await Promise.all([
@@ -225,11 +206,11 @@ client.on("interactionCreate", async (interaction) => {
         .setImage(avatarUrl || null)
         .addFields(
           { name: "Sniped in", value: `${scanTime} ms`, inline: true },
-          { name: "Servers", value: servers.length.toString(), inline: true }
+          { name: "Servers Found", value: servers.length.toString(), inline: true }
         )
         .setTimestamp();
 
-      // Join buttons
+      // Join Buttons
       const rows = [];
       if (placeId) {
         rows.push(new ActionRowBuilder().addComponents(
@@ -246,7 +227,7 @@ client.on("interactionCreate", async (interaction) => {
         servers.slice(i, i + 5).forEach((s, idx) => {
           row.addComponents(
             new ButtonBuilder()
-              .setLabel(`Join #${i + idx + 1}`)
+              .setLabel(`Join Server ${i + idx + 1}`)
               .setStyle(ButtonStyle.Link)
               .setURL(`https://www.roblox.com/games/${placeId}?serverId=${s.id}`)
           );
