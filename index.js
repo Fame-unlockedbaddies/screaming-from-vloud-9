@@ -22,13 +22,14 @@ server.listen(PORT, () => console.log(`✅ Keep-alive server running on port ${P
 // ==================== DISCORD CLIENT ====================
 const client = new Client({ intents: [GatewayIntentBits.Guilds] });
 
-// Store users who accepted TOS (in-memory - resets on restart)
+// In-memory TOS accepted users (resets on restart)
 const tosAccepted = new Set();
 
 client.once("ready", async () => {
   console.log(`✅ Logged in as ${client.user.tag}`);
 
   const commands = [
+    // Your roblox avatarhistory command (keep as before)
     new SlashCommandBuilder()
       .setName("roblox")
       .setDescription("Roblox utilities")
@@ -41,7 +42,7 @@ client.once("ready", async () => {
 
     new SlashCommandBuilder()
       .setName("snipe")
-      .setDescription("Advanced auto snipe (Bloxiana style)")
+      .setDescription("Fast auto snipe — finds game & public servers")
       .addStringOption(option =>
         option.setName("target")
           .setDescription("Roblox username")
@@ -59,7 +60,7 @@ client.once("ready", async () => {
   }
 });
 
-// ==================== HELPER FUNCTIONS (Presence + Avatar) ====================
+// ==================== FAST HELPER FUNCTIONS ====================
 async function getUserId(username) {
   try {
     const res = await fetch("https://users.roblox.com/v1/usernames/users", {
@@ -77,21 +78,19 @@ async function getUserPresence(userId) {
     "Content-Type": "application/json",
     "User-Agent": "Roblox/WinInet"
   };
-  for (let i = 1; i <= 3; i++) {
-    try {
-      const res = await fetch("https://presence.roblox.com/v1/presence/users", {
-        method: "POST",
-        headers,
-        body: JSON.stringify({ userIds: [parseInt(userId)] })
-      });
-      if (!res.ok) throw new Error();
-      const data = await res.json();
-      return data.userPresences?.[0] || null;
-    } catch {
-      if (i < 3) await new Promise(r => setTimeout(r, 1200));
-    }
+
+  try {
+    const res = await fetch("https://presence.roblox.com/v1/presence/users", {
+      method: "POST",
+      headers,
+      body: JSON.stringify({ userIds: [parseInt(userId)] })
+    });
+    if (!res.ok) return null;
+    const data = await res.json();
+    return data.userPresences?.[0] || null;
+  } catch {
+    return null;
   }
-  return null;
 }
 
 async function getGameName(universeId) {
@@ -121,21 +120,21 @@ async function getPublicServers(universeId) {
   } catch { return []; }
 }
 
-// ==================== TOS + SNIPE COMMAND ====================
+// ==================== TOS + SNIPE COMMAND (FAST VERSION) ====================
 client.on("interactionCreate", async (interaction) => {
   if (!interaction.isChatInputCommand()) return;
 
   if (interaction.commandName === "roblox" && interaction.options.getSubcommand() === "avatarhistory") {
-    // Your original avatarhistory code here (unchanged)
+    // Your original avatarhistory code here
     return;
   }
 
   if (interaction.commandName === "snipe") {
     const target = interaction.options.getString("target");
-    const userId = interaction.user.id;
+    const discordUserId = interaction.user.id;
 
-    // First-time TOS check
-    if (!tosAccepted.has(userId)) {
+    // TOS Check
+    if (!tosAccepted.has(discordUserId)) {
       const tosEmbed = new EmbedBuilder()
         .setColor(0xff0000)
         .setTitle("Terms of Service - Snipe Command")
@@ -145,53 +144,57 @@ client.on("interactionCreate", async (interaction) => {
           "• This command is for educational and entertainment purposes only\n" +
           "• Do not use this command to harass or harm other users\n" +
           "• Respect other players' privacy and boundaries\n" +
-          "• Misuse of this command may result in a ban\n\n" +
+          "• Misuse may result in a ban\n\n" +
           "By clicking **Accept**, you agree to use this command responsibly."
-        )
-        .setTimestamp();
+        );
 
       const row = new ActionRowBuilder().addComponents(
         new ButtonBuilder().setCustomId("tos_accept").setLabel("Accept").setStyle(ButtonStyle.Success),
         new ButtonBuilder().setCustomId("tos_decline").setLabel("Decline").setStyle(ButtonStyle.Danger)
       );
 
-      await interaction.reply({ embeds: [tosEmbed], components: [row] });
-      return;
+      return interaction.reply({ embeds: [tosEmbed], components: [row] });
     }
 
-    // User already accepted TOS → Start sniping
+    // === FAST SNIPE STARTS HERE ===
+    const startTime = Date.now();
     await interaction.deferReply();
 
-    const startTime = Date.now();
-
     try {
+      // Quick initial message so Discord doesn't show "thinking..." for long
+      const scanningEmbed = new EmbedBuilder()
+        .setColor(0x00aaff)
+        .setTitle("Scanning...")
+        .setDescription(`Finding **${target}** and their current game...`)
+        .setFooter({ text: "This should be quick" });
+
+      await interaction.editReply({ embeds: [scanningEmbed] });
+
+      // Run everything in parallel for maximum speed
       const robloxId = await getUserId(target);
-      if (!robloxId) return interaction.editReply("❌ Roblox user not found.");
+      if (!robloxId) {
+        return interaction.editReply("❌ Roblox user not found.");
+      }
 
-      const avatarUrl = await getCurrentAvatar(robloxId);
-      const presence = await getUserPresence(robloxId);
-
-      // === Installing / Player Found Phase ===
-      const installingEmbed = new EmbedBuilder()
-        .setColor(0x00ff88)
-        .setTitle("Installing...")
-        .setDescription(`**Target:** ${target}`)
-        .setImage(avatarUrl || null)
-        .setFooter({ text: "Please wait while we scan servers..." })
-        .setTimestamp();
-
-      await interaction.editReply({ embeds: [installingEmbed] });
-
-      // Small delay to simulate "installing"
-      await new Promise(r => setTimeout(r, 1800));
+      const [avatarUrl, presence] = await Promise.all([
+        getCurrentAvatar(robloxId),
+        getUserPresence(robloxId)
+      ]);
 
       if (!presence || (presence.userPresenceType !== 2 && presence.userPresenceType !== 3)) {
         return interaction.editReply(`❌ **${target}** is not currently in a game.`);
       }
 
       const universeId = presence.universeId || presence.placeId || presence.rootPlaceId;
-      const gameName = await getGameName(universeId);
-      const servers = await getPublicServers(universeId);
+      if (!universeId) {
+        return interaction.editReply(`⚠️ **${target}** is in a game but Roblox didn't return the Game ID (privacy limitation).`);
+      }
+
+      // Parallel: get game name + servers
+      const [gameName, servers] = await Promise.all([
+        getGameName(universeId),
+        getPublicServers(universeId)
+      ]);
 
       const scanTime = Date.now() - startTime;
 
@@ -201,54 +204,48 @@ client.on("interactionCreate", async (interaction) => {
         .setDescription(
           `**Search completed, ${servers.length} servers scanned!**\n\n` +
           `**Game:** ${gameName}\n` +
-          `**Players:** ${presence.lastLocation || "Unknown"}`
+          `**Last Location:** ${presence.lastLocation || "Unknown"}`
         )
         .setImage(avatarUrl || null)
         .addFields(
-          { name: "Sniped in", value: `${scanTime} milliseconds`, inline: true }
+          { name: "Sniped in", value: `${scanTime} ms`, inline: true }
         )
         .setTimestamp();
 
       if (servers.length > 0) {
-        let serverList = "";
-        servers.slice(0, 8).forEach((s, i) => {
-          serverList += `**${i+1}.** \`${s.id}\` — ${s.playing}/${s.maxPlayers} players\n`;
-        });
-        resultEmbed.addFields({ name: "Public Servers", value: serverList || "No public servers visible." });
+        let serverList = servers.slice(0, 8).map((s, i) =>
+          `**${i+1}.** \`${s.id}\` — ${s.playing}/${s.maxPlayers} players`
+        ).join("\n");
+        resultEmbed.addFields({ name: "Public Servers", value: serverList || "None visible." });
       }
 
-      // Final edit + ping the user
+      // Final reply with ping
       await interaction.editReply({
-        content: `<@${interaction.user.id}>`,
+        content: `<@${discordUserId}>`,
         embeds: [resultEmbed]
       });
 
     } catch (error) {
-      console.error(error);
-      await interaction.editReply("❌ An error occurred during the snipe.").catch(() => {});
+      console.error("Snipe error:", error);
+      await interaction.editReply("❌ Something went wrong. Please try again.").catch(() => {});
     }
   }
 });
 
-// Button Handler for TOS
+// TOS Button Handler
 client.on("interactionCreate", async (interaction) => {
   if (!interaction.isButton()) return;
 
-  const userId = interaction.user.id;
-
   if (interaction.customId === "tos_accept") {
-    tosAccepted.add(userId);
+    tosAccepted.add(interaction.user.id);
     await interaction.update({
-      content: "✅ You have accepted the Terms of Service. You can now use the `/snipe` command.",
-      embeds: [],
-      components: []
+      content: "✅ TOS Accepted! You can now use `/snipe`.",
+      embeds: [], components: []
     });
-  } 
-  else if (interaction.customId === "tos_decline") {
+  } else if (interaction.customId === "tos_decline") {
     await interaction.update({
-      content: "❌ You declined the Terms of Service. You cannot use the `/snipe` command until you accept.",
-      embeds: [],
-      components: []
+      content: "❌ You declined the TOS. You cannot use `/snipe` until you accept.",
+      embeds: [], components: []
     });
   }
 });
