@@ -22,11 +22,11 @@ server.listen(PORT, () => console.log(`✅ Keep-alive server running on port ${P
 // ==================== DISCORD CLIENT ====================
 const client = new Client({ intents: [GatewayIntentBits.Guilds] });
 
-// In-memory TOS (resets on restart)
 const tosAccepted = new Set();
 
 client.once("ready", async () => {
   console.log(`✅ Logged in as ${client.user.tag}`);
+  console.log("⚠️ Advanced snipe loaded. Make sure ROBLOX_COOKIE is set in env vars!");
 
   const commands = [
     new SlashCommandBuilder()
@@ -41,7 +41,7 @@ client.once("ready", async () => {
 
     new SlashCommandBuilder()
       .setName("snipe")
-      .setDescription("Advanced Bloxiana-style snipe — scans ALL public servers + direct join buttons")
+      .setDescription("ULTIMATE Bloxiana-style snipe — uses cookie + full server scan + join links")
       .addStringOption(option =>
         option.setName("target")
           .setDescription("Roblox username")
@@ -53,13 +53,36 @@ client.once("ready", async () => {
   const rest = new REST({ version: "10" }).setToken(process.env.TOKEN);
   try {
     await rest.put(Routes.applicationCommands(process.env.CLIENT_ID), { body: commands });
-    console.log("✅ Commands registered (advanced snipe ready)");
+    console.log("✅ Commands registered");
   } catch (e) {
     console.error("Register error:", e);
   }
 });
 
-// ==================== ADVANCED HELPER FUNCTIONS ====================
+// ==================== CONFIG ====================
+// PUT YOUR ROBLOX COOKIE HERE IN RENDER DASHBOARD (Environment Variables)
+// Example: .ROBLOSECURITY=yourlongcookievaluehere
+const ROBLOX_COOKIE = process.env.ROBLOX_COOKIE;
+if (!ROBLOX_COOKIE) {
+  console.warn("⚠️ ROBLOX_COOKIE is not set! Snipe will still work but less accurate (no auth).");
+}
+
+// ==================== ADVANCED HELPERS WITH COOKIE + HEADERS ====================
+async function getXcsrfToken() {
+  if (!ROBLOX_COOKIE) return null;
+  try {
+    const res = await fetch("https://auth.roblox.com/v2/logout", {
+      method: "POST",
+      headers: {
+        "Cookie": ROBLOX_COOKIE,
+        "User-Agent": "Roblox/WinInet",
+        "Referer": "https://www.roblox.com/"
+      }
+    });
+    return res.headers.get("x-csrf-token");
+  } catch { return null; }
+}
+
 async function getUserId(username) {
   try {
     const res = await fetch("https://users.roblox.com/v1/usernames/users", {
@@ -73,11 +96,13 @@ async function getUserId(username) {
 }
 
 async function getUserPresence(userId) {
-  const headers = {
-    "Content-Type": "application/json",
-    "User-Agent": "Roblox/WinInet"
-  };
   try {
+    const headers = {
+      "Content-Type": "application/json",
+      "User-Agent": "Roblox/WinInet"
+    };
+    if (ROBLOX_COOKIE) headers.Cookie = ROBLOX_COOKIE;
+
     const res = await fetch("https://presence.roblox.com/v1/presence/users", {
       method: "POST",
       headers,
@@ -106,29 +131,34 @@ async function getCurrentAvatar(userId) {
   } catch { return null; }
 }
 
-// ADVANCED: Scans ALL public servers (paginated with cursor) — exactly like Bloxiana
+// FULL PAGINATED SERVER SCAN + AUTHENTICATED (uses cookie + x-csrf when available)
 async function getAllPublicServers(universeId) {
   if (!universeId) return [];
   let servers = [];
   let cursor = null;
-  let page = 0;
+  const xcsrf = await getXcsrfToken();
+
+  const headers = {
+    "User-Agent": "Roblox/WinInet",
+    "Referer": "https://www.roblox.com/"
+  };
+  if (ROBLOX_COOKIE) headers.Cookie = ROBLOX_COOKIE;
+  if (xcsrf) headers["x-csrf-token"] = xcsrf;
 
   while (true) {
-    page++;
     const url = `https://games.roblox.com/v1/games/${universeId}/servers/Public?limit=100&sortOrder=Asc${cursor ? `&cursor=${cursor}` : ""}`;
     try {
-      const res = await fetch(url);
+      const res = await fetch(url, { headers });
       if (!res.ok) break;
       const data = await res.json();
-      if (!data.data || data.data.length === 0) break;
+      if (!data.data?.length) break;
 
       servers = servers.concat(data.data);
-
       if (!data.nextPageCursor) break;
       cursor = data.nextPageCursor;
 
-      // Small delay to avoid rate-limit (still fast overall)
-      if (page % 3 === 0) await new Promise(r => setTimeout(r, 250));
+      // Tiny delay to stay under rate limits
+      await new Promise(r => setTimeout(r, 180));
     } catch { break; }
   }
   return servers;
@@ -138,9 +168,8 @@ async function getAllPublicServers(universeId) {
 client.on("interactionCreate", async (interaction) => {
   if (!interaction.isChatInputCommand()) return;
 
-  // Your original avatarhistory command (unchanged)
   if (interaction.commandName === "roblox" && interaction.options.getSubcommand() === "avatarhistory") {
-    // Paste your full avatarhistory code here if you want it to stay
+    // Your original avatarhistory code here (unchanged)
     return;
   }
 
@@ -148,7 +177,6 @@ client.on("interactionCreate", async (interaction) => {
     const target = interaction.options.getString("target");
     const discordUserId = interaction.user.id;
 
-    // TOS Check
     if (!tosAccepted.has(discordUserId)) {
       const tosEmbed = new EmbedBuilder()
         .setColor(0xff0000)
@@ -171,24 +199,21 @@ client.on("interactionCreate", async (interaction) => {
       return interaction.reply({ embeds: [tosEmbed], components: [row] });
     }
 
-    // FAST + ADVANCED SNIPE STARTS
     const startTime = Date.now();
     await interaction.deferReply();
 
     try {
-      // Quick "Scanning..." so Discord doesn't show "thinking..." for long
       await interaction.editReply({
         embeds: [new EmbedBuilder()
           .setColor(0x00aaff)
-          .setTitle("🔍 Scanning...")
-          .setDescription(`Finding **${target}** and scanning **ALL** public servers...`)
-          .setFooter({ text: "Advanced Bloxiana-style scan" })]
+          .setTitle("🔍 Advanced Scanning...")
+          .setDescription(`Finding **${target}** + scanning **ALL** public servers with authenticated headers...`)
+          .setFooter({ text: "Using Roblox cookie + full pagination" })]
       });
 
       const robloxId = await getUserId(target);
       if (!robloxId) return interaction.editReply("❌ Roblox user not found.");
 
-      // Run everything in parallel for speed
       const [avatarUrl, presence] = await Promise.all([
         getCurrentAvatar(robloxId),
         getUserPresence(robloxId)
@@ -199,10 +224,10 @@ client.on("interactionCreate", async (interaction) => {
       }
 
       const universeId = presence.universeId || presence.placeId || presence.rootPlaceId;
-      const placeId = presence.placeId || universeId; // needed for join links
+      const placeId = presence.placeId || universeId;
 
       if (!universeId) {
-        return interaction.editReply(`⚠️ **${target}** is in a game but Roblox privacy blocked the Game ID.`);
+        return interaction.editReply("⚠️ Roblox privacy blocked Game ID.");
       }
 
       const [gameName, servers] = await Promise.all([
@@ -222,41 +247,22 @@ client.on("interactionCreate", async (interaction) => {
         )
         .setImage(avatarUrl || null)
         .addFields(
-          { name: "Sniped in", value: `${scanTime} milliseconds`, inline: true },
-          { name: "Total Public Servers", value: servers.length.toString(), inline: true }
+          { name: "Sniped in", value: `${scanTime} ms`, inline: true },
+          { name: "Total Servers", value: servers.length.toString(), inline: true }
         )
         .setTimestamp();
 
-      // Show first 12 servers in text
+      // Server list (first 12)
       if (servers.length > 0) {
-        let serverText = "";
-        servers.slice(0, 12).forEach((s, i) => {
-          serverText += `**${i + 1}.** \`${s.id}\` — **${s.playing}/${s.maxPlayers}** players\n`;
-        });
-        if (servers.length > 12) serverText += `\n*... and ${servers.length - 12} more servers*`;
-        resultEmbed.addFields({ name: "Public Servers (Latest)", value: serverText });
+        let serverText = servers.slice(0, 12).map((s, i) =>
+          `**${i+1}.** \`${s.id}\` — **${s.playing}/${s.maxPlayers}**`
+        ).join("\n");
+        if (servers.length > 12) serverText += `\n*... +${servers.length - 12} more*`;
+        resultEmbed.addFields({ name: "Public Servers", value: serverText });
       }
 
-      // ==================== JOIN BUTTONS (Advanced Bloxiana style) ====================
+      // JOIN BUTTONS (up to 15 + main game button)
       const rows = [];
-      const maxButtons = Math.min(servers.length, 15); // max 15 join buttons (3 rows × 5)
-
-      for (let i = 0; i < maxButtons; i += 5) {
-        const row = new ActionRowBuilder();
-        const batch = servers.slice(i, i + 5);
-        batch.forEach((server) => {
-          const joinUrl = `https://www.roblox.com/games/${placeId}?serverId=${server.id}`;
-          row.addComponents(
-            new ButtonBuilder()
-              .setLabel(`Join Server ${i + batch.indexOf(server) + 1}`)
-              .setStyle(ButtonStyle.Link)
-              .setURL(joinUrl)
-          );
-        });
-        rows.push(row);
-      }
-
-      // Main "Join [Player]'s Game" button (opens the game — works even if exact server unknown)
       if (placeId) {
         const mainRow = new ActionRowBuilder().addComponents(
           new ButtonBuilder()
@@ -264,38 +270,47 @@ client.on("interactionCreate", async (interaction) => {
             .setStyle(ButtonStyle.Link)
             .setURL(`https://www.roblox.com/games/${placeId}`)
         );
-        rows.unshift(mainRow); // put at the very top
+        rows.push(mainRow);
       }
 
-      // Final reply with ping
+      const maxButtons = Math.min(servers.length, 15);
+      for (let i = 0; i < maxButtons; i += 5) {
+        const row = new ActionRowBuilder();
+        const batch = servers.slice(i, i + 5);
+        batch.forEach((s) => {
+          const joinUrl = `https://www.roblox.com/games/${placeId}?serverId=${s.id}`;
+          row.addComponents(
+            new ButtonBuilder()
+              .setLabel(`Join #${i + batch.indexOf(s) + 1}`)
+              .setStyle(ButtonStyle.Link)
+              .setURL(joinUrl)
+          );
+        });
+        rows.push(row);
+      }
+
       await interaction.editReply({
         content: `<@${discordUserId}>`,
         embeds: [resultEmbed],
-        components: rows.length > 0 ? rows : []
+        components: rows
       });
 
     } catch (error) {
       console.error("Snipe error:", error);
-      await interaction.editReply("❌ An error occurred. Roblox API may be slow — try again.").catch(() => {});
+      await interaction.editReply("❌ Error — Roblox API may be rate-limited. Try again in a few seconds.").catch(() => {});
     }
   }
 });
 
-// TOS Button Handler
+// TOS Buttons
 client.on("interactionCreate", async (interaction) => {
   if (!interaction.isButton()) return;
 
   if (interaction.customId === "tos_accept") {
     tosAccepted.add(interaction.user.id);
-    await interaction.update({
-      content: "✅ TOS Accepted! You can now use `/snipe`.",
-      embeds: [], components: []
-    });
+    await interaction.update({ content: "✅ TOS Accepted!", embeds: [], components: [] });
   } else if (interaction.customId === "tos_decline") {
-    await interaction.update({
-      content: "❌ You declined the TOS. You cannot use `/snipe` until you accept.",
-      embeds: [], components: []
-    });
+    await interaction.update({ content: "❌ TOS Declined.", embeds: [], components: [] });
   }
 });
 
