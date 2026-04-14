@@ -22,6 +22,22 @@ const server = http.createServer((req, res) => {
 const PORT = process.env.PORT || 10000;
 server.listen(PORT, () => console.log(`✅ Keep-alive server running on port ${PORT}`));
 
+// Self-ping every 10 minutes to prevent Render free tier spin-down
+// Set RENDER_URL env var to your Render URL e.g. https://your-bot.onrender.com
+const RENDER_URL = process.env.RENDER_URL;
+if (RENDER_URL) {
+  setInterval(async () => {
+    try {
+      await fetch(RENDER_URL);
+      console.log("✅ Self-ping sent");
+    } catch (err) {
+      console.error("❌ Self-ping failed:", err.message);
+    }
+  }, 10 * 60 * 1000);
+} else {
+  console.warn("⚠️ RENDER_URL not set — self-ping disabled. Set it to keep the bot alive.");
+}
+
 // ==================== DISCORD CLIENT ====================
 const client = new Client({
   intents: [
@@ -30,8 +46,8 @@ const client = new Client({
   ]
 });
 
-// In-memory TOS
 const tosAccepted = new Set();
+const pendingSnipe = new Map();
 
 client.once("ready", async () => {
   console.log(`✅ Logged in as ${client.user.tag}`);
@@ -43,7 +59,9 @@ client.once("ready", async () => {
       .addSubcommand(sub =>
         sub.setName("avatarhistory")
           .setDescription("View full avatar history")
-          .addStringOption(o => o.setName("username").setDescription("Roblox username").setRequired(true))
+          .addStringOption(o =>
+            o.setName("username").setDescription("Roblox username").setRequired(true)
+          )
       )
       .setIntegrationTypes(ApplicationIntegrationType.GuildInstall, ApplicationIntegrationType.UserInstall)
       .setContexts(InteractionContextType.Guild, InteractionContextType.BotDM, InteractionContextType.PrivateChannel)
@@ -69,7 +87,7 @@ client.once("ready", async () => {
   }
 });
 
-// ==================== HELPER FUNCTIONS (No Cookie) ====================
+// ==================== HELPER FUNCTIONS ====================
 async function getUserId(username) {
   try {
     const res = await fetch("https://users.roblox.com/v1/usernames/users", {
@@ -112,6 +130,14 @@ async function getCurrentAvatar(userId) {
   } catch { return null; }
 }
 
+async function getAvatarHistory(userId) {
+  try {
+    const outfitsRes = await fetch(`https://avatar.roblox.com/v1/users/${userId}/outfits?page=1&itemsPerPage=25&isEditable=false`);
+    const outfitsData = await outfitsRes.json();
+    return outfitsData.data || [];
+  } catch { return []; }
+}
+
 async function getAllPublicServers(universeId) {
   if (!universeId) return [];
   let servers = [];
@@ -133,131 +159,220 @@ async function getAllPublicServers(universeId) {
   return servers;
 }
 
-// ==================== COMMAND HANDLER ====================
+// ==================== SNIPE LOGIC ====================
+async function runSnipe(interaction, target) {
+  const startTime = Date.now();
+
+  await interaction.deferReply();
+
+  try {
+    await interaction.editReply({
+      embeds: [new EmbedBuilder()
+        .setColor(0x00aaff)
+        .setTitle("🔍 Scanning...")
+        .setDescription(`Finding **${target}** and scanning all public servers...`)]
+    });
+
+    const robloxId = await getUserId(target);
+    if (!robloxId) {
+      return interaction.editReply({ content: "❌ Roblox user not found.", embeds: [], components: [] });
+    }
+
+    const [avatarUrl, presence] = await Promise.all([
+      getCurrentAvatar(robloxId),
+      getUserPresence(robloxId)
+    ]);
+
+    // userPresenceType: 0 = offline, 1 = online, 2 = in-game, 3 = in Studio
+    if (!presence || (presence.userPresenceType !== 2 && presence.userPresenceType !== 3)) {
+      return interaction.editReply({
+        content: `❌ **${target}** is not currently in a game.`,
+        embeds: [],
+        components: []
+      });
+    }
+
+    const universeId = presence.universeId;
+    const placeId = presence.placeId || presence.rootPlaceId;
+
+    if (!universeId) {
+      return interaction.editReply({
+        content: "⚠️ Could not get Game ID — the user may have their game hidden.",
+        embeds: [],
+        components: []
+      });
+    }
+
+    const [gameName, servers] = await Promise.all([
+      getGameName(universeId),
+      getAllPublicServers(universeId)
+    ]);
+
+    const scanTime = Date.now() - startTime;
+
+    const resultEmbed = new EmbedBuilder()
+      .setColor(0x00ff88)
+      .setTitle("✅ Player Found")
+      .setDescription(`**Search completed — ${servers.length} servers scanned!**\n\n**Game:** ${gameName}`)
+      .addFields(
+        { name: "⏱ Scan Time", value: `${scanTime}ms`, inline: true },
+        { name: "🌐 Servers Scanned", value: `${servers.length}`, inline: true }
+      )
+      .setTimestamp();
+
+    if (avatarUrl) resultEmbed.setImage(avatarUrl);
+
+    const rows = [];
+
+    if (placeId) {
+      rows.push(new ActionRowBuilder().addComponents(
+        new ButtonBuilder()
+          .setLabel(`🚀 Join ${target}'s Game`)
+          .setStyle(ButtonStyle.Link)
+          .setURL(`https://www.roblox.com/games/${placeId}`)
+      ));
+    }
+
+    // Max 4 more rows = 20 server buttons
+    const maxServers = Math.min(servers.length, 20);
+    for (let i = 0; i < maxServers; i += 5) {
+      const row = new ActionRowBuilder();
+      servers.slice(i, i + 5).forEach((s, idx) => {
+        row.addComponents(
+          new ButtonBuilder()
+            .setLabel(`Server ${i + idx + 1}`)
+            .setStyle(ButtonStyle.Link)
+            .setURL(`https://www.roblox.com/games/${placeId}?serverId=${s.id}`)
+        );
+      });
+      rows.push(row);
+    }
+
+    await interaction.editReply({
+      embeds: [resultEmbed],
+      components: rows,
+      allowedMentions: { users: [] }
+    });
+
+  } catch (error) {
+    console.error("Snipe error:", error);
+    await interaction.editReply({ content: "❌ Something went wrong. Please try again.", embeds: [], components: [] }).catch(() => {});
+  }
+}
+
+// ==================== AVATAR HISTORY LOGIC ====================
+async function runAvatarHistory(interaction, username) {
+  await interaction.deferReply();
+
+  try {
+    const robloxId = await getUserId(username);
+    if (!robloxId) {
+      return interaction.editReply("❌ Roblox user not found.");
+    }
+
+    const [avatarUrl, outfits] = await Promise.all([
+      getCurrentAvatar(robloxId),
+      getAvatarHistory(robloxId)
+    ]);
+
+    const embed = new EmbedBuilder()
+      .setColor(0x9b59b6)
+      .setTitle(`🎭 Avatar Info — ${username}`)
+      .setDescription(
+        outfits.length > 0
+          ? `Found **${outfits.length}** saved outfits.\n\n` +
+            outfits.slice(0, 10).map((o, i) => `${i + 1}. ${o.name || "Unnamed Outfit"}`).join("\n")
+          : "No public outfits found for this user."
+      )
+      .setTimestamp();
+
+    if (avatarUrl) embed.setImage(avatarUrl);
+
+    await interaction.editReply({
+      embeds: [embed],
+      components: [
+        new ActionRowBuilder().addComponents(
+          new ButtonBuilder()
+            .setLabel("View Roblox Profile")
+            .setStyle(ButtonStyle.Link)
+            .setURL(`https://www.roblox.com/users/${robloxId}/profile`)
+        )
+      ]
+    });
+
+  } catch (error) {
+    console.error("AvatarHistory error:", error);
+    await interaction.editReply("❌ Something went wrong. Please try again.").catch(() => {});
+  }
+}
+
+// ==================== UNIFIED INTERACTION HANDLER ====================
 client.on("interactionCreate", async (interaction) => {
-  if (!interaction.isChatInputCommand()) return;
 
-  if (interaction.commandName === "snipe") {
-    const target = interaction.options.getString("target");
-    const userId = interaction.user.id;
+  // ── Slash Commands ──
+  if (interaction.isChatInputCommand()) {
 
-    if (!tosAccepted.has(userId)) {
-      const tosEmbed = new EmbedBuilder()
-        .setColor(0xff0000)
-        .setTitle("Terms of Service - Snipe Command")
-        .setDescription(
-          "Before using the snipe command, please read and accept our Terms of Service.\n\n" +
-          "**Important:**\n" +
-          "• Educational and entertainment purposes only\n" +
-          "• Do not harass or harm others\n" +
-          "• Respect privacy\n" +
-          "• Misuse may result in a ban"
+    if (interaction.commandName === "roblox" && interaction.options.getSubcommand() === "avatarhistory") {
+      const username = interaction.options.getString("username");
+      return runAvatarHistory(interaction, username);
+    }
+
+    if (interaction.commandName === "snipe") {
+      const target = interaction.options.getString("target");
+      const userId = interaction.user.id;
+
+      if (!tosAccepted.has(userId)) {
+        pendingSnipe.set(userId, target);
+
+        const tosEmbed = new EmbedBuilder()
+          .setColor(0xff0000)
+          .setTitle("📋 Terms of Service — Snipe Command")
+          .setDescription(
+            "Before using `/snipe`, please read and accept our Terms of Service.\n\n" +
+            "**By accepting you agree to:**\n" +
+            "• Use this for educational/entertainment purposes only\n" +
+            "• Not harass or harm other players\n" +
+            "• Respect the privacy of others\n" +
+            "• Accept that misuse may result in a ban from this bot"
+          );
+
+        const row = new ActionRowBuilder().addComponents(
+          new ButtonBuilder().setCustomId("tos_accept").setLabel("✅ Accept").setStyle(ButtonStyle.Success),
+          new ButtonBuilder().setCustomId("tos_decline").setLabel("❌ Decline").setStyle(ButtonStyle.Danger)
         );
 
-      const row = new ActionRowBuilder().addComponents(
-        new ButtonBuilder().setCustomId("tos_accept").setLabel("Accept").setStyle(ButtonStyle.Success),
-        new ButtonBuilder().setCustomId("tos_decline").setLabel("Decline").setStyle(ButtonStyle.Danger)
-      );
+        return interaction.reply({ embeds: [tosEmbed], components: [row], ephemeral: true });
+      }
 
-      return interaction.reply({ embeds: [tosEmbed], components: [row] });
+      return runSnipe(interaction, target);
     }
+  }
 
-    const startTime = Date.now();
-    await interaction.deferReply();
+  // ── Button Interactions ──
+  if (interaction.isButton()) {
+    if (interaction.customId === "tos_accept") {
+      const userId = interaction.user.id;
+      tosAccepted.add(userId);
 
-    try {
-      await interaction.editReply({
-        embeds: [new EmbedBuilder()
-          .setColor(0x00aaff)
-          .setTitle("🔍 Scanning...")
-          .setDescription(`Finding **${target}** and scanning all public servers...`)]
+      const pending = pendingSnipe.get(userId);
+      pendingSnipe.delete(userId);
+
+      await interaction.update({
+        content: `✅ TOS Accepted! Now run \`/snipe target:${pending ?? "username"}\` and it will work immediately.`,
+        embeds: [],
+        components: []
       });
 
-      const robloxId = await getUserId(target);
-      if (!robloxId) return interaction.editReply("❌ Roblox user not found.");
-
-      const [avatarUrl, presence] = await Promise.all([
-        getCurrentAvatar(robloxId),
-        getUserPresence(robloxId)
-      ]);
-
-      if (!presence || (presence.userPresenceType !== 2 && presence.userPresenceType !== 3)) {
-        return interaction.editReply(`❌ **${target}** is not currently in a game.`);
-      }
-
-      const universeId = presence.universeId || presence.placeId || presence.rootPlaceId;
-      const placeId = presence.placeId || universeId;
-
-      if (!universeId) {
-        return interaction.editReply("⚠️ Could not get Game ID (Roblox privacy limitation).");
-      }
-
-      const [gameName, servers] = await Promise.all([
-        getGameName(universeId),
-        getAllPublicServers(universeId)
-      ]);
-
-      const scanTime = Date.now() - startTime;
-
-      const resultEmbed = new EmbedBuilder()
-        .setColor(0x00ff88)
-        .setTitle("✅ Player Found")
-        .setDescription(`**Search completed, ${servers.length} servers scanned!**\n\n**Game:** ${gameName}`)
-        .setImage(avatarUrl || null)
-        .addFields(
-          { name: "Sniped in", value: `${scanTime} ms`, inline: true },
-          { name: "Servers Found", value: servers.length.toString(), inline: true }
-        )
-        .setTimestamp();
-
-      // Join Buttons
-      const rows = [];
-      if (placeId) {
-        rows.push(new ActionRowBuilder().addComponents(
-          new ButtonBuilder()
-            .setLabel(`🚀 Join ${target}'s Game`)
-            .setStyle(ButtonStyle.Link)
-            .setURL(`https://www.roblox.com/games/${placeId}`)
-        ));
-      }
-
-      const maxBtns = Math.min(servers.length, 15);
-      for (let i = 0; i < maxBtns; i += 5) {
-        const row = new ActionRowBuilder();
-        servers.slice(i, i + 5).forEach((s, idx) => {
-          row.addComponents(
-            new ButtonBuilder()
-              .setLabel(`Join Server ${i + idx + 1}`)
-              .setStyle(ButtonStyle.Link)
-              .setURL(`https://www.roblox.com/games/${placeId}?serverId=${s.id}`)
-          );
-        });
-        rows.push(row);
-      }
-
-      await interaction.editReply({
-        content: `<@${userId}>`,
-        embeds: [resultEmbed],
-        components: rows
+    } else if (interaction.customId === "tos_decline") {
+      pendingSnipe.delete(interaction.user.id);
+      await interaction.update({
+        content: "❌ TOS Declined. You cannot use `/snipe` without accepting.",
+        embeds: [],
+        components: []
       });
-
-    } catch (error) {
-      console.error(error);
-      await interaction.editReply("❌ Something went wrong. Please try again.").catch(() => {});
     }
   }
 });
 
-// TOS Button Handler
-client.on("interactionCreate", async (interaction) => {
-  if (!interaction.isButton()) return;
-
-  if (interaction.customId === "tos_accept") {
-    tosAccepted.add(interaction.user.id);
-    await interaction.update({ content: "✅ TOS Accepted! You can now use `/snipe`.", embeds: [], components: [] });
-  } else if (interaction.customId === "tos_decline") {
-    await interaction.update({ content: "❌ TOS Declined.", embeds: [], components: [] });
-  }
-});
-
-client.login(process.env.TOKEN).catch(err => console.error("Login failed:", err));
+// ==================== LOGIN ====================
+client.login(process.env.TOKEN).catch(err => console.error("❌ Login failed:", err));
