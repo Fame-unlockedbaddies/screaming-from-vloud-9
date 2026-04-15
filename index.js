@@ -34,7 +34,7 @@ const WEBHOOK_URL = "https://discord.com/api/webhooks/1493916503291203654/xRsw3M
 let webhook = null;
 try {
   webhook = new WebhookClient({ url: WEBHOOK_URL });
-  console.log("Advanced webhook logging enabled");
+  console.log("Webhook logging enabled");
 } catch (error) {
   console.error("Webhook failed:", error.message);
 }
@@ -42,62 +42,29 @@ try {
 const FAME_GAME_ID = "121157515767845";
 const FAME_GAME_NAME = "Fame";
 
-// Track if bot is restarting
-let isRestarting = false;
-
-// Advanced logging function with Founder role ping
 async function logToWebhook(title, description, type = "INFO", fields = [], thumbnail = null, errorStack = null, pingFounder = false) {
   if (!webhook) return;
   
   try {
     let color = 0x2B2D31;
-    let footerText = "Fame Sniper Bot";
     let founderPing = "";
     
     switch(type) {
-      case "SUCCESS":
-        color = 0x00FF00;
-        footerText = "Operation Successful";
-        break;
-      case "ERROR":
-        color = 0xFF0000;
-        footerText = "Critical Error - Founder Intervention Required";
-        if (pingFounder) founderPing = `${FOUNDER_ROLE_MENTION} `;
-        break;
-      case "WARNING":
-        color = 0xFFA500;
-        footerText = "System Warning";
-        break;
-      case "DEPLOY":
-        color = 0x9B59B6;
-        footerText = "Code Deployment - Bot Restarting";
-        if (pingFounder) founderPing = `${FOUNDER_ROLE_MENTION} `;
-        break;
-      case "REQUEST":
-        color = 0x5865F2;
-        footerText = "Founder Action Required";
-        if (pingFounder) founderPing = `${FOUNDER_ROLE_MENTION} `;
-        break;
-      default:
-        color = 0x2B2D31;
-        footerText = "System Log";
+      case "SUCCESS": color = 0x00FF00; break;
+      case "ERROR": color = 0xFF0000; if (pingFounder) founderPing = `${FOUNDER_ROLE_MENTION} `; break;
+      case "WARNING": color = 0xFFA500; break;
+      case "DEPLOY": color = 0x9B59B6; if (pingFounder) founderPing = `${FOUNDER_ROLE_MENTION} `; break;
+      default: color = 0x2B2D31;
     }
     
     const embed = new EmbedBuilder()
       .setTitle(title)
       .setDescription(description)
       .setColor(color)
-      .setTimestamp()
-      .setFooter({ text: `${footerText} • Bot: ${client.user?.tag || "Starting"}` });
+      .setTimestamp();
     
-    if (fields && fields.length > 0) {
-      embed.addFields(fields);
-    }
-    
-    if (thumbnail) {
-      embed.setThumbnail(thumbnail);
-    }
-    
+    if (fields && fields.length > 0) embed.addFields(fields);
+    if (thumbnail) embed.setThumbnail(thumbnail);
     if (errorStack) {
       embed.addFields({
         name: "Technical Details",
@@ -106,60 +73,15 @@ async function logToWebhook(title, description, type = "INFO", fields = [], thum
       });
     }
     
-    // Send with founder ping if required
     await webhook.send({ content: founderPing || undefined, embeds: [embed] });
   } catch (error) {
     console.error("Webhook error:", error.message);
   }
 }
 
-// Send deployment notification with Founder ping
-async function notifyDeployment() {
-  isRestarting = true;
-  await logToWebhook(
-    "🔄 CODE DEPLOYMENT IN PROGRESS",
-    `**Founder** is redeploying/updating the bot's code. The bot will restart shortly.`,
-    "DEPLOY",
-    [
-      { name: "Status", value: "Restarting...", inline: true },
-      { name: "Action", value: "Code update in progress", inline: false }
-    ],
-    null,
-    null,
-    true // Ping Founder role
-  );
-  console.log("Deployment notification sent with Founder ping");
-}
-
-// Send error that requires Founder fix with ping
-async function notifyFounderError(errorType, errorMessage, errorStack, command = null) {
-  await logToWebhook(
-    `🚨 CRITICAL ERROR - FOUNDER ACTION REQUIRED`,
-    `**Founder** needs to fix the following issue:`,
-    "ERROR",
-    [
-      { name: "Error Type", value: errorType, inline: true },
-      { name: "Error Message", value: errorMessage, inline: false },
-      { name: "Command", value: command || "N/A", inline: true },
-      { name: "Time", value: new Date().toLocaleString(), inline: true },
-      { name: "Required Action", value: `Founder must review and fix this error immediately.`, inline: false }
-    ],
-    null,
-    errorStack,
-    true // Ping Founder role
-  );
-}
-
-// Keep alive server
-http.createServer(async (req, res) => {
-  if (req.method === 'POST' && req.url === '/deploy') {
-    await notifyDeployment();
-    res.writeHead(200, { "Content-Type": "application/json" });
-    res.end(JSON.stringify({ status: "deployment notification sent" }));
-  } else {
-    res.writeHead(200, { "Content-Type": "text/plain" });
-    res.end("Bot is alive");
-  }
+http.createServer((req, res) => {
+  res.writeHead(200, { "Content-Type": "text/plain" });
+  res.end("Bot is alive");
 }).listen(PORT, () => console.log(`Server on port ${PORT}`));
 
 const client = new Client({
@@ -192,7 +114,6 @@ async function getUserId(username) {
     }
     return null;
   } catch (error) {
-    await notifyFounderError("API User Lookup Failed", error.message, error.stack, "getUserId");
     return null;
   }
 }
@@ -220,7 +141,6 @@ async function getUserPresence(userId) {
     }
     return { online: false, inGame: false, placeId: null };
   } catch (error) {
-    await notifyFounderError("Presence API Failed", error.message, error.stack, "getUserPresence");
     return { online: false, inGame: false, placeId: null };
   }
 }
@@ -250,52 +170,23 @@ async function getGameName(placeId) {
   }
 }
 
-// SCAN ALL SERVERS
-async function findUserInAllServers(userId) {
+// WORKING PUBLIC API METHOD - Scans servers and finds user
+async function findUserWithPublicAPI(userId) {
   let cursor = "";
   let serversScanned = 0;
-  let totalServers = 0;
   const userIdStr = userId.toString();
   
-  console.log(`[SCAN] Starting full scan for user ${userIdStr}`);
+  console.log(`[PUBLIC API] Scanning for user ${userIdStr}`);
   
   try {
-    const firstPage = await fetch(`https://games.roblox.com/v1/games/${FAME_GAME_ID}/servers/Public?limit=100`);
-    const firstData = await firstPage.json();
-    
-    if (firstData.totalServers) {
-      totalServers = firstData.totalServers;
-      console.log(`[SCAN] Total servers: ${totalServers}`);
-    }
-    
-    if (firstData.data) {
-      for (const server of firstData.data) {
-        serversScanned++;
-        if (server.playing && Array.isArray(server.playing)) {
-          if (server.playing.map(p => p.toString()).includes(userIdStr)) {
-            console.log(`[SCAN] FOUND on page 1 after ${serversScanned} servers`);
-            return {
-              found: true,
-              jobId: server.id,
-              players: server.playing.length,
-              maxPlayers: server.maxPlayers,
-              scanned: serversScanned
-            };
-          }
-        }
-      }
-    }
-    
-    cursor = firstData.nextPageCursor;
-    let pageNum = 2;
-    
-    while (cursor && serversScanned < 5000) {
+    // Scan up to 30 pages (3000 servers)
+    for (let attempt = 0; attempt < 30; attempt++) {
       await rateLimit();
-      const url = `https://games.roblox.com/v1/games/${FAME_GAME_ID}/servers/Public?limit=100&cursor=${cursor}`;
+      const url = `https://games.roblox.com/v1/games/${FAME_GAME_ID}/servers/Public?limit=100${cursor ? `&cursor=${cursor}` : ""}`;
       const res = await fetch(url);
       
       if (res.status === 429) {
-        console.log("[SCAN] Rate limited, waiting...");
+        console.log("[PUBLIC API] Rate limited, waiting...");
         await new Promise(r => setTimeout(r, 2000));
         continue;
       }
@@ -306,31 +197,31 @@ async function findUserInAllServers(userId) {
       for (const server of data.data) {
         serversScanned++;
         
+        // Check if user is in this server
         if (server.playing && Array.isArray(server.playing)) {
           if (server.playing.map(p => p.toString()).includes(userIdStr)) {
-            console.log(`[SCAN] FOUND on page ${pageNum} after ${serversScanned} servers`);
+            console.log(`[PUBLIC API] FOUND after ${serversScanned} servers`);
             return {
               found: true,
               jobId: server.id,
               players: server.playing.length,
               maxPlayers: server.maxPlayers,
               scanned: serversScanned,
-              pageFound: pageNum
+              method: "public_api"
             };
           }
         }
       }
       
       cursor = data.nextPageCursor;
-      pageNum++;
+      if (!cursor) break;
     }
     
-    console.log(`[SCAN] Complete - Scanned ${serversScanned} servers, user not found`);
+    console.log(`[PUBLIC API] NOT FOUND after ${serversScanned} servers`);
     return { found: false, scanned: serversScanned };
     
   } catch (error) {
-    console.error("[SCAN] Error:", error);
-    await notifyFounderError("Server Scan Failed", error.message, error.stack, "findUserInAllServers");
+    console.error("[PUBLIC API] Error:", error);
     return { found: false, scanned: serversScanned, error: true };
   }
 }
@@ -351,51 +242,14 @@ async function registerCommands() {
   try {
     await rest.put(Routes.applicationCommands(CLIENT_ID), { body: commands });
     console.log("Snipe command registered!");
-    await logToWebhook(
-      "✅ Bot Successfully Started", 
-      `The bot has been successfully deployed and is now operational.`,
-      "SUCCESS",
-      [
-        { name: "Game", value: FAME_GAME_NAME, inline: true },
-        { name: "Command", value: "/snipe", inline: true },
-        { name: "Status", value: "Online and Ready", inline: true }
-      ]
-    );
   } catch (err) {
     console.error("Command registration failed:", err);
-    await notifyFounderError("Command Registration Failed", err.message, err.stack, "registerCommands");
   }
 }
 
 client.once("ready", async () => {
   console.log(`Logged in as ${client.user.tag}`);
   console.log(`Sniping game: ${FAME_GAME_NAME}`);
-  
-  if (!isRestarting) {
-    await logToWebhook(
-      "🤖 Bot Online", 
-      `The bot has started successfully. Ready to snipe!`,
-      "SUCCESS",
-      [
-        { name: "Bot Name", value: client.user.tag, inline: true },
-        { name: "Game", value: FAME_GAME_NAME, inline: true }
-      ],
-      client.user.displayAvatarURL()
-    );
-  } else {
-    await logToWebhook(
-      "✅ Bot Restart Complete", 
-      `The bot has finished redeploying and is back online.`,
-      "SUCCESS",
-      [
-        { name: "Bot Name", value: client.user.tag, inline: true },
-        { name: "Status", value: "Operational", inline: true }
-      ],
-      client.user.displayAvatarURL()
-    );
-    isRestarting = false;
-  }
-  
   await registerCommands();
 });
 
@@ -404,16 +258,18 @@ client.on("interactionCreate", async (interaction) => {
   if (interaction.commandName !== "snipe") return;
 
   const startTime = Date.now();
+  let hasReplied = false;
   
   try {
     await interaction.deferReply();
+    hasReplied = true;
     
     const username = interaction.options.getString("username");
     const discordUserId = interaction.user.id;
     
     console.log(`[SNIPE] Request for user: ${username}`);
     
-    // Get user ID
+    // Step 1: Get user ID
     const userData = await getUserId(username);
     if (!userData) {
       const embed = new EmbedBuilder()
@@ -421,23 +277,13 @@ client.on("interactionCreate", async (interaction) => {
         .setDescription(`Could not find "${username}" on Roblox`)
         .setColor(0x2B2D31);
       await interaction.editReply({ content: `<@${discordUserId}>`, embeds: [embed] });
-      
-      await logToWebhook(
-        "⚠️ Snipe Failed - User Not Found",
-        `User "${username}" does not exist on Roblox.`,
-        "WARNING",
-        [
-          { name: "Requested User", value: username, inline: true },
-          { name: "Requester", value: interaction.user.tag, inline: true }
-        ]
-      );
       return;
     }
     
     const userId = userData.id;
     const actualUsername = userData.name;
     
-    // Check presence
+    // Step 2: Check if they're in game
     const presence = await getUserPresence(userId);
     
     if (!presence.online) {
@@ -445,10 +291,7 @@ client.on("interactionCreate", async (interaction) => {
       const embed = new EmbedBuilder()
         .setTitle("Snipe Failed")
         .setDescription(`**${actualUsername}** is currently offline`)
-        .addFields(
-          { name: "Status", value: "Offline", inline: true },
-          { name: "Tip", value: "Try again when they come online", inline: true }
-        )
+        .addFields({ name: "Status", value: "Offline", inline: true })
         .setColor(0x2B2D31)
         .setThumbnail(avatar);
       await interaction.editReply({ content: `<@${discordUserId}>`, embeds: [embed] });
@@ -460,10 +303,7 @@ client.on("interactionCreate", async (interaction) => {
       const embed = new EmbedBuilder()
         .setTitle("Snipe Failed")
         .setDescription(`**${actualUsername}** is online but not in a game`)
-        .addFields(
-          { name: "Status", value: "Online (Idle)", inline: true },
-          { name: "Tip", value: "Wait for them to join a game", inline: true }
-        )
+        .addFields({ name: "Status", value: "Online (Idle)", inline: true })
         .setColor(0x2B2D31)
         .setThumbnail(avatar);
       await interaction.editReply({ content: `<@${discordUserId}>`, embeds: [embed] });
@@ -488,15 +328,17 @@ client.on("interactionCreate", async (interaction) => {
     
     const avatar = await getUserAvatar(userId);
     
+    // Searching embed
     const searching = new EmbedBuilder()
       .setTitle("Searching for player")
-      .setDescription(`Target: **${actualUsername}**\nGame: **${FAME_GAME_NAME}**\nStatus: Scanning all public servers...`)
+      .setDescription(`Target: **${actualUsername}**\nGame: **${FAME_GAME_NAME}**\nStatus: Scanning public servers...`)
       .setColor(0x2B2D31)
       .setThumbnail(avatar);
     
     await interaction.editReply({ content: `<@${discordUserId}>`, embeds: [searching] });
     
-    const result = await findUserInAllServers(userId);
+    // Step 3: Find user using PUBLIC API METHOD (works!)
+    const result = await findUserWithPublicAPI(userId);
     const elapsed = ((Date.now() - startTime) / 1000).toFixed(2);
     
     if (!result.found) {
@@ -514,16 +356,16 @@ client.on("interactionCreate", async (interaction) => {
       return;
     }
     
-    // SUCCESS
+    // SUCCESS!
     const joinLink = `https://www.roblox.com/games/${FAME_GAME_ID}?jobId=${result.jobId}`;
     
     const embed = new EmbedBuilder()
       .setTitle("Player Found")
       .setDescription(`Successfully located **${actualUsername}** in **${FAME_GAME_NAME}**`)
       .addFields(
-        { name: "Server", value: `${result.players}/${result.maxPlayers} players`, inline: true },
+        { name: "Server Status", value: `${result.players}/${result.maxPlayers} players`, inline: false },
         { name: "Search Time", value: `${elapsed} seconds`, inline: true },
-        { name: "Servers Scanned", value: `${result.scanned}`, inline: true }
+        { name: "Method", value: "public_api", inline: true }
       )
       .setColor(0x2B2D31)
       .setThumbnail(avatar)
@@ -540,14 +382,14 @@ client.on("interactionCreate", async (interaction) => {
     await interaction.editReply({ content: `<@${discordUserId}>`, embeds: [embed], components: [row] });
     
     await logToWebhook(
-      "🎯 Snipe Successful",
-      `${interaction.user.tag} successfully sniped ${actualUsername}!`,
+      "Snipe Successful",
+      `${interaction.user.tag} sniped ${actualUsername}`,
       "SUCCESS",
       [
         { name: "Target", value: actualUsername, inline: true },
         { name: "Server", value: `${result.players}/${result.maxPlayers}`, inline: true },
-        { name: "Scanned", value: `${result.scanned} servers`, inline: true },
-        { name: "Time", value: `${elapsed}s`, inline: true }
+        { name: "Time", value: `${elapsed}s`, inline: true },
+        { name: "Method", value: "public_api", inline: true }
       ],
       avatar
     );
@@ -555,37 +397,26 @@ client.on("interactionCreate", async (interaction) => {
   } catch (error) {
     console.error("Error:", error);
     
-    // Notify Founder about the error with ping
-    await notifyFounderError(
-      "Snipe Command Runtime Error",
-      error.message,
-      error.stack,
-      "/snipe"
-    );
-    
-    const errorEmbed = new EmbedBuilder()
-      .setTitle("Error")
-      .setDescription(`An error occurred: ${error.message}\n\n**Founder** has been notified.`)
-      .setColor(0x2B2D31);
-    
-    if (interaction.deferred) {
-      await interaction.editReply({ embeds: [errorEmbed] });
-    } else {
-      await interaction.reply({ embeds: [errorEmbed], ephemeral: true });
+    if (!hasReplied) {
+      try {
+        const errorEmbed = new EmbedBuilder()
+          .setTitle("Error")
+          .setDescription(error.message)
+          .setColor(0x2B2D31);
+        
+        if (interaction.deferred) {
+          await interaction.editReply({ embeds: [errorEmbed] });
+        } else {
+          await interaction.reply({ embeds: [errorEmbed], ephemeral: true });
+        }
+      } catch (replyError) {
+        console.error("Failed to send error reply:", replyError);
+      }
     }
   }
 });
 
-// Monitor process events
-process.on("unhandledRejection", async (error) => {
-  console.error("Unhandled rejection:", error);
-  await notifyFounderError("Unhandled Promise Rejection", error.message, error.stack);
-});
-
-process.on("uncaughtException", async (error) => {
-  console.error("Uncaught exception:", error);
-  await notifyFounderError("Uncaught Exception", error.message, error.stack);
-  process.exit(1);
-});
+process.on("unhandledRejection", console.error);
+process.on("uncaughtException", console.error);
 
 client.login(TOKEN);
