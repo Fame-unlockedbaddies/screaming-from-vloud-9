@@ -538,4 +538,71 @@ async function runAvatarHistory(interaction, username) {
       .join("\n");
 
     const embed = new EmbedBuilder()
-      .setColor
+      .setColor(EMBED_COLOR)
+      .setTitle(`Avatar History — ${trimText(username, 100)}`)
+      .setDescription(outfits.length > 0 ? `Found **${outfits.length}** public saved outfits.\n\n${outfitList}` : "No public outfits found for this user.")
+      .setTimestamp();
+
+    if (avatarUrl) embed.setImage(avatarUrl);
+
+    const row = new ActionRowBuilder().addComponents(
+      new ButtonBuilder()
+        .setLabel("View Roblox Profile")
+        .setStyle(ButtonStyle.Link)
+        .setURL(`https://www.roblox.com/users/${robloxId}/profile`)
+    );
+
+    return interaction.editReply({ embeds: [embed], components: [row] });
+  } catch (error) {
+    console.error("Avatar history error:", error);
+    return interaction.editReply({ content: "Something went wrong while checking avatar history.", embeds: [], components: [] }).catch(() => {});
+  }
+}
+
+client.once("ready", async () => {
+  console.log(`Logged in as ${client.user.tag}`);
+  await registerCommands();
+});
+
+client.on("interactionCreate", async interaction => {
+  try {
+    if (interaction.isChatInputCommand()) {
+      if (interaction.commandName === "roblox" && interaction.options.getSubcommand() === "avatarhistory") {
+        const username = interaction.options.getString("username", true);
+        return runAvatarHistory(interaction, username);
+      }
+
+      if (interaction.commandName === "snipe") {
+        const username = interaction.options.getString("username", true);
+        const placeId = interaction.options.getString("placeid", false);
+        const deepSearch = interaction.options.getBoolean("deepsearch", false) || false;
+        return runSnipe(interaction, username, placeId, deepSearch);
+      }
+    }
+  } catch (error) {
+    console.error("Interaction error:", error);
+
+    if (interaction.isRepliable()) {
+      const payload = { content: "Something went wrong while handling that command.", embeds: [], components: [], ephemeral: true };
+
+      if (interaction.deferred || interaction.replied) {
+        return interaction.followUp(payload).catch(() => {});
+      }
+
+      return interaction.reply(payload).catch(() => {});
+    }
+  }
+});
+
+process.on("unhandledRejection", error => {
+  console.error("Unhandled rejection:", error);
+});
+
+process.on("uncaughtException", error => {
+  console.error("Uncaught exception:", error);
+});
+
+client.login(TOKEN).catch(error => {
+  console.error("Login failed:", error);
+  process.exit(1);
+});
