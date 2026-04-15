@@ -32,30 +32,55 @@ const WEBHOOK_URL = "https://discord.com/api/webhooks/1493916503291203654/xRsw3M
 let webhook = null;
 try {
   webhook = new WebhookClient({ url: WEBHOOK_URL });
-  console.log("✅ Webhook logging enabled");
+  console.log("Webhook logging enabled");
 } catch (error) {
-  console.error("❌ Failed to initialize webhook:", error.message);
+  console.error("Failed to initialize webhook:", error.message);
 }
 
 const FAME_GAME_ID = "121157515767845";
 const FAME_GAME_NAME = "Fame";
 
-// Your custom emojis - REPLACE "emoji_name" with your actual emoji names!
-const SEARCH_EMOJI = "<:emoji_name:1493915783779324024>"; // CHANGE "emoji_name" to your scanning emoji's name!
-const SERVER_EMOJI = "<:emoji_name:1493913869112967208>"; // CHANGE "emoji_name" to your server emoji's name!
+// Professional colors (no bright pink, using sleek dark theme)
+const COLORS = {
+  SUCCESS: 0x2B2D31,
+  ERROR: 0x2B2D31,
+  WARNING: 0x2B2D31,
+  INFO: 0x2B2D31,
+  PRIMARY: 0x2B2D31
+};
 
-// Pink color for embeds
-const PINK_COLOR = 0xFF69B4;
-
-// Webhook logging function with PINK EMBEDS
-async function logToWebhook(title, description, color = PINK_COLOR, fields = [], thumbnail = null, errorDetails = null) {
+// Advanced webhook logging function - NO EMOJIS
+async function logToWebhook(title, description, type = "INFO", fields = [], thumbnail = null, errorDetails = null) {
   if (!webhook) return;
+  
+  let color = COLORS.INFO;
+  let footerText = "System Log • Timestamped";
+  
+  switch(type) {
+    case "SUCCESS":
+      color = COLORS.SUCCESS;
+      footerText = "Operation Successful • System Log";
+      break;
+    case "ERROR":
+      color = COLORS.ERROR;
+      footerText = "Critical Error • Requires Attention";
+      break;
+    case "WARNING":
+      color = COLORS.WARNING;
+      footerText = "Warning • System Notice";
+      break;
+    case "INFO":
+      color = COLORS.INFO;
+      footerText = "Information • System Log";
+      break;
+  }
   
   const embed = new EmbedBuilder()
     .setTitle(title)
     .setDescription(description)
     .setColor(color)
-    .setTimestamp();
+    .setTimestamp()
+    .setFooter({ text: footerText });
   
   if (fields && fields.length > 0) {
     embed.addFields(fields);
@@ -66,12 +91,12 @@ async function logToWebhook(title, description, color = PINK_COLOR, fields = [],
   }
   
   if (errorDetails) {
-    embed.addFields(
-      { name: "🔍 Error Details", value: `\`\`\`js\n${errorDetails.slice(0, 500)}\`\`\``, inline: false }
-    );
+    embed.addFields({
+      name: "Technical Details",
+      value: `\`\`\`diff\n- ${errorDetails.slice(0, 400)}\n\`\`\``,
+      inline: false
+    });
   }
-  
-  embed.setFooter({ text: "Fame Sniper Bot • Log System" });
   
   try {
     await webhook.send({ embeds: [embed] });
@@ -154,13 +179,13 @@ async function getUserId(username) {
     botStats.lastError = error.message;
     botStats.lastErrorTime = Date.now();
     await logToWebhook(
-      "❌ API Error - User Lookup Failed",
-      `Failed to get user ID for "${username}"`,
-      PINK_COLOR,
+      "API Resolution Failure",
+      `Unable to resolve username: ${username}`,
+      "ERROR",
       [
-        { name: "Username", value: username, inline: true },
-        { name: "Error Type", value: error.name, inline: true },
-        { name: "Error Message", value: error.message, inline: false }
+        { name: "Username", value: `\`${username}\``, inline: true },
+        { name: "Error Code", value: error.name, inline: true },
+        { name: "Failure Reason", value: error.message, inline: false }
       ],
       null,
       error.stack
@@ -217,11 +242,11 @@ async function getUserPresence(userId) {
     botStats.lastError = error.message;
     botStats.lastErrorTime = Date.now();
     await logToWebhook(
-      "❌ Presence API Error",
-      `Failed to get presence for user ID: ${userId}`,
-      PINK_COLOR,
+      "Presence API Failure",
+      `Unable to retrieve presence data for user ID: ${userId}`,
+      "ERROR",
       [
-        { name: "User ID", value: userId.toString(), inline: true },
+        { name: "User ID", value: `\`${userId}\``, inline: true },
         { name: "Error", value: error.message, inline: false }
       ],
       null,
@@ -273,12 +298,13 @@ async function findUserInFameServers(userId) {
       if (response.status === 429) {
         console.log("[SEARCH] Rate limited, waiting...");
         await logToWebhook(
-          "⚠️ Rate Limited - Roblox API",
-          "The bot hit Roblox's rate limit. Waiting 2 seconds before continuing...",
-          PINK_COLOR,
+          "Rate Limit Threshold Reached",
+          "Roblox API rate limit encountered. Implementing cooldown period.",
+          "WARNING",
           [
             { name: "Attempt", value: `${attempt + 1}/20`, inline: true },
-            { name: "Servers Scanned", value: `${serversScanned}`, inline: true }
+            { name: "Servers Scanned", value: `${serversScanned}`, inline: true },
+            { name: "Action", value: "Waiting 2 seconds before retry", inline: false }
           ]
         );
         await new Promise(r => setTimeout(r, 2000));
@@ -287,12 +313,12 @@ async function findUserInFameServers(userId) {
       
       if (response.status === 403) {
         await logToWebhook(
-          "🔒 Authentication Error",
-          "Roblox API returned 403 - Cookie may be invalid or expired",
-          PINK_COLOR,
+          "Authentication Failure",
+          "Roblox API rejected the request due to invalid credentials.",
+          "ERROR",
           [
-            { name: "Issue", value: "Your ROBLOX_COOKIE may be invalid or expired", inline: false },
-            { name: "Fix", value: "Get a new cookie from your Roblox account", inline: false }
+            { name: "Issue", value: "ROBLOX_COOKIE may be invalid or expired", inline: false },
+            { name: "Resolution", value: "Generate a new cookie from your Roblox account", inline: false }
           ]
         );
         return { found: false, scanned: serversScanned, authError: true };
@@ -329,9 +355,9 @@ async function findUserInFameServers(userId) {
     botStats.lastError = error.message;
     botStats.lastErrorTime = Date.now();
     await logToWebhook(
-      "❌ Server Search Error",
-      `Error while scanning servers for user ${userId}`,
-      PINK_COLOR,
+      "Server Search Failure",
+      `Error occurred while scanning game servers for user ID: ${userId}`,
+      "ERROR",
       [
         { name: "Error", value: error.message, inline: false },
         { name: "Servers Scanned", value: `${serversScanned}`, inline: true }
@@ -371,24 +397,24 @@ async function registerCommands() {
     await rest.put(Routes.applicationCommands(CLIENT_ID), { body: commands });
     console.log("Commands registered!");
     await logToWebhook(
-      "✅ Bot Online - Ready to Snipe!",
-      "Fame Sniper Bot has started successfully and is ready to use.",
-      PINK_COLOR,
+      "System Initialization Complete",
+      "Fame Sniper Bot has successfully started and registered all commands.",
+      "SUCCESS",
       [
-        { name: "🎮 Game", value: FAME_GAME_NAME, inline: true },
-        { name: "⚡ Commands", value: "/snipe", inline: true },
-        { name: "🟢 Status", value: "Online", inline: true }
+        { name: "Target Game", value: FAME_GAME_NAME, inline: true },
+        { name: "Registered Commands", value: "/snipe", inline: true },
+        { name: "System Status", value: "Operational", inline: true }
       ]
     );
   } catch (err) {
     console.error("Command registration failed:", err);
     await logToWebhook(
-      "❌ Command Registration Failed - Bot Won't Respond to Commands",
-      "The bot failed to register slash commands with Discord. Users won't see /snipe.",
-      PINK_COLOR,
+      "Command Registration Failure",
+      "Unable to register slash commands with Discord API.",
+      "ERROR",
       [
         { name: "Error", value: err.message, inline: false },
-        { name: "Fix", value: "Check your TOKEN and CLIENT_ID environment variables", inline: false }
+        { name: "Resolution", value: "Verify TOKEN and CLIENT_ID environment variables", inline: false }
       ],
       null,
       err.stack
@@ -401,14 +427,14 @@ client.once("ready", async () => {
   console.log(`Sniping game: ${FAME_GAME_NAME}`);
   
   await logToWebhook(
-    "🤖 Bot Status - Online",
-    `**${client.user.tag}** is now online and ready to snipe!`,
-    PINK_COLOR,
+    "System Online",
+    `Bot instance **${client.user.tag}** is now operational and monitoring for snipe requests.`,
+    "SUCCESS",
     [
-      { name: "Bot Name", value: client.user.tag, inline: true },
-      { name: "Game", value: FAME_GAME_NAME, inline: true },
-      { name: "Servers", value: `${client.guilds.cache.size} servers`, inline: true },
-      { name: "Uptime", value: "Just started", inline: true }
+      { name: "Bot Identifier", value: client.user.tag, inline: true },
+      { name: "Target Game", value: FAME_GAME_NAME, inline: true },
+      { name: "Guild Presence", value: `${client.guilds.cache.size} servers`, inline: true },
+      { name: "Uptime Status", value: "Active", inline: true }
     ],
     client.user.displayAvatarURL()
   );
@@ -420,12 +446,12 @@ client.once("ready", async () => {
 client.on("disconnect", async (event) => {
   console.log("Bot disconnected:", event);
   await logToWebhook(
-    "⚠️ Bot Disconnected",
-    "The bot has lost connection to Discord!",
-    PINK_COLOR,
+    "Connection Interrupted",
+    "The bot has lost connection to Discord's gateway.",
+    "WARNING",
     [
-      { name: "Reason", value: event.reason || "Unknown", inline: false },
-      { name: "Code", value: event.code?.toString() || "Unknown", inline: true }
+      { name: "Disconnect Reason", value: event.reason || "Unknown", inline: false },
+      { name: "Exit Code", value: event.code?.toString() || "Unknown", inline: true }
     ]
   );
 });
@@ -435,12 +461,12 @@ client.on("error", async (error) => {
   botStats.lastError = error.message;
   botStats.lastErrorTime = Date.now();
   await logToWebhook(
-    "💥 Discord Client Error",
-    "The Discord client encountered an error",
-    PINK_COLOR,
+    "Client Runtime Error",
+    "The Discord client encountered an unexpected error.",
+    "ERROR",
     [
-      { name: "Error", value: error.message, inline: false },
-      { name: "Type", value: error.name, inline: true }
+      { name: "Error Type", value: error.name, inline: true },
+      { name: "Error Message", value: error.message, inline: false }
     ],
     null,
     error.stack
@@ -463,13 +489,13 @@ client.on("interactionCreate", async (interaction) => {
     
     console.log(`[SNIPE] Looking up user: ${username} by ${discordUserTag}`);
     await logToWebhook(
-      "🔍 Snipe Command Executed",
-      `${discordUserTag} is looking for **${username}** in ${FAME_GAME_NAME}`,
-      PINK_COLOR,
+      "Snipe Request Received",
+      `User **${discordUserTag}** initiated a snipe operation targeting **${username}**.`,
+      "INFO",
       [
-        { name: "Target Username", value: username, inline: true },
-        { name: "Requested By", value: discordUserTag, inline: true },
-        { name: "User ID", value: discordUserId, inline: true }
+        { name: "Target Username", value: `\`${username}\``, inline: true },
+        { name: "Request Origin", value: discordUserTag, inline: true },
+        { name: "Requester ID", value: `\`${discordUserId}\``, inline: true }
       ]
     );
     
@@ -478,19 +504,19 @@ client.on("interactionCreate", async (interaction) => {
     if (!userData) {
       botStats.failedSnipes++;
       const embed = new EmbedBuilder()
-        .setTitle("❌ User Not Found")
+        .setTitle("User Not Found")
         .setDescription(`Could not find "${username}" on Roblox`)
-        .setColor(PINK_COLOR)
+        .setColor(0x2B2D31)
         .setFooter({ text: "Fame Sniper Bot" });
       await interaction.editReply({ content: `<@${discordUserId}>`, embeds: [embed] });
       await logToWebhook(
-        "❌ Snipe Failed - User Not Found",
-        `User "${username}" does not exist on Roblox`,
-        PINK_COLOR,
+        "Snipe Operation Failed",
+        `Target user **${username}** does not exist on the Roblox platform.`,
+        "ERROR",
         [
-          { name: "Searched Username", value: username, inline: true },
-          { name: "Searched By", value: discordUserTag, inline: true },
-          { name: "Failure Reason", value: "Roblox username does not exist", inline: false }
+          { name: "Target", value: `\`${username}\``, inline: true },
+          { name: "Requester", value: discordUserTag, inline: true },
+          { name: "Failure Cause", value: "Invalid Roblox username", inline: false }
         ]
       );
       return;
@@ -509,24 +535,24 @@ client.on("interactionCreate", async (interaction) => {
       botStats.failedSnipes++;
       const avatar = await getUserAvatar(userId);
       const embed = new EmbedBuilder()
-        .setTitle("❌ Snipe Failed")
+        .setTitle("Snipe Failed")
         .setDescription(`**${actualUsername}** is currently Offline`)
         .addFields(
           { name: "Status", value: "Offline", inline: true },
-          { name: "Tip", value: "Try again when they come online!", inline: true }
+          { name: "Recommendation", value: "Retry when target comes online", inline: true }
         )
-        .setColor(PINK_COLOR)
+        .setColor(0x2B2D31)
         .setThumbnail(avatar)
         .setFooter({ text: "Fame Sniper Bot" });
       await interaction.editReply({ content: `<@${discordUserId}>`, embeds: [embed] });
       await logToWebhook(
-        "❌ Snipe Failed - Target Offline",
-        `${actualUsername} is currently offline`,
-        PINK_COLOR,
+        "Snipe Operation Failed",
+        `Target **${actualUsername}** is currently offline.`,
+        "WARNING",
         [
           { name: "Target", value: actualUsername, inline: true },
           { name: "Status", value: "Offline", inline: true },
-          { name: "Searched By", value: discordUserTag, inline: true }
+          { name: "Requester", value: discordUserTag, inline: true }
         ]
       );
       return;
@@ -537,24 +563,24 @@ client.on("interactionCreate", async (interaction) => {
       botStats.failedSnipes++;
       const avatar = await getUserAvatar(userId);
       const embed = new EmbedBuilder()
-        .setTitle("❌ Snipe Failed")
+        .setTitle("Snipe Failed")
         .setDescription(`**${actualUsername}** is online but not in a game`)
         .addFields(
-          { name: "Status", value: "Online", inline: true },
-          { name: "Tip", value: "Wait for them to join a game!", inline: true }
+          { name: "Status", value: "Online (Idle)", inline: true },
+          { name: "Recommendation", value: "Wait for target to join a game", inline: true }
         )
-        .setColor(PINK_COLOR)
+        .setColor(0x2B2D31)
         .setThumbnail(avatar)
         .setFooter({ text: "Fame Sniper Bot" });
       await interaction.editReply({ content: `<@${discordUserId}>`, embeds: [embed] });
       await logToWebhook(
-        "❌ Snipe Failed - Not In Game",
-        `${actualUsername} is online but not playing any game`,
-        PINK_COLOR,
+        "Snipe Operation Failed",
+        `Target **${actualUsername}** is online but not participating in any game.`,
+        "WARNING",
         [
           { name: "Target", value: actualUsername, inline: true },
-          { name: "Status", value: "Online (No Game)", inline: true },
-          { name: "Searched By", value: discordUserTag, inline: true }
+          { name: "Status", value: "Online (Idle)", inline: true },
+          { name: "Requester", value: discordUserTag, inline: true }
         ]
       );
       return;
@@ -566,21 +592,20 @@ client.on("interactionCreate", async (interaction) => {
       const avatar = await getUserAvatar(userId);
       const gameName = await getGameName(presence.placeId);
       const embed = new EmbedBuilder()
-        .setTitle("❌ Snipe Failed")
+        .setTitle("Snipe Failed")
         .setDescription(`**${actualUsername}** is in a different game`)
         .addFields(
           { name: "Current Game", value: gameName, inline: true },
-          { name: "Target Game", value: FAME_GAME_NAME, inline: true },
-          { name: "Tip", value: `They need to be in ${FAME_GAME_NAME} to snipe!`, inline: false }
+          { name: "Target Game", value: FAME_GAME_NAME, inline: true }
         )
-        .setColor(PINK_COLOR)
+        .setColor(0x2B2D31)
         .setThumbnail(avatar)
         .setFooter({ text: "Fame Sniper Bot" });
       await interaction.editReply({ content: `<@${discordUserId}>`, embeds: [embed] });
       await logToWebhook(
-        "❌ Snipe Failed - Wrong Game",
-        `${actualUsername} is playing ${gameName}, not ${FAME_GAME_NAME}`,
-        PINK_COLOR,
+        "Snipe Operation Failed",
+        `Target **${actualUsername}** is playing ${gameName}, not ${FAME_GAME_NAME}.`,
+        "WARNING",
         [
           { name: "Target", value: actualUsername, inline: true },
           { name: "Current Game", value: gameName, inline: true },
@@ -593,13 +618,13 @@ client.on("interactionCreate", async (interaction) => {
     // Step 6: Get avatar for later
     const avatar = await getUserAvatar(userId);
     
-    // Step 7: PINK SEARCHING EMBED
+    // Step 7: Professional searching embed (no emojis)
     const searching = new EmbedBuilder()
-      .setTitle(`${SEARCH_EMOJI} Searching for player...`)
-      .setDescription(`${SERVER_EMOJI} Looking for **${actualUsername}** in **${FAME_GAME_NAME}**\n\n🔄 Scanning public servers...`)
-      .setColor(PINK_COLOR)
+      .setTitle("Searching Operation")
+      .setDescription(`Target: **${actualUsername}**\nGame: **${FAME_GAME_NAME}**\nStatus: Scanning public servers...`)
+      .setColor(0x2B2D31)
       .setThumbnail(avatar)
-      .setFooter({ text: "Fame Sniper Bot • Please wait" });
+      .setFooter({ text: "Fame Sniper Bot • Search in Progress" });
     
     await interaction.editReply({ content: `<@${discordUserId}>`, embeds: [searching] });
     
@@ -610,54 +635,54 @@ client.on("interactionCreate", async (interaction) => {
     if (!result.found) {
       botStats.failedSnipes++;
       const embed = new EmbedBuilder()
-        .setTitle("❌ Snipe Failed")
+        .setTitle("Snipe Failed")
         .setDescription(`Could not locate **${actualUsername}** in **${FAME_GAME_NAME}**`)
         .addFields(
-          { name: "📊 Servers Scanned", value: `${result.scanned} servers`, inline: true },
-          { name: "⏱️ Time", value: `${elapsed} seconds`, inline: true },
-          { name: "❓ Possible Reason", value: "User may be in a private/VIP server", inline: false }
+          { name: "Servers Scanned", value: `${result.scanned}`, inline: true },
+          { name: "Time Elapsed", value: `${elapsed} seconds`, inline: true },
+          { name: "Analysis", value: "Target may be in a private server (inaccessible via API)", inline: false }
         )
-        .setColor(PINK_COLOR)
+        .setColor(0x2B2D31)
         .setThumbnail(avatar)
         .setFooter({ text: "Fame Sniper Bot" });
       await interaction.editReply({ content: `<@${discordUserId}>`, embeds: [embed] });
       await logToWebhook(
-        "❌ Snipe Failed - Not Found in Servers",
-        `${actualUsername} is in ${FAME_GAME_NAME} but their specific server could not be found`,
-        PINK_COLOR,
+        "Snipe Operation Failed",
+        `Target **${actualUsername}** is in ${FAME_GAME_NAME} but their server could not be located.`,
+        "WARNING",
         [
           { name: "Target", value: actualUsername, inline: true },
           { name: "Servers Scanned", value: `${result.scanned}`, inline: true },
-          { name: "Time Taken", value: `${elapsed}s`, inline: true },
-          { name: "Likely Cause", value: "Private/VIP Server (cannot be sniped)", inline: false }
+          { name: "Time", value: `${elapsed}s`, inline: true },
+          { name: "Likely Cause", value: "Private or VIP Server (API restriction)", inline: false }
         ]
       );
       return;
     }
     
-    // Step 9: SUCCESS!
+    // Step 9: SUCCESS - Professional embed
     botStats.successfulSnipes++;
     const joinLink = `https://www.roblox.com/games/${FAME_GAME_ID}?jobId=${result.jobId}`;
     
     const embed = new EmbedBuilder()
-      .setTitle("✅ Player Found!")
-      .setDescription(`✨ Successfully found **${actualUsername}** in **${FAME_GAME_NAME}** ✨`)
+      .setTitle("Snipe Operation Successful")
+      .setDescription(`Target **${actualUsername}** located in **${FAME_GAME_NAME}**`)
       .addFields(
-        { name: "🎮 Server Status", value: `**${result.players}/${result.maxPlayers}** players`, inline: true },
-        { name: "⏱️ Search Time", value: `**${elapsed}** seconds`, inline: true },
-        { name: "🔧 Method", value: "public_api", inline: true },
-        { name: "🖥️ Server ID", value: `\`${result.jobId.slice(0, 20)}...\``, inline: false }
+        { name: "Server Status", value: `${result.players} / ${result.maxPlayers} players`, inline: true },
+        { name: "Search Duration", value: `${elapsed} seconds`, inline: true },
+        { name: "Detection Method", value: "Public API Scan", inline: true },
+        { name: "Server Identifier", value: `\`${result.jobId.slice(0, 20)}...\``, inline: false }
       )
-      .setColor(PINK_COLOR)
+      .setColor(0x2B2D31)
       .setThumbnail(avatar)
       .setImage(avatar)
-      .setFooter({ text: "Fame Sniper Bot • Click Join to play!" })
+      .setFooter({ text: "Fame Sniper Bot • Join via button below" })
       .setTimestamp();
     
     const row = new ActionRowBuilder()
       .addComponents(
         new ButtonBuilder()
-          .setLabel("🎮 Join Game")
+          .setLabel("Join Server")
           .setURL(joinLink)
           .setStyle(ButtonStyle.Link)
       );
@@ -665,14 +690,14 @@ client.on("interactionCreate", async (interaction) => {
     await interaction.editReply({ content: `<@${discordUserId}>`, embeds: [embed], components: [row] });
     
     await logToWebhook(
-      "✅ SNIPE SUCCESSFUL!",
-      `${discordUserTag} successfully sniped **${actualUsername}** in ${FAME_GAME_NAME}!`,
-      PINK_COLOR,
+      "Snipe Operation Successful",
+      `User **${discordUserTag}** successfully located and joined **${actualUsername}**'s server.`,
+      "SUCCESS",
       [
-        { name: "🎯 Player Sniped", value: actualUsername, inline: true },
-        { name: "🎮 Server", value: `${result.players}/${result.maxPlayers} players`, inline: true },
-        { name: "⏱️ Time", value: `${elapsed}s`, inline: true },
-        { name: "📊 Servers Scanned", value: `${result.scanned}`, inline: true }
+        { name: "Target", value: actualUsername, inline: true },
+        { name: "Server Load", value: `${result.players}/${result.maxPlayers}`, inline: true },
+        { name: "Search Time", value: `${elapsed}s`, inline: true },
+        { name: "Servers Scanned", value: `${result.scanned}`, inline: true }
       ],
       avatar
     );
@@ -684,17 +709,17 @@ client.on("interactionCreate", async (interaction) => {
     botStats.lastErrorTime = Date.now();
     
     const errorEmbed = new EmbedBuilder()
-      .setTitle("❌ Error")
-      .setDescription(`An error occurred: ${error.message}`)
-      .setColor(PINK_COLOR)
+      .setTitle("Runtime Error")
+      .setDescription(`An error occurred during execution: ${error.message}`)
+      .setColor(0x2B2D31)
       .setFooter({ text: "Fame Sniper Bot" });
     
     await logToWebhook(
-      "💥 CRITICAL ERROR - Snipe Command Failed",
-      "An unexpected error occurred while processing the snipe command",
-      PINK_COLOR,
+      "Critical Runtime Error",
+      "An unexpected error occurred while processing the snipe command.",
+      "ERROR",
       [
-        { name: "Error Type", value: error.name, inline: true },
+        { name: "Error Class", value: error.name, inline: true },
         { name: "Error Message", value: error.message, inline: false },
         { name: "Command", value: "/snipe", inline: true }
       ],
@@ -710,7 +735,7 @@ client.on("interactionCreate", async (interaction) => {
   }
 });
 
-// Periodic health check (every 5 minutes)
+// Periodic system health check (every 5 minutes)
 setInterval(async () => {
   const uptimeMinutes = Math.floor((Date.now() - botStats.startTime) / 1000 / 60);
   const uptimeHours = Math.floor(uptimeMinutes / 60);
@@ -721,20 +746,24 @@ setInterval(async () => {
   if (uptimeHours % 24 > 0) uptimeString += `${uptimeHours % 24}h `;
   uptimeString += `${uptimeMinutes % 60}m`;
   
+  const successRate = botStats.totalSnipes > 0 
+    ? Math.round((botStats.successfulSnipes / botStats.totalSnipes) * 100) 
+    : 0;
+  
   await logToWebhook(
-    "💖 Bot Health Check - All Systems Operational",
-    "The bot is running normally and monitoring for issues.",
-    PINK_COLOR,
+    "System Health Report",
+    "Bot is operational and all systems are functioning within normal parameters.",
+    "INFO",
     [
-      { name: "📊 Uptime", value: uptimeString, inline: true },
-      { name: "🎯 Total Snipes", value: `${botStats.totalSnipes}`, inline: true },
-      { name: "✅ Successful", value: `${botStats.successfulSnipes}`, inline: true },
-      { name: "❌ Failed", value: `${botStats.failedSnipes}`, inline: true },
-      { name: "📈 Success Rate", value: `${botStats.totalSnipes > 0 ? Math.round((botStats.successfulSnipes / botStats.totalSnipes) * 100) : 0}%`, inline: true },
-      { name: "🟢 Status", value: "Online", inline: true }
+      { name: "System Uptime", value: uptimeString, inline: true },
+      { name: "Total Operations", value: `${botStats.totalSnipes}`, inline: true },
+      { name: "Successful", value: `${botStats.successfulSnipes}`, inline: true },
+      { name: "Failed", value: `${botStats.failedSnipes}`, inline: true },
+      { name: "Success Rate", value: `${successRate}%`, inline: true },
+      { name: "System Status", value: "Operational", inline: true }
     ]
   );
-}, 300000); // Every 5 minutes
+}, 300000);
 
 // Log process events
 process.on("unhandledRejection", async (error) => {
@@ -742,9 +771,9 @@ process.on("unhandledRejection", async (error) => {
   botStats.lastError = error.message;
   botStats.lastErrorTime = Date.now();
   await logToWebhook(
-    "⚠️ UNHANDLED PROMISE REJECTION",
-    "The bot encountered an unhandled promise rejection. This may indicate a bug.",
-    PINK_COLOR,
+    "Unhandled Promise Rejection",
+    "A promise rejection was not caught by the error handler.",
+    "ERROR",
     [
       { name: "Error", value: error.message, inline: false },
       { name: "Type", value: error.name, inline: true }
@@ -759,9 +788,9 @@ process.on("uncaughtException", async (error) => {
   botStats.lastError = error.message;
   botStats.lastErrorTime = Date.now();
   await logToWebhook(
-    "💥 UNCAUGHT EXCEPTION - BOT MAY CRASH",
-    "An uncaught exception occurred. The bot may restart soon.",
-    PINK_COLOR,
+    "Uncaught Exception",
+    "A critical exception was not caught. Bot will restart.",
+    "ERROR",
     [
       { name: "Error", value: error.message, inline: false },
       { name: "Type", value: error.name, inline: true }
