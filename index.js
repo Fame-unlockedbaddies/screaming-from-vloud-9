@@ -9,7 +9,9 @@ const {
   ActionRowBuilder,
   ButtonBuilder,
   ButtonStyle,
-  Partials
+  Partials,
+  ApplicationIntegrationType,
+  InteractionContextType
 } = require("discord.js");
 
 const TOKEN = process.env.TOKEN;
@@ -30,7 +32,7 @@ http.createServer((req, res) => {
 });
 
 const client = new Client({
-  intents: [GatewayIntentBits.Guilds],
+  intents: [GatewayIntentBits.Guilds, GatewayIntentBits.DirectMessages],
   partials: [Partials.Channel]
 });
 
@@ -101,7 +103,7 @@ async function findUserServer(userId, placeId) {
   return null;
 }
 
-// Register slash commands
+// Register slash commands (NOW WORKS IN DMS AND GROUP CHATS)
 async function registerCommands() {
   const commands = [
     new SlashCommandBuilder()
@@ -112,6 +114,15 @@ async function registerCommands() {
           .setDescription("Roblox username")
           .setRequired(true)
       )
+      .setIntegrationTypes([
+        ApplicationIntegrationType.GuildInstall,  // Servers
+        ApplicationIntegrationType.UserInstall    // DMs and Group Chats
+      ])
+      .setContexts([
+        InteractionContextType.Guild,              // Servers
+        InteractionContextType.BotDM,              // DMs with bot
+        InteractionContextType.PrivateChannel      // Group DMs
+      ])
       .toJSON()
   ];
 
@@ -119,7 +130,7 @@ async function registerCommands() {
   
   try {
     await rest.put(Routes.applicationCommands(CLIENT_ID), { body: commands });
-    console.log("Commands registered!");
+    console.log("Commands registered! (Works in DMs, group chats, and servers)");
   } catch (err) {
     console.error("Failed to register commands:", err);
   }
@@ -189,7 +200,7 @@ client.on("interactionCreate", async (interaction) => {
     return interaction.editReply({ embeds: [embed] });
   }
   
-  // Step 6: Success! Create join buttons (NO "via Bloxiana")
+  // Step 6: Success! Create join buttons
   const joinLink = `roblox://placeId=${game.placeId}&jobId=${server.jobId}`;
   const browserLink = `https://www.roblox.com/games/${game.placeId}?jobId=${server.jobId}`;
   
