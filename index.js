@@ -21,7 +21,7 @@ const ROBLOX_COOKIE = process.env.ROBLOX_COOKIE;
 const PORT = process.env.PORT || 3000;
 
 // Role configuration - REPLACE WITH YOUR ACTUAL ROLE ID
-const FOUNDER_ROLE_ID = "YOUR_FOUNDER_ROLE_ID"; // Replace with your actual Founder role ID
+const FOUNDER_ROLE_ID = "1482560426972549232"; // Replace with your actual Founder role ID
 const FOUNDER_ROLE_MENTION = `<@&${FOUNDER_ROLE_ID}>`;
 
 if (!TOKEN || !CLIENT_ID) {
