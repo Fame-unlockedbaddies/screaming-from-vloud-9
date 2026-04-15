@@ -40,68 +40,53 @@ try {
 const FAME_GAME_ID = "121157515767845";
 const FAME_GAME_NAME = "Fame";
 
-// Professional colors (no bright pink, using sleek dark theme)
+// Professional colors
 const COLORS = {
   SUCCESS: 0x2B2D31,
   ERROR: 0x2B2D31,
   WARNING: 0x2B2D31,
-  INFO: 0x2B2D31,
-  PRIMARY: 0x2B2D31
+  INFO: 0x2B2D31
 };
 
-// Advanced webhook logging function - NO EMOJIS
+// FIXED: Async webhook logging with error handling
 async function logToWebhook(title, description, type = "INFO", fields = [], thumbnail = null, errorDetails = null) {
   if (!webhook) return;
   
-  let color = COLORS.INFO;
-  let footerText = "System Log • Timestamped";
-  
-  switch(type) {
-    case "SUCCESS":
-      color = COLORS.SUCCESS;
-      footerText = "Operation Successful • System Log";
-      break;
-    case "ERROR":
-      color = COLORS.ERROR;
-      footerText = "Critical Error • Requires Attention";
-      break;
-    case "WARNING":
-      color = COLORS.WARNING;
-      footerText = "Warning • System Notice";
-      break;
-    case "INFO":
-      color = COLORS.INFO;
-      footerText = "Information • System Log";
-      break;
-  }
-  
-  const embed = new EmbedBuilder()
-    .setTitle(title)
-    .setDescription(description)
-    .setColor(color)
-    .setTimestamp()
-    .setFooter({ text: footerText });
-  
-  if (fields && fields.length > 0) {
-    embed.addFields(fields);
-  }
-  
-  if (thumbnail) {
-    embed.setThumbnail(thumbnail);
-  }
-  
-  if (errorDetails) {
-    embed.addFields({
-      name: "Technical Details",
-      value: `\`\`\`diff\n- ${errorDetails.slice(0, 400)}\n\`\`\``,
-      inline: false
-    });
-  }
-  
   try {
+    let footerText = "System Log";
+    switch(type) {
+      case "SUCCESS": footerText = "Operation Successful"; break;
+      case "ERROR": footerText = "Critical Error"; break;
+      case "WARNING": footerText = "System Notice"; break;
+      default: footerText = "Information";
+    }
+    
+    const embed = new EmbedBuilder()
+      .setTitle(title)
+      .setDescription(description)
+      .setColor(COLORS.INFO)
+      .setTimestamp()
+      .setFooter({ text: footerText });
+    
+    if (fields && fields.length > 0) {
+      embed.addFields(fields);
+    }
+    
+    if (thumbnail) {
+      embed.setThumbnail(thumbnail);
+    }
+    
+    if (errorDetails) {
+      embed.addFields({
+        name: "Technical Details",
+        value: `\`\`\`diff\n- ${errorDetails.slice(0, 400)}\n\`\`\``,
+        inline: false
+      });
+    }
+    
     await webhook.send({ embeds: [embed] });
   } catch (error) {
-    console.error("Webhook send failed:", error);
+    console.error("Webhook send failed:", error.message);
   }
 }
 
@@ -176,20 +161,6 @@ async function getUserId(username) {
     return null;
   } catch (error) {
     console.error("getUserId error:", error);
-    botStats.lastError = error.message;
-    botStats.lastErrorTime = Date.now();
-    await logToWebhook(
-      "API Resolution Failure",
-      `Unable to resolve username: ${username}`,
-      "ERROR",
-      [
-        { name: "Username", value: `\`${username}\``, inline: true },
-        { name: "Error Code", value: error.name, inline: true },
-        { name: "Failure Reason", value: error.message, inline: false }
-      ],
-      null,
-      error.stack
-    );
     return null;
   }
 }
@@ -239,19 +210,6 @@ async function getUserPresence(userId) {
     return { online: false, inGame: false, placeId: null };
   } catch (error) {
     console.error("getUserPresence error:", error);
-    botStats.lastError = error.message;
-    botStats.lastErrorTime = Date.now();
-    await logToWebhook(
-      "Presence API Failure",
-      `Unable to retrieve presence data for user ID: ${userId}`,
-      "ERROR",
-      [
-        { name: "User ID", value: `\`${userId}\``, inline: true },
-        { name: "Error", value: error.message, inline: false }
-      ],
-      null,
-      error.stack
-    );
     return { online: false, inGame: false, placeId: null };
   }
 }
@@ -297,30 +255,11 @@ async function findUserInFameServers(userId) {
       
       if (response.status === 429) {
         console.log("[SEARCH] Rate limited, waiting...");
-        await logToWebhook(
-          "Rate Limit Threshold Reached",
-          "Roblox API rate limit encountered. Implementing cooldown period.",
-          "WARNING",
-          [
-            { name: "Attempt", value: `${attempt + 1}/20`, inline: true },
-            { name: "Servers Scanned", value: `${serversScanned}`, inline: true },
-            { name: "Action", value: "Waiting 2 seconds before retry", inline: false }
-          ]
-        );
         await new Promise(r => setTimeout(r, 2000));
         continue;
       }
       
       if (response.status === 403) {
-        await logToWebhook(
-          "Authentication Failure",
-          "Roblox API rejected the request due to invalid credentials.",
-          "ERROR",
-          [
-            { name: "Issue", value: "ROBLOX_COOKIE may be invalid or expired", inline: false },
-            { name: "Resolution", value: "Generate a new cookie from your Roblox account", inline: false }
-          ]
-        );
         return { found: false, scanned: serversScanned, authError: true };
       }
       
@@ -352,19 +291,6 @@ async function findUserInFameServers(userId) {
     return { found: false, scanned: serversScanned };
   } catch (error) {
     console.error("[SEARCH] Error:", error);
-    botStats.lastError = error.message;
-    botStats.lastErrorTime = Date.now();
-    await logToWebhook(
-      "Server Search Failure",
-      `Error occurred while scanning game servers for user ID: ${userId}`,
-      "ERROR",
-      [
-        { name: "Error", value: error.message, inline: false },
-        { name: "Servers Scanned", value: `${serversScanned}`, inline: true }
-      ],
-      null,
-      error.stack
-    );
     return { found: false, scanned: serversScanned, error: true };
   }
 }
@@ -398,27 +324,16 @@ async function registerCommands() {
     console.log("Commands registered!");
     await logToWebhook(
       "System Initialization Complete",
-      "Fame Sniper Bot has successfully started and registered all commands.",
+      "Fame Sniper Bot has successfully started.",
       "SUCCESS",
       [
         { name: "Target Game", value: FAME_GAME_NAME, inline: true },
-        { name: "Registered Commands", value: "/snipe", inline: true },
-        { name: "System Status", value: "Operational", inline: true }
+        { name: "Commands", value: "/snipe", inline: true },
+        { name: "Status", value: "Operational", inline: true }
       ]
     );
   } catch (err) {
     console.error("Command registration failed:", err);
-    await logToWebhook(
-      "Command Registration Failure",
-      "Unable to register slash commands with Discord API.",
-      "ERROR",
-      [
-        { name: "Error", value: err.message, inline: false },
-        { name: "Resolution", value: "Verify TOKEN and CLIENT_ID environment variables", inline: false }
-      ],
-      null,
-      err.stack
-    );
   }
 }
 
@@ -428,13 +343,12 @@ client.once("ready", async () => {
   
   await logToWebhook(
     "System Online",
-    `Bot instance **${client.user.tag}** is now operational and monitoring for snipe requests.`,
+    `Bot ${client.user.tag} is now operational.`,
     "SUCCESS",
     [
-      { name: "Bot Identifier", value: client.user.tag, inline: true },
-      { name: "Target Game", value: FAME_GAME_NAME, inline: true },
-      { name: "Guild Presence", value: `${client.guilds.cache.size} servers`, inline: true },
-      { name: "Uptime Status", value: "Active", inline: true }
+      { name: "Bot", value: client.user.tag, inline: true },
+      { name: "Game", value: FAME_GAME_NAME, inline: true },
+      { name: "Servers", value: `${client.guilds.cache.size}`, inline: true }
     ],
     client.user.displayAvatarURL()
   );
@@ -447,29 +361,24 @@ client.on("disconnect", async (event) => {
   console.log("Bot disconnected:", event);
   await logToWebhook(
     "Connection Interrupted",
-    "The bot has lost connection to Discord's gateway.",
+    "Bot lost connection to Discord.",
     "WARNING",
     [
-      { name: "Disconnect Reason", value: event.reason || "Unknown", inline: false },
-      { name: "Exit Code", value: event.code?.toString() || "Unknown", inline: true }
+      { name: "Reason", value: event.reason || "Unknown", inline: false },
+      { name: "Code", value: event.code?.toString() || "Unknown", inline: true }
     ]
   );
 });
 
 client.on("error", async (error) => {
   console.error("Client error:", error);
-  botStats.lastError = error.message;
-  botStats.lastErrorTime = Date.now();
   await logToWebhook(
     "Client Runtime Error",
-    "The Discord client encountered an unexpected error.",
+    "Discord client encountered an error.",
     "ERROR",
     [
-      { name: "Error Type", value: error.name, inline: true },
-      { name: "Error Message", value: error.message, inline: false }
-    ],
-    null,
-    error.stack
+      { name: "Error", value: error.message, inline: false }
+    ]
   );
 });
 
@@ -480,24 +389,29 @@ client.on("interactionCreate", async (interaction) => {
   const startTime = Date.now();
   botStats.totalSnipes++;
   
+  // FIXED: Use a variable to track if we've replied
+  let hasReplied = false;
+  
   try {
     await interaction.deferReply();
+    hasReplied = true;
     
     const username = interaction.options.getString("username");
     const discordUserId = interaction.user.id;
     const discordUserTag = interaction.user.tag;
     
     console.log(`[SNIPE] Looking up user: ${username} by ${discordUserTag}`);
-    await logToWebhook(
+    
+    // Send webhook log ASYNC (don't await to avoid blocking)
+    logToWebhook(
       "Snipe Request Received",
-      `User **${discordUserTag}** initiated a snipe operation targeting **${username}**.`,
+      `User ${discordUserTag} requested snipe on ${username}.`,
       "INFO",
       [
-        { name: "Target Username", value: `\`${username}\``, inline: true },
-        { name: "Request Origin", value: discordUserTag, inline: true },
-        { name: "Requester ID", value: `\`${discordUserId}\``, inline: true }
+        { name: "Target", value: username, inline: true },
+        { name: "Requester", value: discordUserTag, inline: true }
       ]
-    );
+    ).catch(e => console.error("Webhook error:", e.message));
     
     // Step 1: Get user ID
     const userData = await getUserId(username);
@@ -509,16 +423,6 @@ client.on("interactionCreate", async (interaction) => {
         .setColor(0x2B2D31)
         .setFooter({ text: "Fame Sniper Bot" });
       await interaction.editReply({ content: `<@${discordUserId}>`, embeds: [embed] });
-      await logToWebhook(
-        "Snipe Operation Failed",
-        `Target user **${username}** does not exist on the Roblox platform.`,
-        "ERROR",
-        [
-          { name: "Target", value: `\`${username}\``, inline: true },
-          { name: "Requester", value: discordUserTag, inline: true },
-          { name: "Failure Cause", value: "Invalid Roblox username", inline: false }
-        ]
-      );
       return;
     }
     
@@ -528,7 +432,6 @@ client.on("interactionCreate", async (interaction) => {
     
     // Step 2: Get user presence
     const presence = await getUserPresence(userId);
-    console.log(`[SNIPE] Presence: online=${presence.online}, inGame=${presence.inGame}, placeId=${presence.placeId}`);
     
     // Step 3: Check if offline
     if (!presence.online) {
@@ -539,22 +442,12 @@ client.on("interactionCreate", async (interaction) => {
         .setDescription(`**${actualUsername}** is currently Offline`)
         .addFields(
           { name: "Status", value: "Offline", inline: true },
-          { name: "Recommendation", value: "Retry when target comes online", inline: true }
+          { name: "Tip", value: "Try again when they come online", inline: true }
         )
         .setColor(0x2B2D31)
         .setThumbnail(avatar)
         .setFooter({ text: "Fame Sniper Bot" });
       await interaction.editReply({ content: `<@${discordUserId}>`, embeds: [embed] });
-      await logToWebhook(
-        "Snipe Operation Failed",
-        `Target **${actualUsername}** is currently offline.`,
-        "WARNING",
-        [
-          { name: "Target", value: actualUsername, inline: true },
-          { name: "Status", value: "Offline", inline: true },
-          { name: "Requester", value: discordUserTag, inline: true }
-        ]
-      );
       return;
     }
     
@@ -567,22 +460,12 @@ client.on("interactionCreate", async (interaction) => {
         .setDescription(`**${actualUsername}** is online but not in a game`)
         .addFields(
           { name: "Status", value: "Online (Idle)", inline: true },
-          { name: "Recommendation", value: "Wait for target to join a game", inline: true }
+          { name: "Tip", value: "Wait for them to join a game", inline: true }
         )
         .setColor(0x2B2D31)
         .setThumbnail(avatar)
         .setFooter({ text: "Fame Sniper Bot" });
       await interaction.editReply({ content: `<@${discordUserId}>`, embeds: [embed] });
-      await logToWebhook(
-        "Snipe Operation Failed",
-        `Target **${actualUsername}** is online but not participating in any game.`,
-        "WARNING",
-        [
-          { name: "Target", value: actualUsername, inline: true },
-          { name: "Status", value: "Online (Idle)", inline: true },
-          { name: "Requester", value: discordUserTag, inline: true }
-        ]
-      );
       return;
     }
     
@@ -602,23 +485,13 @@ client.on("interactionCreate", async (interaction) => {
         .setThumbnail(avatar)
         .setFooter({ text: "Fame Sniper Bot" });
       await interaction.editReply({ content: `<@${discordUserId}>`, embeds: [embed] });
-      await logToWebhook(
-        "Snipe Operation Failed",
-        `Target **${actualUsername}** is playing ${gameName}, not ${FAME_GAME_NAME}.`,
-        "WARNING",
-        [
-          { name: "Target", value: actualUsername, inline: true },
-          { name: "Current Game", value: gameName, inline: true },
-          { name: "Required Game", value: FAME_GAME_NAME, inline: true }
-        ]
-      );
       return;
     }
     
     // Step 6: Get avatar for later
     const avatar = await getUserAvatar(userId);
     
-    // Step 7: Professional searching embed (no emojis)
+    // Step 7: Searching embed
     const searching = new EmbedBuilder()
       .setTitle("Searching Operation")
       .setDescription(`Target: **${actualUsername}**\nGame: **${FAME_GAME_NAME}**\nStatus: Scanning public servers...`)
@@ -639,28 +512,17 @@ client.on("interactionCreate", async (interaction) => {
         .setDescription(`Could not locate **${actualUsername}** in **${FAME_GAME_NAME}**`)
         .addFields(
           { name: "Servers Scanned", value: `${result.scanned}`, inline: true },
-          { name: "Time Elapsed", value: `${elapsed} seconds`, inline: true },
-          { name: "Analysis", value: "Target may be in a private server (inaccessible via API)", inline: false }
+          { name: "Time", value: `${elapsed} seconds`, inline: true },
+          { name: "Analysis", value: "User may be in a private server", inline: false }
         )
         .setColor(0x2B2D31)
         .setThumbnail(avatar)
         .setFooter({ text: "Fame Sniper Bot" });
       await interaction.editReply({ content: `<@${discordUserId}>`, embeds: [embed] });
-      await logToWebhook(
-        "Snipe Operation Failed",
-        `Target **${actualUsername}** is in ${FAME_GAME_NAME} but their server could not be located.`,
-        "WARNING",
-        [
-          { name: "Target", value: actualUsername, inline: true },
-          { name: "Servers Scanned", value: `${result.scanned}`, inline: true },
-          { name: "Time", value: `${elapsed}s`, inline: true },
-          { name: "Likely Cause", value: "Private or VIP Server (API restriction)", inline: false }
-        ]
-      );
       return;
     }
     
-    // Step 9: SUCCESS - Professional embed
+    // Step 9: SUCCESS
     botStats.successfulSnipes++;
     const joinLink = `https://www.roblox.com/games/${FAME_GAME_ID}?jobId=${result.jobId}`;
     
@@ -670,8 +532,7 @@ client.on("interactionCreate", async (interaction) => {
       .addFields(
         { name: "Server Status", value: `${result.players} / ${result.maxPlayers} players`, inline: true },
         { name: "Search Duration", value: `${elapsed} seconds`, inline: true },
-        { name: "Detection Method", value: "Public API Scan", inline: true },
-        { name: "Server Identifier", value: `\`${result.jobId.slice(0, 20)}...\``, inline: false }
+        { name: "Method", value: "Public API Scan", inline: true }
       )
       .setColor(0x2B2D31)
       .setThumbnail(avatar)
@@ -689,95 +550,77 @@ client.on("interactionCreate", async (interaction) => {
     
     await interaction.editReply({ content: `<@${discordUserId}>`, embeds: [embed], components: [row] });
     
-    await logToWebhook(
+    // Send success webhook (don't await)
+    logToWebhook(
       "Snipe Operation Successful",
-      `User **${discordUserTag}** successfully located and joined **${actualUsername}**'s server.`,
+      `${discordUserTag} successfully sniped ${actualUsername}.`,
       "SUCCESS",
       [
         { name: "Target", value: actualUsername, inline: true },
-        { name: "Server Load", value: `${result.players}/${result.maxPlayers}`, inline: true },
-        { name: "Search Time", value: `${elapsed}s`, inline: true },
-        { name: "Servers Scanned", value: `${result.scanned}`, inline: true }
+        { name: "Server", value: `${result.players}/${result.maxPlayers}`, inline: true },
+        { name: "Time", value: `${elapsed}s`, inline: true }
       ],
       avatar
-    );
+    ).catch(e => console.error("Webhook error:", e.message));
     
   } catch (error) {
     console.error("Snipe error:", error);
     botStats.failedSnipes++;
-    botStats.lastError = error.message;
-    botStats.lastErrorTime = Date.now();
     
     const errorEmbed = new EmbedBuilder()
       .setTitle("Runtime Error")
-      .setDescription(`An error occurred during execution: ${error.message}`)
+      .setDescription(`An error occurred: ${error.message}`)
       .setColor(0x2B2D31)
       .setFooter({ text: "Fame Sniper Bot" });
     
-    await logToWebhook(
-      "Critical Runtime Error",
-      "An unexpected error occurred while processing the snipe command.",
+    // Only reply if we haven't already
+    if (!hasReplied) {
+      if (interaction.deferred) {
+        await interaction.editReply({ embeds: [errorEmbed] });
+      } else {
+        await interaction.reply({ embeds: [errorEmbed], ephemeral: true });
+      }
+    }
+    
+    logToWebhook(
+      "Runtime Error",
+      `Error: ${error.message}`,
       "ERROR",
-      [
-        { name: "Error Class", value: error.name, inline: true },
-        { name: "Error Message", value: error.message, inline: false },
-        { name: "Command", value: "/snipe", inline: true }
-      ],
+      [],
       null,
       error.stack
-    );
-    
-    if (interaction.deferred) {
-      await interaction.editReply({ embeds: [errorEmbed] });
-    } else {
-      await interaction.reply({ embeds: [errorEmbed], ephemeral: true });
-    }
+    ).catch(e => console.error("Webhook error:", e.message));
   }
 });
 
-// Periodic system health check (every 5 minutes)
+// Periodic health check (every 10 minutes)
 setInterval(async () => {
   const uptimeMinutes = Math.floor((Date.now() - botStats.startTime) / 1000 / 60);
-  const uptimeHours = Math.floor(uptimeMinutes / 60);
-  const uptimeDays = Math.floor(uptimeHours / 24);
-  
-  let uptimeString = "";
-  if (uptimeDays > 0) uptimeString += `${uptimeDays}d `;
-  if (uptimeHours % 24 > 0) uptimeString += `${uptimeHours % 24}h `;
-  uptimeString += `${uptimeMinutes % 60}m`;
-  
   const successRate = botStats.totalSnipes > 0 
     ? Math.round((botStats.successfulSnipes / botStats.totalSnipes) * 100) 
     : 0;
   
   await logToWebhook(
     "System Health Report",
-    "Bot is operational and all systems are functioning within normal parameters.",
+    "Bot is operational.",
     "INFO",
     [
-      { name: "System Uptime", value: uptimeString, inline: true },
-      { name: "Total Operations", value: `${botStats.totalSnipes}`, inline: true },
-      { name: "Successful", value: `${botStats.successfulSnipes}`, inline: true },
-      { name: "Failed", value: `${botStats.failedSnipes}`, inline: true },
+      { name: "Uptime", value: `${uptimeMinutes} minutes`, inline: true },
+      { name: "Total Snipes", value: `${botStats.totalSnipes}`, inline: true },
       { name: "Success Rate", value: `${successRate}%`, inline: true },
-      { name: "System Status", value: "Operational", inline: true }
+      { name: "Status", value: "Operational", inline: true }
     ]
   );
-}, 300000);
+}, 600000);
 
-// Log process events
+// Error handlers
 process.on("unhandledRejection", async (error) => {
   console.error("Unhandled rejection:", error);
-  botStats.lastError = error.message;
-  botStats.lastErrorTime = Date.now();
   await logToWebhook(
     "Unhandled Promise Rejection",
-    "A promise rejection was not caught by the error handler.",
+    error.message,
     "ERROR",
-    [
-      { name: "Error", value: error.message, inline: false },
-      { name: "Type", value: error.name, inline: true }
-    ],
+    [],
     null,
     error.stack
   );
@@ -785,16 +628,11 @@ process.on("unhandledRejection", async (error) => {
 
 process.on("uncaughtException", async (error) => {
   console.error("Uncaught exception:", error);
-  botStats.lastError = error.message;
-  botStats.lastErrorTime = Date.now();
   await logToWebhook(
     "Uncaught Exception",
-    "A critical exception was not caught. Bot will restart.",
+    error.message,
     "ERROR",
-    [
-      { name: "Error", value: error.message, inline: false },
-      { name: "Type", value: error.name, inline: true }
-    ],
+    [],
     null,
     error.stack
   );
