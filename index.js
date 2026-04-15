@@ -910,14 +910,4 @@ client.on("interactionCreate", async (interaction) => {
         )
         .setColor(0xFF0000)
         .setThumbnail(userInfo.headshot);
-      return interaction.editReply({ content: `<@${userId}>`, embeds: [embed] });
-    }
-    
-    const joinLink = `https://www.roblox.com/games/${FAME_GAME_ID}?jobId=${result.jobId}`;
-    
-    const embed = new EmbedBuilder()
-      .setTitle("Player Found!")
-      .setDescription(`Search completed, ${result.serversScanned} servers scanned!`)
-      .addFields(
-        { name: "Game", value: `${FAME_GAME_NAME}`, inline: true },
-        { name: "Players", value: `${result.players
+      return interaction.editReply({ content: `<
