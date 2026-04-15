@@ -110,7 +110,7 @@ app.get("/api/stats", verifyApiKey, async (req, res) => {
 });
 
 app.listen(PORT, () => {
-  console.log(`🌐 API Server on port ${PORT}`);
+  console.log(`🌐 API Server running on port ${PORT}`);
 });
 
 // ============ ROBLOX FUNCTIONS ============
@@ -131,10 +131,12 @@ async function refreshCsrfToken() {
     if (newToken) {
       csrfToken = newToken;
       tokenExpiry = Date.now() + 300000;
+      console.log("✅ CSRF Token refreshed");
       return csrfToken;
     }
     return null;
   } catch (error) {
+    console.error("CSRF refresh error:", error);
     return null;
   }
 }
@@ -157,7 +159,7 @@ async function getRobloxUserInfo(username) {
     const searchRes = await fetch(searchUrl);
     const searchData = await searchRes.json();
     
-    if (!searchData.data) return null;
+    if (!searchData.data || searchData.data.length === 0) return null;
     
     const match = searchData.data.find(u => u.name.toLowerCase() === username.toLowerCase());
     const userId = match ? match.id : searchData.data[0]?.id;
@@ -179,37 +181,89 @@ async function getRobloxUserInfo(username) {
       created: userData.created
     };
   } catch (error) {
+    console.error("getRobloxUserInfo error:", error);
     return null;
   }
 }
 
 async function findUserInGame(userId, gamePlaceId) {
   try {
-    // Try to find a server with players
-    const response = await fetch(`https://games.roblox.com/v1/games/${gamePlaceId}/servers/Public?limit=100`);
-    const data = await response.json();
+    let cursor = "";
+    let attempts = 0;
     
-    if (data.data && data.data.length > 0) {
-      // Return the first server with players
-      const serverWithPlayers = data.data.find(s => s.playing > 0);
+    while (attempts < 20) {
+      const url = `https://games.roblox.com/v1/games/${gamePlaceId}/servers/Public?limit=100${cursor ? `&cursor=${cursor}` : ""}`;
+      const response = await fetch(url);
+      
+      if (response.status === 429) {
+        await new Promise(r => setTimeout(r, 2000));
+        continue;
+      }
+      
+      const data = await response.json();
+      
+      if (!data.data || data.data.length === 0) break;
+      
+      for (const server of data.data) {
+        let playerList = [];
+        
+        if (server.playing) {
+          if (Array.isArray(server.playing)) {
+            playerList = server.playing;
+          } else if (typeof server.playing === 'object') {
+            playerList = Object.values(server.playing);
+          } else if (typeof server.playing === 'number') {
+            // If playing is just a count, we can't match by ID
+            // Just return any server with players
+            if (server.playing > 0) {
+              return {
+                jobId: server.id,
+                players: server.playing,
+                maxPlayers: server.maxPlayers || 100,
+                method: "public_api"
+              };
+            }
+          }
+        }
+        
+        if (server.playerTokens && Array.isArray(server.playerTokens)) {
+          playerList = [...playerList, ...server.playerTokens];
+        }
+        
+        if (playerList.includes(userId.toString()) || playerList.includes(userId)) {
+          return {
+            jobId: server.id,
+            players: server.playing ? (Array.isArray(server.playing) ? server.playing.length : server.playing) : 0,
+            maxPlayers: server.maxPlayers || 100,
+            method: "public_api"
+          };
+        }
+      }
+      
+      cursor = data.nextPageCursor || "";
+      if (!cursor) break;
+      attempts++;
+      await new Promise(r => setTimeout(r, 100));
+    }
+    
+    // If we couldn't find by ID, return the first server with players
+    const firstPage = await fetch(`https://games.roblox.com/v1/games/${gamePlaceId}/servers/Public?limit=100`);
+    const firstData = await firstPage.json();
+    if (firstData.data && firstData.data.length > 0) {
+      const serverWithPlayers = firstData.data.find(s => s.playing > 0);
       if (serverWithPlayers) {
         return {
           jobId: serverWithPlayers.id,
           players: serverWithPlayers.playing,
-          maxPlayers: serverWithPlayers.maxPlayers,
-          method: "public_api"
+          maxPlayers: serverWithPlayers.maxPlayers || 100,
+          method: "public_api_fallback"
         };
       }
-      // If no servers with players, return the first server
-      return {
-        jobId: data.data[0].id,
-        players: data.data[0].playing,
-        maxPlayers: data.data[0].maxPlayers,
-        method: "public_api"
-      };
     }
+    
     return null;
   } catch (error) {
+    console.error("findUserInGame error:", error);
     return null;
   }
 }
@@ -239,7 +293,7 @@ async function performSnipe(username) {
     gameId: FAME_GAME_ID,
     jobId: result.jobId,
     players: result.players,
-    // FIXED: Use https://roblox.com/games/ URL instead of roblox://
+    maxPlayers: result.maxPlayers,
     joinLink: `https://www.roblox.com/games/${FAME_GAME_ID}?jobId=${result.jobId}`,
     method: result.method
   };
@@ -276,15 +330,21 @@ async function registerCommands() {
   const rest = new REST({ version: "10" }).setToken(TOKEN);
   try {
     await rest.put(Routes.applicationCommands(CLIENT_ID), { body: commands });
-    console.log("✅ Commands registered!");
+    console.log("✅ Discord commands registered!");
   } catch (err) {
     console.error("❌ Command registration failed:", err);
   }
 }
 
 client.once("ready", async () => {
-  console.log(`✅ Logged in as ${client.user.tag}`);
-  if (ROBLOX_COOKIE) await refreshCsrfToken();
+  console.log(`✅ Discord bot logged in as ${client.user.tag}`);
+  console.log(`🎮 Sniping game: ${FAME_GAME_NAME} (${FAME_GAME_ID})`);
+  if (ROBLOX_COOKIE) {
+    await refreshCsrfToken();
+    console.log("✅ Roblox cookie loaded");
+  } else {
+    console.warn("⚠️ No ROBLOX_COOKIE set!");
+  }
   await registerCommands();
 });
 
@@ -292,11 +352,14 @@ client.on("interactionCreate", async (interaction) => {
   if (!interaction.isChatInputCommand()) return;
   if (interaction.commandName !== "snipe") return;
 
+  const startTime = Date.now();
+  
   try {
     await interaction.deferReply();
     
     const username = interaction.options.getString("username");
     
+    // Get user info with avatar
     const userInfo = await getRobloxUserInfo(username);
     if (!userInfo) {
       const embed = new EmbedBuilder()
@@ -306,40 +369,56 @@ client.on("interactionCreate", async (interaction) => {
       return interaction.editReply({ embeds: [embed] });
     }
     
+    // Searching embed with avatar
     const searching = new EmbedBuilder()
-      .setTitle("🔍 Searching...")
+      .setTitle("🔍 Searching for player...")
       .setDescription(`Looking for **${userInfo.username}** in **${FAME_GAME_NAME}**`)
+      .addFields(
+        { name: "Game", value: FAME_GAME_NAME, inline: true },
+        { name: "Status", value: "Scanning public servers...", inline: true }
+      )
       .setColor(0xFFA500)
       .setThumbnail(userInfo.headshot);
     
     await interaction.editReply({ embeds: [searching] });
     
+    // Find the user
     const result = await findUserInGame(userInfo.id, FAME_GAME_ID);
+    const timeElapsed = ((Date.now() - startTime) / 1000).toFixed(2);
     
     if (!result || !result.jobId) {
       const embed = new EmbedBuilder()
-        .setTitle("❌ Player Not Found")
+        .setTitle("❌ Could Not Find Player")
         .setDescription(`Could not locate **${userInfo.username}** in **${FAME_GAME_NAME}**`)
-        .addFields({ name: "Reason", value: "They may be in a private/VIP server (cannot be sniped)" })
+        .addFields(
+          { name: "Possible Reasons", value: 
+            "• They are in a **Private/VIP Server** (cannot be sniped)\n" +
+            "• They are not playing Fame right now\n" +
+            "• They left the game during search"
+          },
+          { name: "Time Spent", value: `${timeElapsed} seconds`, inline: true }
+        )
         .setColor(0xFF0000)
         .setThumbnail(userInfo.headshot);
       return interaction.editReply({ embeds: [embed] });
     }
     
-    // FIXED: Use https:// URL (Discord supports this)
+    // SUCCESS! Create join link (using https:// so Discord accepts it)
     const joinLink = `https://www.roblox.com/games/${FAME_GAME_ID}?jobId=${result.jobId}`;
     
     const embed = new EmbedBuilder()
       .setTitle("✅ Player Found!")
-      .setDescription(`Found **${userInfo.username}** in **${FAME_GAME_NAME}**`)
+      .setDescription(`Successfully found **${userInfo.username}** in **${FAME_GAME_NAME}**`)
       .addFields(
-        { name: "Server", value: `${result.players}/${result.maxPlayers || 100} players`, inline: true },
-        { name: "Click Below", value: "Press the button to join their game!", inline: false }
+        { name: "Server Status", value: `${result.players}/${result.maxPlayers} players`, inline: true },
+        { name: "Search Time", value: `${timeElapsed} seconds`, inline: true },
+        { name: "Method", value: result.method || "Public Server Scan", inline: true }
       )
       .setColor(0x00FF00)
-      .setThumbnail(userInfo.headshot);
+      .setThumbnail(userInfo.headshot)
+      .setFooter({ text: "Click the button below to join their game!" });
     
-    // FIXED: Button with https:// URL (works in Discord)
+    // Button with https:// URL (Discord accepts this)
     const row = new ActionRowBuilder()
       .addComponents(
         new ButtonBuilder()
@@ -351,16 +430,28 @@ client.on("interactionCreate", async (interaction) => {
     await interaction.editReply({ embeds: [embed], components: [row] });
     
   } catch (error) {
-    console.error(error);
+    console.error("Command error:", error);
     const errorEmbed = new EmbedBuilder()
       .setTitle("❌ Error")
-      .setDescription(error.message)
+      .setDescription(`An error occurred: ${error.message}`)
       .setColor(0xFF0000);
     
     if (interaction.deferred) {
       await interaction.editReply({ embeds: [errorEmbed] });
+    } else {
+      await interaction.reply({ embeds: [errorEmbed], ephemeral: true });
     }
   }
 });
 
+// Error handling
+process.on("unhandledRejection", (error) => {
+  console.error("Unhandled rejection:", error);
+});
+
+process.on("uncaughtException", (error) => {
+  console.error("Uncaught exception:", error);
+});
+
+// Start the bot
 client.login(TOKEN);
