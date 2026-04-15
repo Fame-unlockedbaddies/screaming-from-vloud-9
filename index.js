@@ -8,42 +8,40 @@ const {
   Partials
 } = require("discord.js");
 
-const TOKEN = process.env.DISCORD_TOKEN;
+const http = require("http");
+
+/* ---------------- ENV ---------------- */
+const TOKEN = process.env.TOKEN; // <-- YOUR SETUP
 const CLIENT_ID = process.env.CLIENT_ID;
 const PORT = process.env.PORT || 3000;
 
 if (!TOKEN || !CLIENT_ID) {
-  console.error("❌ Missing DISCORD_TOKEN or CLIENT_ID in environment variables");
+  console.error("❌ Missing TOKEN or CLIENT_ID in environment variables");
   process.exit(1);
 }
 
-/* ---------------- KEEP ALIVE SERVER (Render) ---------------- */
-const http = require("http");
-
+/* ---------------- KEEP ALIVE (Render) ---------------- */
 http.createServer((req, res) => {
   res.writeHead(200);
   res.end("Bot is alive");
 }).listen(PORT, () => {
-  console.log("🌐 Web server running on port", PORT);
+  console.log("🌐 Server running on port", PORT);
 });
 
-/* ---------------- DISCORD CLIENT ---------------- */
-
+/* ---------------- CLIENT ---------------- */
 const client = new Client({
   intents: [GatewayIntentBits.Guilds],
-  partials: [Partials.Channel]
+  partials: [Partials.Channel],
 });
 
-/* ---------------- REGISTER SLASH COMMANDS ---------------- */
-
+/* ---------------- REGISTER COMMANDS ---------------- */
 async function registerCommands() {
   const commands = [
     new SlashCommandBuilder()
       .setName("snipe")
-      .setDescription("Test command to confirm bot works")
+      .setDescription("Test command (bot check)")
       .addStringOption(option =>
-        option
-          .setName("username")
+        option.setName("username")
           .setDescription("Enter a username")
           .setRequired(true)
       )
@@ -62,19 +60,17 @@ async function registerCommands() {
 
     console.log("✅ Slash commands registered");
   } catch (err) {
-    console.error("❌ Failed to register commands:", err);
+    console.error("❌ Command registration failed:", err);
   }
 }
 
 /* ---------------- READY ---------------- */
-
 client.once("ready", async () => {
   console.log(`🤖 Logged in as ${client.user.tag}`);
   await registerCommands();
 });
 
 /* ---------------- COMMAND HANDLER ---------------- */
-
 client.on("interactionCreate", async (interaction) => {
   if (!interaction.isChatInputCommand()) return;
 
@@ -91,5 +87,4 @@ client.on("interactionCreate", async (interaction) => {
 });
 
 /* ---------------- LOGIN ---------------- */
-
 client.login(TOKEN);
