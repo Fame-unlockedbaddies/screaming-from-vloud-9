@@ -371,31 +371,70 @@ async function getUserPresence(userId, retries = 3) {
   return { status: "offline", statusText: "Offline", placeId: null, gameName: null };
 }
 
-async function getRobloxUserInfo(username, bypassCache = false) {
-  if (!bypassCache && userCache.has(username.toLowerCase())) {
-    const cached = userCache.get(username.toLowerCase());
-    if (Date.now() - cached.timestamp < CACHE_TTL) {
-      return cached.data;
-    }
-    userCache.delete(username.toLowerCase());
-  }
-  
+async function getUserIdFromUsername(username) {
   try {
     await rateLimitWait();
     const searchUrl = `https://users.roblox.com/v1/users/search?keyword=${encodeURIComponent(username)}&limit=10`;
     const searchRes = await fetch(searchUrl);
     const searchData = await searchRes.json();
     
-    if (!searchData.data || searchData.data.length === 0) return null;
+    if (searchData.data && searchData.data.length > 0) {
+      const exactMatch = searchData.data.find(u => u.name.toLowerCase() === username.toLowerCase());
+      if (exactMatch) {
+        return exactMatch.id;
+      }
+      return searchData.data[0].id;
+    }
     
-    const match = searchData.data.find(u => u.name.toLowerCase() === username.toLowerCase());
-    const userId = match ? match.id : searchData.data[0]?.id;
-    if (!userId) return null;
+    await rateLimitWait();
+    const directUrl = "https://users.roblox.com/v1/usernames/users";
+    const directRes = await fetch(directUrl, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ usernames: [username] })
+    });
+    const directData = await directRes.json();
+    
+    if (directData.data && directData.data.length > 0) {
+      return directData.data[0].id;
+    }
+    
+    return null;
+  } catch (error) {
+    console.error("getUserIdFromUsername error:", error);
+    return null;
+  }
+}
+
+async function getRobloxUserInfo(username, bypassCache = false) {
+  const cacheKey = username.toLowerCase();
+  
+  if (!bypassCache && userCache.has(cacheKey)) {
+    const cached = userCache.get(cacheKey);
+    if (Date.now() - cached.timestamp < CACHE_TTL) {
+      console.log(`Using cached data for ${username}`);
+      return cached.data;
+    }
+    userCache.delete(cacheKey);
+  }
+  
+  try {
+    const userId = await getUserIdFromUsername(username);
+    if (!userId) {
+      console.log(`User not found: ${username}`);
+      return null;
+    }
+    
+    console.log(`Found user ID for ${username}: ${userId}`);
     
     await rateLimitWait();
     const userUrl = `https://users.roblox.com/v1/users/${userId}`;
     const userRes = await fetch(userUrl);
     const userData = await userRes.json();
+    
+    if (!userData || !userData.id) {
+      return null;
+    }
     
     await rateLimitWait();
     const avatarUrl = `https://thumbnails.roblox.com/v1/users/avatar-headshot?userIds=${userId}&size=720x720&format=Png&isCircular=false`;
@@ -416,7 +455,7 @@ async function getRobloxUserInfo(username, bypassCache = false) {
       gameName: presence.gameName
     };
     
-    userCache.set(username.toLowerCase(), {
+    userCache.set(cacheKey, {
       data: result,
       timestamp: Date.now()
     });
@@ -432,6 +471,9 @@ async function findUserInServers(userId, gamePlaceId) {
   let cursor = "";
   let serversScanned = 0;
   let attempts = 0;
+  const userIdStr = userId.toString();
+  
+  console.log(`Searching for user ${userIdStr} in game ${gamePlaceId}`);
   
   try {
     while (attempts < 30) {
@@ -440,6 +482,7 @@ async function findUserInServers(userId, gamePlaceId) {
       const response = await fetch(url);
       
       if (response.status === 429) {
+        console.log("Rate limited, waiting 2 seconds...");
         await new Promise(r => setTimeout(r, 2000));
         continue;
       }
@@ -457,7 +500,8 @@ async function findUserInServers(userId, gamePlaceId) {
           playerIds = server.playing.map(p => p.toString());
         }
         
-        if (playerIds.includes(userId.toString())) {
+        if (playerIds.includes(userIdStr)) {
+          console.log(`Found user in server after scanning ${serversScanned} servers`);
           return {
             found: true,
             jobId: server.id,
@@ -474,6 +518,7 @@ async function findUserInServers(userId, gamePlaceId) {
       await new Promise(r => setTimeout(r, 100));
     }
     
+    console.log(`User not found after scanning ${serversScanned} servers`);
     return {
       found: false,
       serversScanned: serversScanned
@@ -613,14 +658,11 @@ client.once("ready", async () => {
 client.on("interactionCreate", async (interaction) => {
   if (!interaction.isChatInputCommand()) return;
   
-  // ============ /SERVERS COMMAND ============
+  // /servers command
   if (interaction.commandName === "servers") {
     try {
       await interaction.deferReply();
-      
       const userId = interaction.user.id;
-      
-      // Fetch all servers
       const allServers = await getAllFameServers();
       
       if (!allServers || allServers.length === 0) {
@@ -631,10 +673,7 @@ client.on("interactionCreate", async (interaction) => {
         return interaction.editReply({ content: `<@${userId}>`, embeds: [embed] });
       }
       
-      // Get game icon
       const gameIcon = await getGameIcon();
-      
-      // Create server list for all regions (Bloxiana style)
       let serverList = "";
       const displayServers = allServers.slice(0, 15);
       
@@ -654,7 +693,6 @@ client.on("interactionCreate", async (interaction) => {
         serverList += `*and ${allServers.length - 15} more servers...*`;
       }
       
-      // Calculate stats
       const totalPlayers = allServers.reduce((sum, s) => sum + s.players, 0);
       const totalMaxPlayers = allServers.reduce((sum, s) => sum + s.maxPlayers, 0);
       
@@ -662,14 +700,13 @@ client.on("interactionCreate", async (interaction) => {
         .setTitle(`Servers for 🔓 ${FAME_GAME_NAME}`)
         .setDescription(`**Server Region:** All\n*Use the dropdown below to filter by region.*`)
         .addFields(
-          { name: "📊 Total Players", value: `${totalPlayers}/${totalMaxPlayers}`, inline: true },
-          { name: "🎮 Active Servers", value: `${allServers.length}`, inline: true },
-          { name: "📡 Server List", value: serverList.substring(0, 1024), inline: false }
+          { name: "Total Players", value: `${totalPlayers}/${totalMaxPlayers}`, inline: true },
+          { name: "Active Servers", value: `${allServers.length}`, inline: true },
+          { name: "Server List", value: serverList.substring(0, 1024), inline: false }
         )
         .setColor(0x2B2D31)
         .setThumbnail(gameIcon || "https://www.roblox.com/asset-thumbnail/image?assetId=121157515767845&width=420&height=420&format=png");
       
-      // Create region dropdown (Bloxiana style box with arrow)
       const regions = [...new Set(allServers.map(s => s.region))];
       const regionOptions = [
         new StringSelectMenuOptionBuilder()
@@ -696,7 +733,7 @@ client.on("interactionCreate", async (interaction) => {
       
       const selectMenu = new StringSelectMenuBuilder()
         .setCustomId("server_region_filter")
-        .setPlaceholder("🌍 Filter Servers by Region")
+        .setPlaceholder("Filter Servers by Region")
         .addOptions(regionOptions);
       
       const row = new ActionRowBuilder().addComponents(selectMenu);
@@ -707,25 +744,14 @@ client.on("interactionCreate", async (interaction) => {
         components: [row]
       });
       
-      // Handle dropdown selection
       const filter = (i) => i.customId === "server_region_filter" && i.user.id === userId;
       const collector = interaction.channel.createMessageComponentCollector({ filter, time: 60000 });
       
       collector.on("collect", async (menuInteraction) => {
         const selectedRegion = menuInteraction.values[0];
+        const filteredServers = selectedRegion === "all" ? allServers : allServers.filter(s => s.region === selectedRegion);
+        const regionName = selectedRegion === "all" ? "All" : selectedRegion;
         
-        let filteredServers;
-        let regionName;
-        
-        if (selectedRegion === "all") {
-          filteredServers = allServers;
-          regionName = "All";
-        } else {
-          filteredServers = allServers.filter(s => s.region === selectedRegion);
-          regionName = selectedRegion;
-        }
-        
-        // Build filtered server list
         let filteredList = "";
         const displayFiltered = filteredServers.slice(0, 15);
         
@@ -756,17 +782,16 @@ client.on("interactionCreate", async (interaction) => {
           .setTitle(`Servers for 🔓 ${FAME_GAME_NAME}`)
           .setDescription(`**Server Region:** ${regionName}\n*Use the dropdown below to filter by region.*`)
           .addFields(
-            { name: "📊 Total Players", value: `${filteredTotalPlayers}/${filteredTotalMax}`, inline: true },
-            { name: "🎮 Active Servers", value: `${filteredServers.length}`, inline: true },
-            { name: "📡 Server List", value: filteredList.substring(0, 1024), inline: false }
+            { name: "Total Players", value: `${filteredTotalPlayers}/${filteredTotalMax}`, inline: true },
+            { name: "Active Servers", value: `${filteredServers.length}`, inline: true },
+            { name: "Server List", value: filteredList.substring(0, 1024), inline: false }
           )
           .setColor(0x2B2D31)
           .setThumbnail(gameIcon || "https://www.roblox.com/asset-thumbnail/image?assetId=121157515767845&width=420&height=420&format=png");
         
-        // Keep dropdown but update the selected value
         const updatedSelectMenu = new StringSelectMenuBuilder()
           .setCustomId("server_region_filter")
-          .setPlaceholder(`🌍 Filtered: ${regionName}`)
+          .setPlaceholder(`Filtered: ${regionName}`)
           .addOptions(regionOptions);
         
         const updatedRow = new ActionRowBuilder().addComponents(updatedSelectMenu);
@@ -793,7 +818,7 @@ client.on("interactionCreate", async (interaction) => {
     return;
   }
   
-  // ============ /SNIPE COMMAND ============
+  // /snipe command
   if (interaction.commandName !== "snipe") return;
 
   const startTime = Date.now();
@@ -810,10 +835,12 @@ client.on("interactionCreate", async (interaction) => {
     if (!userInfo) {
       const embed = new EmbedBuilder()
         .setTitle("User Not Found")
-        .setDescription(`Could not find "${username}" on Roblox`)
+        .setDescription(`Could not find "${username}" on Roblox. Make sure the username is spelled correctly.`)
         .setColor(0xFF0000);
       return interaction.editReply({ content: `<@${userId}>`, embeds: [embed] });
     }
+    
+    console.log(`User status for ${username}: ${userInfo.status} - ${userInfo.statusText}`);
     
     if (userInfo.status === "offline") {
       const embed = new EmbedBuilder()
@@ -896,27 +923,4 @@ client.on("interactionCreate", async (interaction) => {
             { name: "Status Now", value: recheck.status === "offline" ? "Offline" : "Online", inline: true }
           )
           .setColor(0xFF0000)
-          .setThumbnail(userInfo.headshot);
-        return interaction.editReply({ content: `<@${userId}>`, embeds: [embed] });
-      }
-      
-      const embed = new EmbedBuilder()
-        .setTitle("Snipe Failed")
-        .setDescription(`Could not locate **${userInfo.username}** in **${FAME_GAME_NAME}**`)
-        .addFields(
-          { name: "Servers Scanned", value: `${result.serversScanned} servers`, inline: true },
-          { name: "Time", value: `${timeElapsed} seconds`, inline: true },
-          { name: "Possible Reason", value: "User may be in a private/VIP server", inline: false }
-        )
-        .setColor(0xFF0000)
-        .setThumbnail(userInfo.headshot);
-      return interaction.editReply({ content: `<@${userId}>`, embeds: [embed] });
-    }
-    
-    const joinLink = `https://www.roblox.com/games/${FAME_GAME_ID}?jobId=${result.jobId}`;
-    
-    const embed = new EmbedBuilder()
-      .setTitle("Player Found!")
-      .setDescription(`Search completed, ${result.serversScanned} servers scanned!`)
-      .addFields(
-        { name: "
+          .
