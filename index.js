@@ -709,7 +709,7 @@ client.on("interactionCreate", async (interaction) => {
       
       // Handle dropdown selection
       const filter = (i) => i.customId === "server_region_filter" && i.user.id === userId;
-      const collector = interaction.channel.createMessageComponentCollector({ filter, time: 60000, max: 1 });
+      const collector = interaction.channel.createMessageComponentCollector({ filter, time: 60000 });
       
       collector.on("collect", async (menuInteraction) => {
         const selectedRegion = menuInteraction.values[0];
@@ -767,83 +767,13 @@ client.on("interactionCreate", async (interaction) => {
         const updatedSelectMenu = new StringSelectMenuBuilder()
           .setCustomId("server_region_filter")
           .setPlaceholder(`🌍 Filtered: ${regionName}`)
-          .addOptions(regionOptions)
-          .setDisabled(false);
+          .addOptions(regionOptions);
         
         const updatedRow = new ActionRowBuilder().addComponents(updatedSelectMenu);
         
         await menuInteraction.update({
           embeds: [updatedEmbed],
           components: [updatedRow]
-        });
-        
-        // Create a new collector for further filtering
-        const newFilter = (i) => i.customId === "server_region_filter" && i.user.id === userId;
-        const newCollector = interaction.channel.createMessageComponentCollector({ filter: newFilter, time: 60000, max: 1 });
-        
-        newCollector.on("collect", async (newMenuInteraction) => {
-          const newSelectedRegion = newMenuInteraction.values[0];
-          
-          let newFilteredServers;
-          let newRegionName;
-          
-          if (newSelectedRegion === "all") {
-            newFilteredServers = allServers;
-            newRegionName = "All";
-          } else {
-            newFilteredServers = allServers.filter(s => s.region === newSelectedRegion);
-            newRegionName = newSelectedRegion;
-          }
-          
-          let newFilteredList = "";
-          const newDisplayFiltered = newFilteredServers.slice(0, 15);
-          
-          for (let i = 0; i < newDisplayFiltered.length; i++) {
-            const server = newDisplayFiltered[i];
-            const fillPercent = server.fillPercentage;
-            let statusEmoji = "🟢";
-            if (fillPercent < 30) statusEmoji = "🔴";
-            else if (fillPercent < 70) statusEmoji = "🟡";
-            
-            newFilteredList += `${statusEmoji} ${server.flag} **#${i}**\n`;
-            newFilteredList += `    Players: ${server.players}/${server.maxPlayers}\n`;
-            newFilteredList += `    Ping: ${server.ping}\n\n`;
-          }
-          
-          if (newFilteredServers.length > 15) {
-            newFilteredList += `*and ${newFilteredServers.length - 15} more servers...*`;
-          }
-          
-          if (newFilteredServers.length === 0) {
-            newFilteredList = "No servers found in this region.";
-          }
-          
-          const newFilteredTotalPlayers = newFilteredServers.reduce((sum, s) => sum + s.players, 0);
-          const newFilteredTotalMax = newFilteredServers.reduce((sum, s) => sum + s.maxPlayers, 0);
-          
-          const finalEmbed = new EmbedBuilder()
-            .setTitle(`Servers for 🔓 ${FAME_GAME_NAME}`)
-            .setDescription(`**Server Region:** ${newRegionName}\n*Use the dropdown below to filter by region.*`)
-            .addFields(
-              { name: "📊 Total Players", value: `${newFilteredTotalPlayers}/${newFilteredTotalMax}`, inline: true },
-              { name: "🎮 Active Servers", value: `${newFilteredServers.length}`, inline: true },
-              { name: "📡 Server List", value: newFilteredList.substring(0, 1024), inline: false }
-            )
-            .setColor(0x2B2D31)
-            .setThumbnail(gameIcon || "https://www.roblox.com/asset-thumbnail/image?assetId=121157515767845&width=420&height=420&format=png");
-          
-          const finalSelectMenu = new StringSelectMenuBuilder()
-            .setCustomId("server_region_filter")
-            .setPlaceholder(`🌍 Filtered: ${newRegionName}`)
-            .addOptions(regionOptions)
-            .setDisabled(false);
-          
-          const finalRow = new ActionRowBuilder().addComponents(finalSelectMenu);
-          
-          await newMenuInteraction.update({
-            embeds: [finalEmbed],
-            components: [finalRow]
-          });
         });
       });
       
@@ -931,4 +861,63 @@ client.on("interactionCreate", async (interaction) => {
     
     const searchingEmbed = new EmbedBuilder()
       .setTitle("Searching...")
-      .setDescription(`Looking for **${userInfo.username}** in **${FAME_GAME_NAME}**\n\n${loadingFrames[0]
+      .setDescription(`Looking for **${userInfo.username}** in **${FAME_GAME_NAME}**\n\n${loadingFrames[0]}\nScanning public servers...`)
+      .setColor(0x5865F2)
+      .setThumbnail(userInfo.headshot);
+    
+    await interaction.editReply({ content: `<@${userId}>`, embeds: [searchingEmbed] });
+    
+    const animationInterval = setInterval(async () => {
+      frameIndex = (frameIndex + 1) % loadingFrames.length;
+      const updatedEmbed = new EmbedBuilder()
+        .setTitle("Searching...")
+        .setDescription(`Looking for **${userInfo.username}** in **${FAME_GAME_NAME}**\n\n${loadingFrames[frameIndex]}\nScanning public servers...`)
+        .setColor(0x5865F2)
+        .setThumbnail(userInfo.headshot);
+      
+      await interaction.editReply({ content: `<@${userId}>`, embeds: [updatedEmbed] });
+    }, 300);
+    
+    const result = await findUserInServers(userInfo.id, FAME_GAME_ID);
+    clearInterval(animationInterval);
+    
+    const timeElapsed = ((Date.now() - startTime) / 1000).toFixed(2);
+    
+    if (!result.found) {
+      const recheck = await getRobloxUserInfo(username, true);
+      
+      if (recheck && (recheck.status === "offline" || recheck.status === "online")) {
+        const embed = new EmbedBuilder()
+          .setTitle("Snipe Failed")
+          .setDescription(`**${userInfo.username}** left the game during the search`)
+          .addFields(
+            { name: "Servers Scanned", value: `${result.serversScanned} servers`, inline: true },
+            { name: "Time", value: `${timeElapsed} seconds`, inline: true },
+            { name: "Status Now", value: recheck.status === "offline" ? "Offline" : "Online", inline: true }
+          )
+          .setColor(0xFF0000)
+          .setThumbnail(userInfo.headshot);
+        return interaction.editReply({ content: `<@${userId}>`, embeds: [embed] });
+      }
+      
+      const embed = new EmbedBuilder()
+        .setTitle("Snipe Failed")
+        .setDescription(`Could not locate **${userInfo.username}** in **${FAME_GAME_NAME}**`)
+        .addFields(
+          { name: "Servers Scanned", value: `${result.serversScanned} servers`, inline: true },
+          { name: "Time", value: `${timeElapsed} seconds`, inline: true },
+          { name: "Possible Reason", value: "User may be in a private/VIP server", inline: false }
+        )
+        .setColor(0xFF0000)
+        .setThumbnail(userInfo.headshot);
+      return interaction.editReply({ content: `<@${userId}>`, embeds: [embed] });
+    }
+    
+    const joinLink = `https://www.roblox.com/games/${FAME_GAME_ID}?jobId=${result.jobId}`;
+    
+    const embed = new EmbedBuilder()
+      .setTitle("Player Found!")
+      .setDescription(`Search completed, ${result.serversScanned} servers scanned!`)
+      .addFields(
+        { name: "Game", value: `${FAME_GAME_NAME}`, inline: true },
+        { name: "Players", value: `${result.players
