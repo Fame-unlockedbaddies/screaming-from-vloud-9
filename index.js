@@ -27,9 +27,12 @@ if (!TOKEN || !CLIENT_ID) {
 const FAME_GAME_ID = "121157515767845";
 const FAME_GAME_NAME = "Fame";
 
-// Your custom emoji - replace "emoji_name" with the actual name of your emoji
-// Example: if your emoji is named "server_search", use <:server_search:1493913869112967208>
-const SEARCH_EMOJI = "<:emoji_name:1493913869112967208>"; // CHANGE "emoji_name" to your emoji's name!
+// Your custom emojis - REPLACE "emoji_name" with your actual emoji names!
+const SEARCH_EMOJI = "<:emoji_name:1493915783779324024>"; // CHANGE "emoji_name" to your scanning emoji's name!
+const SERVER_EMOJI = "<:emoji_name:1493913869112967208>"; // CHANGE "emoji_name" to your server emoji's name!
+
+// Pink color for embeds
+const PINK_COLOR = 0xFF69B4;  // Hot Pink
 
 // Keep alive server for Render
 http.createServer((req, res) => {
@@ -278,9 +281,10 @@ client.on("interactionCreate", async (interaction) => {
     const userData = await getUserId(username);
     if (!userData) {
       const embed = new EmbedBuilder()
-        .setTitle("User Not Found")
+        .setTitle("❌ User Not Found")
         .setDescription(`Could not find "${username}" on Roblox`)
-        .setColor(0xFF0000);
+        .setColor(PINK_COLOR)
+        .setFooter({ text: "Fame Sniper Bot" });
       return interaction.editReply({ content: `<@${discordUserId}>`, embeds: [embed] });
     }
     
@@ -296,14 +300,15 @@ client.on("interactionCreate", async (interaction) => {
     if (!presence.online) {
       const avatar = await getUserAvatar(userId);
       const embed = new EmbedBuilder()
-        .setTitle("Snipe Failed")
+        .setTitle("❌ Snipe Failed")
         .setDescription(`**${actualUsername}** is currently Offline`)
         .addFields(
           { name: "Status", value: "Offline", inline: true },
           { name: "Tip", value: "Try again when they come online!", inline: true }
         )
-        .setColor(0xFF0000)
-        .setThumbnail(avatar);
+        .setColor(PINK_COLOR)
+        .setThumbnail(avatar)
+        .setFooter({ text: "Fame Sniper Bot" });
       return interaction.editReply({ content: `<@${discordUserId}>`, embeds: [embed] });
     }
     
@@ -311,14 +316,15 @@ client.on("interactionCreate", async (interaction) => {
     if (!presence.inGame) {
       const avatar = await getUserAvatar(userId);
       const embed = new EmbedBuilder()
-        .setTitle("Snipe Failed")
+        .setTitle("❌ Snipe Failed")
         .setDescription(`**${actualUsername}** is online but not in a game`)
         .addFields(
           { name: "Status", value: "Online", inline: true },
           { name: "Tip", value: "Wait for them to join a game!", inline: true }
         )
-        .setColor(0xFFA500)
-        .setThumbnail(avatar);
+        .setColor(PINK_COLOR)
+        .setThumbnail(avatar)
+        .setFooter({ text: "Fame Sniper Bot" });
       return interaction.editReply({ content: `<@${discordUserId}>`, embeds: [embed] });
     }
     
@@ -327,27 +333,29 @@ client.on("interactionCreate", async (interaction) => {
       const avatar = await getUserAvatar(userId);
       const gameName = await getGameName(presence.placeId);
       const embed = new EmbedBuilder()
-        .setTitle("Snipe Failed")
+        .setTitle("❌ Snipe Failed")
         .setDescription(`**${actualUsername}** is in a different game`)
         .addFields(
           { name: "Current Game", value: gameName, inline: true },
           { name: "Target Game", value: FAME_GAME_NAME, inline: true },
           { name: "Tip", value: `They need to be in ${FAME_GAME_NAME} to snipe!`, inline: false }
         )
-        .setColor(0xFFA500)
-        .setThumbnail(avatar);
+        .setColor(PINK_COLOR)
+        .setThumbnail(avatar)
+        .setFooter({ text: "Fame Sniper Bot" });
       return interaction.editReply({ content: `<@${discordUserId}>`, embeds: [embed] });
     }
     
     // Step 6: Get avatar for later
     const avatar = await getUserAvatar(userId);
     
-    // Step 7: Searching with YOUR CUSTOM EMOJI
+    // Step 7: PINK SEARCHING EMBED WITH YOUR CUSTOM SCANNING EMOJI
     const searching = new EmbedBuilder()
-      .setTitle("Searching for player...")
-      .setDescription(`${SEARCH_EMOJI} Looking for **${actualUsername}** in **${FAME_GAME_NAME}**\nScanning public servers...`)
-      .setColor(0x5865F2)
-      .setThumbnail(avatar);
+      .setTitle(`${SEARCH_EMOJI} Searching for player...`)
+      .setDescription(`${SERVER_EMOJI} Looking for **${actualUsername}** in **${FAME_GAME_NAME}**\n\n🔄 Scanning public servers...`)
+      .setColor(PINK_COLOR)
+      .setThumbnail(avatar)
+      .setFooter({ text: "Fame Sniper Bot • Please wait" });
     
     await interaction.editReply({ content: `<@${discordUserId}>`, embeds: [searching] });
     
@@ -357,37 +365,41 @@ client.on("interactionCreate", async (interaction) => {
     
     if (!result.found) {
       const embed = new EmbedBuilder()
-        .setTitle("Snipe Failed")
+        .setTitle("❌ Snipe Failed")
         .setDescription(`Could not locate **${actualUsername}** in **${FAME_GAME_NAME}**`)
         .addFields(
-          { name: "Servers Scanned", value: `${result.scanned} servers`, inline: true },
-          { name: "Time", value: `${elapsed} seconds`, inline: true },
-          { name: "Possible Reason", value: "User may be in a private/VIP server", inline: false }
+          { name: "📊 Servers Scanned", value: `${result.scanned} servers`, inline: true },
+          { name: "⏱️ Time", value: `${elapsed} seconds`, inline: true },
+          { name: "❓ Possible Reason", value: "User may be in a private/VIP server", inline: false }
         )
-        .setColor(0xFF0000)
-        .setThumbnail(avatar);
+        .setColor(PINK_COLOR)
+        .setThumbnail(avatar)
+        .setFooter({ text: "Fame Sniper Bot" });
       return interaction.editReply({ content: `<@${discordUserId}>`, embeds: [embed] });
     }
     
-    // Step 9: Success!
+    // Step 9: PINK SUCCESS EMBED
     const joinLink = `https://www.roblox.com/games/${FAME_GAME_ID}?jobId=${result.jobId}`;
     
     const embed = new EmbedBuilder()
-      .setTitle("Player Found!")
-      .setDescription(`Successfully found **${actualUsername}** in **${FAME_GAME_NAME}**`)
+      .setTitle("✅ Player Found!")
+      .setDescription(`✨ Successfully found **${actualUsername}** in **${FAME_GAME_NAME}** ✨`)
       .addFields(
-        { name: "Server Status", value: `${result.players}/${result.maxPlayers} players`, inline: false },
-        { name: "Search Time", value: `${elapsed} seconds`, inline: true },
-        { name: "Method", value: "public_api", inline: true }
+        { name: "🎮 Server Status", value: `**${result.players}/${result.maxPlayers}** players`, inline: true },
+        { name: "⏱️ Search Time", value: `**${elapsed}** seconds`, inline: true },
+        { name: "🔧 Method", value: "public_api", inline: true },
+        { name: "🖥️ Server ID", value: `\`${result.jobId.slice(0, 20)}...\``, inline: false }
       )
-      .setColor(0x00FF00)
+      .setColor(PINK_COLOR)
       .setThumbnail(avatar)
-      .setImage(avatar);
+      .setImage(avatar)
+      .setFooter({ text: "Fame Sniper Bot • Click Join to play!" })
+      .setTimestamp();
     
     const row = new ActionRowBuilder()
       .addComponents(
         new ButtonBuilder()
-          .setLabel("Join Game")
+          .setLabel("🎮 Join Game")
           .setURL(joinLink)
           .setStyle(ButtonStyle.Link)
       );
@@ -397,9 +409,10 @@ client.on("interactionCreate", async (interaction) => {
   } catch (error) {
     console.error("Snipe error:", error);
     const errorEmbed = new EmbedBuilder()
-      .setTitle("Error")
+      .setTitle("❌ Error")
       .setDescription(`An error occurred: ${error.message}`)
-      .setColor(0xFF0000);
+      .setColor(PINK_COLOR)
+      .setFooter({ text: "Fame Sniper Bot" });
     
     if (interaction.deferred) {
       await interaction.editReply({ embeds: [errorEmbed] });
