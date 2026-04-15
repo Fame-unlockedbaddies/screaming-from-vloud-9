@@ -29,6 +29,10 @@ if (!TOKEN || !CLIENT_ID) {
 const FAME_GAME_ID = "121157515767845";
 const FAME_GAME_NAME = "Fame";
 
+// Simple cache with TTL
+const userCache = new Map();
+const CACHE_TTL = 5000; // 5 seconds cache
+
 // ============ EXPRESS API SERVER ============
 const app = express();
 app.use(express.json());
@@ -117,9 +121,21 @@ app.listen(PORT, () => {
 
 let csrfToken = null;
 let tokenExpiry = null;
+let lastRequestTime = 0;
+const MIN_REQUEST_INTERVAL = 100; // 100ms between requests
+
+async function rateLimitWait() {
+  const now = Date.now();
+  const timeSinceLastRequest = now - lastRequestTime;
+  if (timeSinceLastRequest < MIN_REQUEST_INTERVAL) {
+    await new Promise(r => setTimeout(r, MIN_REQUEST_INTERVAL - timeSinceLastRequest));
+  }
+  lastRequestTime = Date.now();
+}
 
 async function refreshCsrfToken() {
   try {
+    await rateLimitWait();
     const response = await fetch("https://auth.roblox.com/v2/logout", {
       method: "POST",
       headers: {
@@ -153,8 +169,19 @@ async function getAuthHeaders() {
   };
 }
 
-async function getRobloxUserInfo(username) {
+async function getRobloxUserInfo(username, bypassCache = false) {
+  // Check cache first
+  if (!bypassCache && userCache.has(username.toLowerCase())) {
+    const cached = userCache.get(username.toLowerCase());
+    if (Date.now() - cached.timestamp < CACHE_TTL) {
+      console.log(`Using cached data for ${username}`);
+      return cached.data;
+    }
+    userCache.delete(username.toLowerCase());
+  }
+  
   try {
+    await rateLimitWait();
     const searchUrl = `https://users.roblox.com/v1/users/search?keyword=${encodeURIComponent(username)}&limit=10`;
     const searchRes = await fetch(searchUrl);
     const searchData = await searchRes.json();
@@ -165,14 +192,17 @@ async function getRobloxUserInfo(username) {
     const userId = match ? match.id : searchData.data[0]?.id;
     if (!userId) return null;
     
+    await rateLimitWait();
     const userUrl = `https://users.roblox.com/v1/users/${userId}`;
     const userRes = await fetch(userUrl);
     const userData = await userRes.json();
     
+    await rateLimitWait();
     const avatarUrl = `https://thumbnails.roblox.com/v1/users/avatar-headshot?userIds=${userId}&size=720x720&format=Png&isCircular=false`;
     const avatarRes = await fetch(avatarUrl);
     const avatarData = await avatarRes.json();
     
+    await rateLimitWait();
     const presenceUrl = "https://presence.roblox.com/v1/presence/users";
     const presenceRes = await fetch(presenceUrl, {
       method: "POST",
@@ -200,7 +230,7 @@ async function getRobloxUserInfo(username) {
       }
     }
     
-    return {
+    const result = {
       id: userId,
       username: userData.name,
       displayName: userData.displayName,
@@ -210,6 +240,14 @@ async function getRobloxUserInfo(username) {
       statusText: statusText,
       placeId: placeId
     };
+    
+    // Store in cache
+    userCache.set(username.toLowerCase(), {
+      data: result,
+      timestamp: Date.now()
+    });
+    
+    return result;
   } catch (error) {
     console.error("getRobloxUserInfo error:", error);
     return null;
@@ -223,10 +261,12 @@ async function findUserInServers(userId, gamePlaceId) {
   
   try {
     while (attempts < 30) {
+      await rateLimitWait();
       const url = `https://games.roblox.com/v1/games/${gamePlaceId}/servers/Public?limit=100${cursor ? `&cursor=${cursor}` : ""}`;
       const response = await fetch(url);
       
       if (response.status === 429) {
+        console.log("Rate limited, waiting 2 seconds...");
         await new Promise(r => setTimeout(r, 2000));
         continue;
       }
@@ -275,7 +315,8 @@ async function findUserInServers(userId, gamePlaceId) {
 }
 
 async function performSnipe(username) {
-  const userInfo = await getRobloxUserInfo(username);
+  // Bypass cache for fresh data
+  const userInfo = await getRobloxUserInfo(username, true);
   if (!userInfo) {
     return { success: false, error: "User not found on Roblox" };
   }
@@ -395,7 +436,10 @@ client.on("interactionCreate", async (interaction) => {
     const username = interaction.options.getString("username");
     const userId = interaction.user.id;
     
-    const userInfo = await getRobloxUserInfo(username);
+    // Clear cache for this user before searching
+    userCache.delete(username.toLowerCase());
+    
+    const userInfo = await getRobloxUserInfo(username, true); // Force fresh data
     if (!userInfo) {
       const embed = new EmbedBuilder()
         .setTitle("User Not Found")
@@ -430,19 +474,38 @@ client.on("interactionCreate", async (interaction) => {
       return interaction.editReply({ content: `<@${userId}>`, embeds: [embed] });
     }
     
-    const searching = new EmbedBuilder()
+    // Animated loading squares
+    const loadingFrames = ["⬜⬜⬜⬜", "🟦⬜⬜⬜", "🟦🟦⬜⬜", "🟦🟦🟦⬜", "🟦🟦🟦🟦"];
+    let frameIndex = 0;
+    
+    const searchingEmbed = new EmbedBuilder()
       .setTitle("Searching...")
-      .setDescription(`Looking for **${userInfo.username}** in **${FAME_GAME_NAME}**\nScanning public servers...`)
-      .setColor(0xFFA500)
+      .setDescription(`Looking for **${userInfo.username}** in **${FAME_GAME_NAME}**\n\n${loadingFrames[0]}\nScanning public servers...`)
+      .setColor(0x5865F2)
       .setThumbnail(userInfo.headshot);
     
-    await interaction.editReply({ content: `<@${userId}>`, embeds: [searching] });
+    await interaction.editReply({ content: `<@${userId}>`, embeds: [searchingEmbed] });
+    
+    // Animate loading
+    const animationInterval = setInterval(async () => {
+      frameIndex = (frameIndex + 1) % loadingFrames.length;
+      const updatedEmbed = new EmbedBuilder()
+        .setTitle("Searching...")
+        .setDescription(`Looking for **${userInfo.username}** in **${FAME_GAME_NAME}**\n\n${loadingFrames[frameIndex]}\nScanning public servers...`)
+        .setColor(0x5865F2)
+        .setThumbnail(userInfo.headshot);
+      
+      await interaction.editReply({ content: `<@${userId}>`, embeds: [updatedEmbed] });
+    }, 300);
     
     const result = await findUserInServers(userInfo.id, FAME_GAME_ID);
+    clearInterval(animationInterval);
+    
     const timeElapsed = ((Date.now() - startTime) / 1000).toFixed(2);
     
     if (!result.found) {
-      const recheck = await getRobloxUserInfo(username);
+      // Recheck status in case they left
+      const recheck = await getRobloxUserInfo(username, true);
       
       if (recheck && (recheck.status === "offline" || recheck.status === "online")) {
         const embed = new EmbedBuilder()
