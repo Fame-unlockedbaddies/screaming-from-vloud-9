@@ -105,43 +105,12 @@ async function getRobloxUserInfo(username) {
     
     const headshot = avatarData.data?.[0]?.imageUrl || null;
     
-    // Get user presence
-    const presenceUrl = "https://presence.roblox.com/v1/presence/users";
-    const presenceRes = await fetch(presenceUrl, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ userIds: [userId] })
-    });
-    const presenceData = await presenceRes.json();
-    
-    let status = "offline";
-    let statusText = "Offline";
-    let placeId = null;
-    
-    if (presenceData.userPresences && presenceData.userPresences[0]) {
-      const presence = presenceData.userPresences[0];
-      if (presence.userPresenceType === 1) {
-        status = "online";
-        statusText = "Online (not in game)";
-      } else if (presence.userPresenceType === 2) {
-        status = "ingame";
-        statusText = "In Game";
-        placeId = presence.placeId;
-      } else if (presence.userPresenceType === 0) {
-        status = "offline";
-        statusText = "Offline";
-      }
-    }
-    
     return {
       id: userId,
       username: userData.name,
       displayName: userData.displayName,
       headshot: headshot,
-      created: userData.created,
-      status: status,
-      statusText: statusText,
-      placeId: placeId
+      created: userData.created
     };
   } catch (error) {
     console.error("getRobloxUserInfo error:", error);
@@ -149,7 +118,35 @@ async function getRobloxUserInfo(username) {
   }
 }
 
-// Find user in Fame servers
+// Get user's current game with auth
+async function getCurrentGame(userId) {
+  try {
+    const headers = await getAuthHeaders();
+    
+    const response = await fetch("https://presence.roblox.com/v1/presence/users", {
+      method: "POST",
+      headers: headers,
+      body: JSON.stringify({ userIds: [userId] })
+    });
+    
+    const data = await response.json();
+    
+    if (!data.userPresences || data.userPresences.length === 0) return null;
+    
+    const presence = data.userPresences[0];
+    
+    return {
+      placeId: presence.placeId,
+      gameId: presence.gameId,
+      status: presence.userPresenceType
+    };
+  } catch (error) {
+    console.error("getCurrentGame error:", error);
+    return null;
+  }
+}
+
+// Find user in game servers
 async function findUserInFameServers(userId) {
   let cursor = "";
   let serversScanned = 0;
@@ -183,7 +180,7 @@ async function findUserInFameServers(userId) {
           return {
             found: true,
             jobId: server.id,
-            players: server.playing.length,
+            players: server.playing,
             maxPlayers: server.maxPlayers,
             serversScanned: serversScanned
           };
@@ -273,41 +270,39 @@ client.on("interactionCreate", async (interaction) => {
       return interaction.editReply({ content: `<@${userId}>`, embeds: [embed] });
     }
     
-    // Check if offline
-    if (userInfo.status === "offline") {
+    // Get current game
+    const game = await getCurrentGame(userInfo.id);
+    
+    if (!game || game.status !== 2 || !game.placeId) {
       const embed = new EmbedBuilder()
-        .setTitle("Snipe Failed")
-        .setDescription(`**${userInfo.username}** is currently Offline`)
+        .setTitle("Cannot Snipe")
+        .setDescription(`${userInfo.username} is not in a public game or has privacy settings enabled.`)
         .addFields(
-          { name: "Status", value: "Offline", inline: true },
-          { name: "Tip", value: "Try again when they come online!", inline: true }
+          { name: "Status", value: game?.status === 2 ? "In Game (Private/VIP Server)" : "Not in game", inline: true },
+          { name: "Note", value: "Private servers cannot be sniped - this is a Roblox limitation.", inline: false }
         )
         .setColor(0xFF0000)
         .setThumbnail(userInfo.headshot);
       return interaction.editReply({ content: `<@${userId}>`, embeds: [embed] });
     }
     
-    // Check if online but not in game
-    if (userInfo.status === "online") {
+    // Check if they're in Fame
+    if (game.placeId.toString() !== FAME_GAME_ID) {
+      let gameName = "Unknown Game";
+      try {
+        const gameRes = await fetch(`https://games.roblox.com/v1/games?universeIds=${game.placeId}`);
+        const gameData = await gameRes.json();
+        if (gameData.data && gameData.data[0]) {
+          gameName = gameData.data[0].name;
+        }
+      } catch (e) {}
+      
       const embed = new EmbedBuilder()
         .setTitle("Snipe Failed")
-        .setDescription(`**${userInfo.username}** is online but not in a game`)
+        .setDescription(`**${userInfo.username}** is in a different game`)
         .addFields(
-          { name: "Status", value: "Online", inline: true },
-          { name: "Tip", value: "Wait for them to join a game!", inline: true }
-        )
-        .setColor(0xFFA500)
-        .setThumbnail(userInfo.headshot);
-      return interaction.editReply({ content: `<@${userId}>`, embeds: [embed] });
-    }
-    
-    // Check if they're in a different game
-    if (userInfo.placeId && userInfo.placeId.toString() !== FAME_GAME_ID) {
-      const embed = new EmbedBuilder()
-        .setTitle("Snipe Failed")
-        .setDescription(`**${userInfo.username}** is in a different game (not ${FAME_GAME_NAME})`)
-        .addFields(
-          { name: "Tip", value: `They need to be in ${FAME_GAME_NAME} to snipe!`, inline: false }
+          { name: "Current Game", value: gameName, inline: true },
+          { name: "Target Game", value: FAME_GAME_NAME, inline: true }
         )
         .setColor(0xFFA500)
         .setThumbnail(userInfo.headshot);
@@ -328,23 +323,6 @@ client.on("interactionCreate", async (interaction) => {
     const timeElapsed = ((Date.now() - startTime) / 1000).toFixed(2);
     
     if (!result.found) {
-      // Recheck status to see if they left
-      const recheck = await getRobloxUserInfo(username);
-      
-      if (recheck && (recheck.status === "offline" || recheck.status === "online")) {
-        const embed = new EmbedBuilder()
-          .setTitle("Snipe Failed")
-          .setDescription(`**${userInfo.username}** left the game during the search`)
-          .addFields(
-            { name: "Servers Scanned", value: `${result.serversScanned} servers`, inline: true },
-            { name: "Time", value: `${timeElapsed} seconds`, inline: true },
-            { name: "Status Now", value: recheck.status === "offline" ? "Offline" : "Online", inline: true }
-          )
-          .setColor(0xFF0000)
-          .setThumbnail(userInfo.headshot);
-        return interaction.editReply({ content: `<@${userId}>`, embeds: [embed] });
-      }
-      
       const embed = new EmbedBuilder()
         .setTitle("Snipe Failed")
         .setDescription(`Could not locate **${userInfo.username}** in **${FAME_GAME_NAME}**`)
@@ -358,7 +336,7 @@ client.on("interactionCreate", async (interaction) => {
       return interaction.editReply({ content: `<@${userId}>`, embeds: [embed] });
     }
     
-    // SUCCESS - EXACT OUTPUT YOU WANT!
+    // SUCCESS! - This produces the exact output you want
     const joinLink = `https://www.roblox.com/games/${FAME_GAME_ID}?jobId=${result.jobId}`;
     
     const embed = new EmbedBuilder()
