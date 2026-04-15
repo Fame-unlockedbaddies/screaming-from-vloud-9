@@ -29,9 +29,9 @@ if (!TOKEN || !CLIENT_ID) {
 const FAME_GAME_ID = "121157515767845";
 const FAME_GAME_NAME = "Fame";
 
-// Simple cache with TTL
+// Cache with shorter TTL for presence
 const userCache = new Map();
-const CACHE_TTL = 5000; // 5 seconds cache
+const CACHE_TTL = 2000; // 2 seconds cache for presence
 
 // ============ EXPRESS API SERVER ============
 const app = express();
@@ -122,7 +122,7 @@ app.listen(PORT, () => {
 let csrfToken = null;
 let tokenExpiry = null;
 let lastRequestTime = 0;
-const MIN_REQUEST_INTERVAL = 100; // 100ms between requests
+const MIN_REQUEST_INTERVAL = 100;
 
 async function rateLimitWait() {
   const now = Date.now();
@@ -169,6 +169,71 @@ async function getAuthHeaders() {
   };
 }
 
+// FIXED: Better presence detection with retries
+async function getUserPresence(userId, retries = 3) {
+  for (let i = 0; i < retries; i++) {
+    try {
+      await rateLimitWait();
+      const presenceUrl = "https://presence.roblox.com/v1/presence/users";
+      const presenceRes = await fetch(presenceUrl, {
+        method: "POST",
+        headers: { 
+          "Content-Type": "application/json",
+          "Cookie": `.ROBLOSECURITY=${ROBLOX_COOKIE}`
+        },
+        body: JSON.stringify({ userIds: [userId] })
+      });
+      
+      const presenceData = await presenceRes.json();
+      
+      if (presenceData.userPresences && presenceData.userPresences[0]) {
+        const presence = presenceData.userPresences[0];
+        
+        // Log raw data for debugging
+        console.log(`Raw presence data for ${userId}:`, {
+          userPresenceType: presence.userPresenceType,
+          placeId: presence.placeId,
+          lastLocation: presence.lastLocation
+        });
+        
+        // userPresenceType: 0 = Offline, 1 = Online, 2 = InGame, 3 = InStudio
+        if (presence.userPresenceType === 2) {
+          return {
+            status: "ingame",
+            statusText: "In Game",
+            placeId: presence.placeId,
+            gameId: presence.gameId
+          };
+        } else if (presence.userPresenceType === 1) {
+          return {
+            status: "online",
+            statusText: "Online (not in game)",
+            placeId: null
+          };
+        } else if (presence.userPresenceType === 3) {
+          return {
+            status: "online",
+            statusText: "In Roblox Studio",
+            placeId: null
+          };
+        } else {
+          return {
+            status: "offline",
+            statusText: "Offline",
+            placeId: null
+          };
+        }
+      }
+    } catch (error) {
+      console.error(`Presence attempt ${i + 1} failed:`, error);
+      if (i < retries - 1) {
+        await new Promise(r => setTimeout(r, 500));
+      }
+    }
+  }
+  return { status: "offline", statusText: "Offline", placeId: null };
+}
+
 async function getRobloxUserInfo(username, bypassCache = false) {
   // Check cache first
   if (!bypassCache && userCache.has(username.toLowerCase())) {
@@ -202,33 +267,8 @@ async function getRobloxUserInfo(username, bypassCache = false) {
     const avatarRes = await fetch(avatarUrl);
     const avatarData = await avatarRes.json();
     
-    await rateLimitWait();
-    const presenceUrl = "https://presence.roblox.com/v1/presence/users";
-    const presenceRes = await fetch(presenceUrl, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ userIds: [userId] })
-    });
-    const presenceData = await presenceRes.json();
-    
-    let status = "offline";
-    let statusText = "Offline";
-    let placeId = null;
-    
-    if (presenceData.userPresences && presenceData.userPresences[0]) {
-      const presence = presenceData.userPresences[0];
-      if (presence.userPresenceType === 1) {
-        status = "online";
-        statusText = "Online (not in game)";
-      } else if (presence.userPresenceType === 2) {
-        status = "ingame";
-        statusText = "In Game";
-        placeId = presence.placeId;
-      } else if (presence.userPresenceType === 0) {
-        status = "offline";
-        statusText = "Offline";
-      }
-    }
+    // Get presence with retries
+    const presence = await getUserPresence(userId);
     
     const result = {
       id: userId,
@@ -236,9 +276,9 @@ async function getRobloxUserInfo(username, bypassCache = false) {
       displayName: userData.displayName,
       headshot: avatarData.data?.[0]?.imageUrl,
       created: userData.created,
-      status: status,
-      statusText: statusText,
-      placeId: placeId
+      status: presence.status,
+      statusText: presence.statusText,
+      placeId: presence.placeId
     };
     
     // Store in cache
@@ -315,7 +355,6 @@ async function findUserInServers(userId, gamePlaceId) {
 }
 
 async function performSnipe(username) {
-  // Bypass cache for fresh data
   const userInfo = await getRobloxUserInfo(username, true);
   if (!userInfo) {
     return { success: false, error: "User not found on Roblox" };
@@ -436,10 +475,10 @@ client.on("interactionCreate", async (interaction) => {
     const username = interaction.options.getString("username");
     const userId = interaction.user.id;
     
-    // Clear cache for this user before searching
+    // Clear cache for fresh data
     userCache.delete(username.toLowerCase());
     
-    const userInfo = await getRobloxUserInfo(username, true); // Force fresh data
+    const userInfo = await getRobloxUserInfo(username, true);
     if (!userInfo) {
       const embed = new EmbedBuilder()
         .setTitle("User Not Found")
@@ -447,6 +486,9 @@ client.on("interactionCreate", async (interaction) => {
         .setColor(0xFF0000);
       return interaction.editReply({ content: `<@${userId}>`, embeds: [embed] });
     }
+    
+    // Log status for debugging
+    console.log(`User status for ${username}: ${userInfo.status} - ${userInfo.statusText}`);
     
     if (userInfo.status === "offline") {
       const embed = new EmbedBuilder()
@@ -474,7 +516,7 @@ client.on("interactionCreate", async (interaction) => {
       return interaction.editReply({ content: `<@${userId}>`, embeds: [embed] });
     }
     
-    // Animated loading squares
+    // User is in game, proceed with search
     const loadingFrames = ["⬜⬜⬜⬜", "🟦⬜⬜⬜", "🟦🟦⬜⬜", "🟦🟦🟦⬜", "🟦🟦🟦🟦"];
     let frameIndex = 0;
     
@@ -486,7 +528,6 @@ client.on("interactionCreate", async (interaction) => {
     
     await interaction.editReply({ content: `<@${userId}>`, embeds: [searchingEmbed] });
     
-    // Animate loading
     const animationInterval = setInterval(async () => {
       frameIndex = (frameIndex + 1) % loadingFrames.length;
       const updatedEmbed = new EmbedBuilder()
@@ -504,7 +545,6 @@ client.on("interactionCreate", async (interaction) => {
     const timeElapsed = ((Date.now() - startTime) / 1000).toFixed(2);
     
     if (!result.found) {
-      // Recheck status in case they left
       const recheck = await getRobloxUserInfo(username, true);
       
       if (recheck && (recheck.status === "offline" || recheck.status === "online")) {
