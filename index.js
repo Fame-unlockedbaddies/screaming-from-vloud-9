@@ -6,309 +6,215 @@ const {
   Routes,
   SlashCommandBuilder,
   EmbedBuilder,
-  ApplicationIntegrationType,
-  InteractionContextType,
-  Partials,
   ActionRowBuilder,
   ButtonBuilder,
-  ButtonStyle
+  ButtonStyle,
+  Partials
 } = require("discord.js");
 
-/* ---------------- ENV ---------------- */
 const TOKEN = process.env.TOKEN;
 const CLIENT_ID = process.env.CLIENT_ID;
 const PORT = process.env.PORT || 3000;
 
 if (!TOKEN || !CLIENT_ID) {
-  console.error("❌ Missing TOKEN or CLIENT_ID");
+  console.error("Missing TOKEN or CLIENT_ID");
   process.exit(1);
 }
 
-/* ---------------- KEEP ALIVE SERVER (REQUIRED FOR RENDER) ---------------- */
+// Keep alive server for Render
 http.createServer((req, res) => {
   res.writeHead(200, { "Content-Type": "text/plain" });
-  res.end("Bot is running");
+  res.end("Bot is alive");
 }).listen(PORT, () => {
-  console.log("🌐 Listening on port", PORT);
+  console.log(`Server running on port ${PORT}`);
 });
 
-/* ---------------- DISCORD CLIENT ---------------- */
 const client = new Client({
   intents: [GatewayIntentBits.Guilds],
-  partials: [Partials.Channel],
+  partials: [Partials.Channel]
 });
 
-/* ---------------- HELPER: GET USER ID FROM USERNAME ---------------- */
-async function getUserId(username) {
-  try {
-    const response = await fetch(`https://users.roblox.com/v1/users/search?keyword=${encodeURIComponent(username)}&limit=1`);
-    const data = await response.json();
-    
-    if (!data.data || data.data.length === 0) return null;
-    
-    // Check for exact match
-    const exactMatch = data.data.find(user => user.name.toLowerCase() === username.toLowerCase());
-    if (exactMatch) return exactMatch.id;
-    
-    return data.data[0]?.id || null;
-  } catch (error) {
-    console.error("Error fetching user ID:", error);
-    return null;
-  }
-}
-
-/* ---------------- HELPER: GET USER PRESENCE (CURRENT GAME) ---------------- */
-async function getUserPresence(userId) {
-  try {
-    const response = await fetch("https://presence.roblox.com/v1/presence/users", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ userIds: [userId] })
-    });
-    const data = await response.json();
-    
-    if (!data.userPresences || data.userPresences.length === 0) return null;
-    
-    const presence = data.userPresences[0];
-    return {
-      placeId: presence.placeId,
-      gameName: presence.gameId ? "Game" : "Not in game",
-      lastLocation: presence.lastLocation,
-      userPresenceType: presence.userPresenceType
-    };
-  } catch (error) {
-    console.error("Error fetching presence:", error);
-    return null;
-  }
-}
-
-/* ---------------- HELPER: GET GAME NAME FROM PLACE ID ---------------- */
-async function getGameName(placeId) {
-  if (!placeId) return "Unknown Game";
+// Convert username to user ID
+async function usernameToId(username) {
+  const url = `https://users.roblox.com/v1/users/search?keyword=${encodeURIComponent(username)}&limit=10`;
+  const res = await fetch(url);
+  const data = await res.json();
   
-  try {
-    const response = await fetch(`https://games.roblox.com/v1/games?universeIds=${placeId}`);
-    const data = await response.json();
-    
-    if (data.data && data.data[0] && data.data[0].name) {
-      return data.data[0].name;
-    }
-    return "Unknown Game";
-  } catch (error) {
-    return "Unknown Game";
-  }
+  if (!data.data) return null;
+  
+  const match = data.data.find(u => u.name.toLowerCase() === username.toLowerCase());
+  return match ? match.id : data.data[0]?.id || null;
 }
 
-/* ---------------- HELPER: FIND USER IN SERVERS (THE "SNIPE" LOGIC) ---------------- */
-async function findUserInServers(userId, placeId, username) {
+// Get user's current game
+async function getCurrentGame(userId) {
+  const res = await fetch("https://presence.roblox.com/v1/presence/users", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ userIds: [userId] })
+  });
+  const data = await res.json();
+  
+  if (!data.userPresences || data.userPresences.length === 0) return null;
+  
+  const presence = data.userPresences[0];
+  return {
+    placeId: presence.placeId,
+    gameId: presence.gameId,
+    status: presence.userPresenceType
+  };
+}
+
+// Find user in game servers
+async function findUserServer(userId, placeId) {
   let cursor = "";
   let attempts = 0;
-  const maxServersToScan = 500; // Limit to avoid rate limits
-  let serversScanned = 0;
   
-  try {
-    while (attempts < 20 && serversScanned < maxServersToScan) { // Max 20 pages
-      const url = `https://games.roblox.com/v1/games/${placeId}/servers/Public?limit=100${cursor ? `&cursor=${cursor}` : ""}`;
-      const response = await fetch(url);
-      
-      if (response.status === 429) {
-        // Rate limited - wait 2 seconds
-        await new Promise(resolve => setTimeout(resolve, 2000));
-        continue;
-      }
-      
-      const data = await response.json();
-      
-      if (!data.data || data.data.length === 0) break;
-      
-      for (const server of data.data) {
-        serversScanned++;
-        
-        // Check if user is in this server
-        if (server.playing && server.playing.includes(userId)) {
-          return {
-            found: true,
-            jobId: server.id,
-            players: server.playing.length,
-            maxPlayers: server.maxPlayers,
-            serverName: server.name || "Public Server"
-          };
-        }
-        
-        if (serversScanned >= maxServersToScan) break;
-      }
-      
-      cursor = data.nextPageCursor || "";
-      attempts++;
-      
-      // Add small delay between requests
-      await new Promise(resolve => setTimeout(resolve, 100));
+  while (attempts < 15) {
+    const url = `https://games.roblox.com/v1/games/${placeId}/servers/Public?limit=100${cursor ? `&cursor=${cursor}` : ""}`;
+    const res = await fetch(url);
+    
+    if (res.status === 429) {
+      await new Promise(r => setTimeout(r, 2000));
+      continue;
     }
     
-    return { found: false, serversScanned };
-  } catch (error) {
-    console.error("Error scanning servers:", error);
-    return { found: false, error: true };
+    const data = await res.json();
+    if (!data.data) break;
+    
+    for (const server of data.data) {
+      if (server.playing && server.playing.includes(userId.toString())) {
+        return {
+          jobId: server.id,
+          players: server.playing.length,
+          maxPlayers: server.maxPlayers
+        };
+      }
+    }
+    
+    cursor = data.nextPageCursor || "";
+    if (!cursor) break;
+    attempts++;
+    await new Promise(r => setTimeout(r, 150));
   }
+  
+  return null;
 }
 
-/* ---------------- REGISTER SLASH COMMANDS ---------------- */
+// Register slash commands
 async function registerCommands() {
   const commands = [
     new SlashCommandBuilder()
       .setName("snipe")
-      .setDescription("Find and join a specific Roblox player's game server")
-      .addStringOption(option =>
-        option.setName("username")
-          .setDescription("Roblox username to find")
+      .setDescription("Find a Roblox player and join their game")
+      .addStringOption(opt => 
+        opt.setName("username")
+          .setDescription("Roblox username")
           .setRequired(true)
       )
-      .addStringOption(option =>
-        option.setName("gameid")
-          .setDescription("Optional: Specific game ID to search in (overrides current game)")
-          .setRequired(false)
-      )
-      .setIntegrationTypes([
-        ApplicationIntegrationType.GuildInstall,
-        ApplicationIntegrationType.UserInstall
-      ])
-      .setContexts([
-        InteractionContextType.Guild,
-        InteractionContextType.BotDM,
-        InteractionContextType.PrivateChannel
-      ])
       .toJSON()
   ];
 
   const rest = new REST({ version: "10" }).setToken(TOKEN);
-
+  
   try {
-    console.log("🔄 Registering slash commands...");
     await rest.put(Routes.applicationCommands(CLIENT_ID), { body: commands });
-    console.log("✅ Slash commands registered");
+    console.log("Commands registered!");
   } catch (err) {
-    console.error("❌ Command registration failed:", err);
+    console.error("Failed to register commands:", err);
   }
 }
 
-/* ---------------- READY ---------------- */
 client.once("ready", async () => {
-  console.log(`🤖 Logged in as ${client.user.tag}`);
+  console.log(`Logged in as ${client.user.tag}`);
   await registerCommands();
 });
 
-/* ---------------- COMMAND HANDLER ---------------- */
 client.on("interactionCreate", async (interaction) => {
   if (!interaction.isChatInputCommand()) return;
+  if (interaction.commandName !== "snipe") return;
 
-  if (interaction.commandName === "snipe") {
-    // Defer reply immediately (scanning can take time)
-    await interaction.deferReply();
-    
-    const username = interaction.options.getString("username");
-    const customGameId = interaction.options.getString("gameid");
-    
-    // Step 1: Get User ID from username
-    const userId = await getUserId(username);
-    if (!userId) {
-      const embed = new EmbedBuilder()
-        .setTitle("❌ User Not Found")
-        .setDescription(`Could not find Roblox user: **${username}**`)
-        .setColor(0xff3333);
-      return interaction.editReply({ embeds: [embed] });
-    }
-    
-    // Step 2: Get user's current presence
-    let presence = null;
-    if (!customGameId) {
-      presence = await getUserPresence(userId);
-      
-      if (!presence || presence.userPresenceType !== 2) {
-        const embed = new EmbedBuilder()
-          .setTitle("❌ User Not In Game")
-          .setDescription(`**${username}** is currently not playing any game on Roblox.`)
-          .addFields(
-            { name: "Status", value: presence?.userPresenceType === 1 ? "Online" : "Offline", inline: true }
-          )
-          .setColor(0xff3333);
-        return interaction.editReply({ embeds: [embed] });
-      }
-      
-      if (!presence.placeId) {
-        const embed = new EmbedBuilder()
-          .setTitle("❌ Cannot Detect Game")
-          .setDescription(`**${username}** is online but their current game cannot be detected.`)
-          .setColor(0xff3333);
-        return interaction.editReply({ embeds: [embed] });
-      }
-    }
-    
-    const placeId = customGameId || presence.placeId;
-    const gameName = customGameId ? "Custom Game ID" : await getGameName(placeId);
-    
-    // Send searching embed
-    const searchingEmbed = new EmbedBuilder()
-      .setTitle("🔍 Searching For Player")
-      .setDescription(`Looking for **${username}** in ${gameName}...\nThis may take up to 30 seconds.`)
-      .setColor(0xffaa00);
-    
-    await interaction.editReply({ embeds: [searchingEmbed] });
-    
-    // Step 3: Search through servers
-    const result = await findUserInServers(userId, placeId, username);
-    
-    if (result.found) {
-      const joinLink = `roblox://placeId=${placeId}&jobId=${result.jobId}`;
-      const webJoinLink = `https://www.roblox.com/games/${placeId}?jobId=${result.jobId}`;
-      
-      const embed = new EmbedBuilder()
-        .setTitle("🎯 Player Found!")
-        .setDescription(`Successfully found **${username}** in **${gameName}**`)
-        .addFields(
-          { name: "Server Status", value: `${result.players}/${result.maxPlayers} players`, inline: true },
-          { name: "Server Type", value: result.serverName, inline: true },
-          { name: "Search Results", value: `Scanned ${result.serversScanned || "?"} servers`, inline: true }
-        )
-        .setColor(0x00ff99)
-        .setFooter({ text: "Click the button below to join! (Requires Roblox installed)" });
-      
-      const row = new ActionRowBuilder()
-        .addComponents(
-          new ButtonBuilder()
-            .setLabel("Join on PC (Roblox App)")
-            .setURL(joinLink)
-            .setStyle(ButtonStyle.Link),
-          new ButtonBuilder()
-            .setLabel("Join in Browser")
-            .setURL(webJoinLink)
-            .setStyle(ButtonStyle.Link)
-        );
-      
-      return interaction.editReply({ embeds: [embed], components: [row] });
-    } else {
-      const embed = new EmbedBuilder()
-        .setTitle("❌ Player Not Found")
-        .setDescription(`Could not find **${username}** in ${gameName}`)
-        .addFields(
-          { name: "Possible Reasons", value: 
-            "• User is in a private/VIP server\n" +
-            "• User left the game during search\n" +
-            "• Game has too many servers (rate limited)\n" +
-            "• User is in a different region-locked server"
-          },
-          { name: "Servers Scanned", value: `${result.serversScanned || 0} public servers`, inline: true }
-        )
-        .setColor(0xff3333);
-      
-      return interaction.editReply({ embeds: [embed] });
-    }
+  const startTime = Date.now();
+  await interaction.deferReply();
+  
+  const username = interaction.options.getString("username");
+  
+  // Step 1: Get user ID
+  const userId = await usernameToId(username);
+  if (!userId) {
+    const embed = new EmbedBuilder()
+      .setTitle("❌ User Not Found")
+      .setDescription(`Could not find "${username}" on Roblox`)
+      .setColor(0xFF0000);
+    return interaction.editReply({ embeds: [embed] });
   }
+  
+  // Step 2: Get current game
+  const game = await getCurrentGame(userId);
+  if (!game || game.status !== 2 || !game.placeId) {
+    const embed = new EmbedBuilder()
+      .setTitle("❌ User Not In Game")
+      .setDescription(`${username} is not currently playing any game`)
+      .setColor(0xFF0000);
+    return interaction.editReply({ embeds: [embed] });
+  }
+  
+  // Step 3: Get game name
+  let gameName = "Unknown Game";
+  try {
+    const gameRes = await fetch(`https://games.roblox.com/v1/games?universeIds=${game.placeId}`);
+    const gameData = await gameRes.json();
+    if (gameData.data && gameData.data[0]) {
+      gameName = gameData.data[0].name;
+    }
+  } catch (e) {}
+  
+  // Step 4: Send searching message
+  const searching = new EmbedBuilder()
+    .setTitle("🔍 Searching...")
+    .setDescription(`Looking for ${username} in ${gameName}...`)
+    .setColor(0xFFA500);
+  
+  await interaction.editReply({ embeds: [searching] });
+  
+  // Step 5: Find their server
+  const server = await findUserServer(userId, game.placeId);
+  const timeElapsed = ((Date.now() - startTime) / 1000).toFixed(2);
+  
+  if (!server) {
+    const embed = new EmbedBuilder()
+      .setTitle("❌ Could Not Find Player")
+      .setDescription(`${username} might be in a private server or left the game`)
+      .setColor(0xFF0000);
+    return interaction.editReply({ embeds: [embed] });
+  }
+  
+  // Step 6: Success! Create join buttons (NO "via Bloxiana")
+  const joinLink = `roblox://placeId=${game.placeId}&jobId=${server.jobId}`;
+  const browserLink = `https://www.roblox.com/games/${game.placeId}?jobId=${server.jobId}`;
+  
+  const embed = new EmbedBuilder()
+    .setTitle("✅ Player Found!")
+    .setDescription(`Search completed! The player was found using their public join data.`)
+    .addFields(
+      { name: "Game", value: `${gameName} [${game.placeId}]`, inline: false },
+      { name: "Sniped in", value: `${timeElapsed} seconds • ${new Date().toLocaleTimeString()}`, inline: false }
+    )
+    .setColor(0x00FF00);
+  
+  const row = new ActionRowBuilder()
+    .addComponents(
+      new ButtonBuilder()
+        .setLabel("Join Game")
+        .setURL(joinLink)
+        .setStyle(ButtonStyle.Link),
+      new ButtonBuilder()
+        .setLabel("Join via Browser")
+        .setURL(browserLink)
+        .setStyle(ButtonStyle.Link)
+    );
+  
+  await interaction.editReply({ embeds: [embed], components: [row] });
 });
 
-/* ---------------- ERROR HANDLING ---------------- */
-process.on("unhandledRejection", (error) => {
-  console.error("Unhandled promise rejection:", error);
-});
-
-/* ---------------- LOGIN ---------------- */
 client.login(TOKEN);
