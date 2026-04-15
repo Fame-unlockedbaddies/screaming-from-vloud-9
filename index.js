@@ -20,9 +20,12 @@ const CLIENT_ID = process.env.CLIENT_ID;
 const ROBLOX_COOKIE = process.env.ROBLOX_COOKIE;
 const PORT = process.env.PORT || 3000;
 
-// Role configuration - REPLACE WITH YOUR ACTUAL ROLE ID
+// Role configuration
 const FOUNDER_ROLE_ID = "1482560426972549232"; // Replace with your actual Founder role ID
-const FOUNDER_ROLE_MENTION = `<@&${FOUNDER_ROLE_ID}>`;
+const FOUNDER_ROLE_MENTION = `<@&${1482560426972549232}>`;
+
+// Store users who accepted terms
+const acceptedUsers = new Map();
 
 if (!TOKEN || !CLIENT_ID) {
   console.error("Missing TOKEN or CLIENT_ID");
@@ -53,7 +56,6 @@ async function logToWebhook(title, description, type = "INFO", fields = [], thum
       case "SUCCESS": color = 0x00FF00; break;
       case "ERROR": color = 0xFF0000; if (pingFounder) founderPing = `${FOUNDER_ROLE_MENTION} `; break;
       case "WARNING": color = 0xFFA500; break;
-      case "DEPLOY": color = 0x9B59B6; if (pingFounder) founderPing = `${FOUNDER_ROLE_MENTION} `; break;
       default: color = 0x2B2D31;
     }
     
@@ -170,7 +172,7 @@ async function getGameName(placeId) {
   }
 }
 
-// WORKING PUBLIC API METHOD - Scans servers and finds user
+// Find user using public API
 async function findUserWithPublicAPI(userId) {
   let cursor = "";
   let serversScanned = 0;
@@ -179,7 +181,6 @@ async function findUserWithPublicAPI(userId) {
   console.log(`[PUBLIC API] Scanning for user ${userIdStr}`);
   
   try {
-    // Scan up to 30 pages (3000 servers)
     for (let attempt = 0; attempt < 30; attempt++) {
       await rateLimit();
       const url = `https://games.roblox.com/v1/games/${FAME_GAME_ID}/servers/Public?limit=100${cursor ? `&cursor=${cursor}` : ""}`;
@@ -197,7 +198,6 @@ async function findUserWithPublicAPI(userId) {
       for (const server of data.data) {
         serversScanned++;
         
-        // Check if user is in this server
         if (server.playing && Array.isArray(server.playing)) {
           if (server.playing.map(p => p.toString()).includes(userIdStr)) {
             console.log(`[PUBLIC API] FOUND after ${serversScanned} servers`);
@@ -226,6 +226,61 @@ async function findUserWithPublicAPI(userId) {
   }
 }
 
+// Show Terms of Use with Accept/Decline buttons
+async function showTermsOfUse(interaction) {
+  const termsEmbed = new EmbedBuilder()
+    .setTitle("📜 TERMS OF USE")
+    .setDescription("**Please read and accept the terms before using this bot.**")
+    .addFields(
+      { 
+        name: "🎮 Game Limitation", 
+        value: "This bot can ONLY snipe players in **Fame**. It will not work for any other game.", 
+        inline: false 
+      },
+      { 
+        name: "👥 Community", 
+        value: "This bot was designed specifically for **Fame's community**. Use responsibly.", 
+        inline: false 
+      },
+      { 
+        name: "🔒 Privacy", 
+        value: "This bot only accesses public Roblox data (presence and server info). No private data is collected.", 
+        inline: false 
+      },
+      { 
+        name: "⚠️ Limitations", 
+        value: "• Cannot snipe users in private/VIP servers\n• May fail if game has too many servers\n• Subject to Roblox API rate limits", 
+        inline: false 
+      },
+      { 
+        name: "🚫 Prohibited Uses", 
+        value: "• Harassment or targeted stalking\n• Using for malicious purposes\n• Spamming the bot", 
+        inline: false 
+      },
+      { 
+        name: "📋 Agreement", 
+        value: "By accepting, you agree to use this bot responsibly and only for finding friends in Fame.", 
+        inline: false 
+      }
+    )
+    .setColor(0x5865F2)
+    .setFooter({ text: "Fame Sniper Bot • Terms of Use" });
+  
+  const row = new ActionRowBuilder()
+    .addComponents(
+      new ButtonBuilder()
+        .setCustomId("accept_terms")
+        .setLabel("✅ Accept")
+        .setStyle(ButtonStyle.Success),
+      new ButtonBuilder()
+        .setCustomId("decline_terms")
+        .setLabel("❌ Decline")
+        .setStyle(ButtonStyle.Danger)
+    );
+  
+  await interaction.reply({ embeds: [termsEmbed], components: [row], ephemeral: true });
+}
+
 // Register snipe command
 async function registerCommands() {
   const commands = [
@@ -251,11 +306,72 @@ client.once("ready", async () => {
   console.log(`Logged in as ${client.user.tag}`);
   console.log(`Sniping game: ${FAME_GAME_NAME}`);
   await registerCommands();
+  
+  await logToWebhook(
+    "Bot Online",
+    `Fame Sniper Bot is now operational. Terms of use require acceptance before using /snipe.`,
+    "SUCCESS",
+    [
+      { name: "Game", value: FAME_GAME_NAME, inline: true },
+      { name: "Command", value: "/snipe", inline: true }
+    ]
+  );
 });
 
+// Handle button interactions for Terms of Use
+client.on("interactionCreate", async (interaction) => {
+  if (!interaction.isButton()) return;
+  
+  if (interaction.customId === "accept_terms") {
+    acceptedUsers.set(interaction.user.id, Date.now());
+    
+    const confirmEmbed = new EmbedBuilder()
+      .setTitle("✅ Terms Accepted")
+      .setDescription("You have accepted the Terms of Use. You can now use `/snipe` to find players in Fame.\n\n**Remember:** This bot only works for the game **Fame** and was designed for Fame's community.")
+      .setColor(0x00FF00);
+    
+    await interaction.update({ embeds: [confirmEmbed], components: [] });
+    
+    await logToWebhook(
+      "Terms Accepted",
+      `${interaction.user.tag} accepted the Terms of Use`,
+      "SUCCESS",
+      [
+        { name: "User", value: interaction.user.tag, inline: true },
+        { name: "User ID", value: interaction.user.id, inline: true }
+      ]
+    );
+    
+  } else if (interaction.customId === "decline_terms") {
+    const declineEmbed = new EmbedBuilder()
+      .setTitle("❌ Terms Declined")
+      .setDescription("You have declined the Terms of Use. You cannot use `/snipe` at this time.\n\nIf you change your mind, run `/snipe` again to review the terms.")
+      .setColor(0xFF0000);
+    
+    await interaction.update({ embeds: [declineEmbed], components: [] });
+    
+    await logToWebhook(
+      "Terms Declined",
+      `${interaction.user.tag} declined the Terms of Use`,
+      "WARNING",
+      [
+        { name: "User", value: interaction.user.tag, inline: true },
+        { name: "User ID", value: interaction.user.id, inline: true }
+      ]
+    );
+  }
+});
+
+// Main command handler
 client.on("interactionCreate", async (interaction) => {
   if (!interaction.isChatInputCommand()) return;
   if (interaction.commandName !== "snipe") return;
+
+  // Check if user accepted terms
+  if (!acceptedUsers.has(interaction.user.id)) {
+    await showTermsOfUse(interaction);
+    return;
+  }
 
   const startTime = Date.now();
   let hasReplied = false;
@@ -267,7 +383,7 @@ client.on("interactionCreate", async (interaction) => {
     const username = interaction.options.getString("username");
     const discordUserId = interaction.user.id;
     
-    console.log(`[SNIPE] Request for user: ${username}`);
+    console.log(`[SNIPE] Request for user: ${username} by ${interaction.user.tag}`);
     
     // Step 1: Get user ID
     const userData = await getUserId(username);
@@ -318,7 +434,8 @@ client.on("interactionCreate", async (interaction) => {
         .setDescription(`**${actualUsername}** is playing **${gameName}**, not ${FAME_GAME_NAME}`)
         .addFields(
           { name: "Current Game", value: gameName, inline: true },
-          { name: "Target Game", value: FAME_GAME_NAME, inline: true }
+          { name: "Target Game", value: FAME_GAME_NAME, inline: true },
+          { name: "Note", value: "This bot only works for Fame!", inline: false }
         )
         .setColor(0x2B2D31)
         .setThumbnail(avatar);
@@ -331,13 +448,13 @@ client.on("interactionCreate", async (interaction) => {
     // Searching embed
     const searching = new EmbedBuilder()
       .setTitle("Searching for player")
-      .setDescription(`Target: **${actualUsername}**\nGame: **${FAME_GAME_NAME}**\nStatus: Scanning public servers...`)
+      .setDescription(`Target: **${actualUsername}**\nGame: **${FAME_GAME_NAME}**\nStatus: Scanning public servers...\n\n*This bot was designed for Fame's community*`)
       .setColor(0x2B2D31)
       .setThumbnail(avatar);
     
     await interaction.editReply({ content: `<@${discordUserId}>`, embeds: [searching] });
     
-    // Step 3: Find user using PUBLIC API METHOD (works!)
+    // Step 3: Find user
     const result = await findUserWithPublicAPI(userId);
     const elapsed = ((Date.now() - startTime) / 1000).toFixed(2);
     
@@ -348,7 +465,8 @@ client.on("interactionCreate", async (interaction) => {
         .addFields(
           { name: "Servers Scanned", value: `${result.scanned}`, inline: true },
           { name: "Time", value: `${elapsed} seconds`, inline: true },
-          { name: "Reason", value: "User may be in a private/VIP server", inline: false }
+          { name: "Reason", value: "User may be in a private/VIP server", inline: false },
+          { name: "Note", value: "This bot only works for public servers in Fame", inline: false }
         )
         .setColor(0x2B2D31)
         .setThumbnail(avatar);
@@ -365,11 +483,13 @@ client.on("interactionCreate", async (interaction) => {
       .addFields(
         { name: "Server Status", value: `${result.players}/${result.maxPlayers} players`, inline: false },
         { name: "Search Time", value: `${elapsed} seconds`, inline: true },
-        { name: "Method", value: "public_api", inline: true }
+        { name: "Method", value: "public_api", inline: true },
+        { name: "Community", value: "Designed for Fame's community", inline: true }
       )
       .setColor(0x2B2D31)
       .setThumbnail(avatar)
-      .setImage(avatar);
+      .setImage(avatar)
+      .setFooter({ text: "Fame Sniper Bot • Use responsibly" });
     
     const row = new ActionRowBuilder()
       .addComponents(
@@ -388,8 +508,7 @@ client.on("interactionCreate", async (interaction) => {
       [
         { name: "Target", value: actualUsername, inline: true },
         { name: "Server", value: `${result.players}/${result.maxPlayers}`, inline: true },
-        { name: "Time", value: `${elapsed}s`, inline: true },
-        { name: "Method", value: "public_api", inline: true }
+        { name: "Time", value: `${elapsed}s`, inline: true }
       ],
       avatar
     );
