@@ -27,6 +27,10 @@ if (!TOKEN || !CLIENT_ID) {
 const FAME_GAME_ID = "121157515767845";
 const FAME_GAME_NAME = "Fame";
 
+// Your custom emoji - replace "emoji_name" with the actual name of your emoji
+// Example: if your emoji is named "server_search", use <:server_search:1493913869112967208>
+const SEARCH_EMOJI = "<:emoji_name:1493913869112967208>"; // CHANGE "emoji_name" to your emoji's name!
+
 // Keep alive server for Render
 http.createServer((req, res) => {
   res.writeHead(200, { "Content-Type": "text/plain" });
@@ -40,168 +44,181 @@ const client = new Client({
   partials: [Partials.Channel]
 });
 
-// Cookie Auth
-let csrfToken = null;
-let tokenExpiry = null;
+// Simple cache to prevent rate limits
+const userCache = new Map();
+const CACHE_TTL = 3000;
 
-async function refreshCsrfToken() {
+// Rate limiting
+let lastRequestTime = 0;
+const REQUEST_DELAY = 200;
+
+async function waitForRateLimit() {
+  const now = Date.now();
+  const timeSinceLast = now - lastRequestTime;
+  if (timeSinceLast < REQUEST_DELAY) {
+    await new Promise(r => setTimeout(r, REQUEST_DELAY - timeSinceLast));
+  }
+  lastRequestTime = Date.now();
+}
+
+// Get user ID from username
+async function getUserId(username) {
   try {
-    const response = await fetch("https://auth.roblox.com/v2/logout", {
+    await waitForRateLimit();
+    
+    const exactRes = await fetch("https://users.roblox.com/v1/usernames/users", {
       method: "POST",
-      headers: {
-        "Cookie": `.ROBLOSECURITY=${ROBLOX_COOKIE}`,
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
-        "Origin": "https://www.roblox.com",
-        "Referer": "https://www.roblox.com/"
-      }
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ usernames: [username] })
     });
-    const newToken = response.headers.get("x-csrf-token");
-    if (newToken) {
-      csrfToken = newToken;
-      tokenExpiry = Date.now() + 300000;
-      console.log("CSRF Token refreshed");
-      return csrfToken;
+    const exactData = await exactRes.json();
+    
+    if (exactData.data && exactData.data.length > 0) {
+      return { id: exactData.data[0].id, name: exactData.data[0].name };
     }
-    return null;
-  } catch (error) {
-    console.error("CSRF refresh error:", error);
-    return null;
-  }
-}
-
-async function getAuthHeaders() {
-  if (!csrfToken || Date.now() >= tokenExpiry) {
-    await refreshCsrfToken();
-  }
-  return {
-    "Content-Type": "application/json",
-    "Cookie": `.ROBLOSECURITY=${ROBLOX_COOKIE}`,
-    "x-csrf-token": csrfToken,
-    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
-  };
-}
-
-// Convert username to user ID and get avatar
-async function getRobloxUserInfo(username) {
-  try {
-    const searchUrl = `https://users.roblox.com/v1/users/search?keyword=${encodeURIComponent(username)}&limit=10`;
-    const searchRes = await fetch(searchUrl);
+    
+    await waitForRateLimit();
+    const searchRes = await fetch(`https://users.roblox.com/v1/users/search?keyword=${encodeURIComponent(username)}&limit=10`);
     const searchData = await searchRes.json();
     
-    if (!searchData.data) return null;
+    if (searchData.data && searchData.data.length > 0) {
+      const match = searchData.data.find(u => u.name.toLowerCase() === username.toLowerCase());
+      if (match) {
+        return { id: match.id, name: match.name };
+      }
+      return { id: searchData.data[0].id, name: searchData.data[0].name };
+    }
     
-    const match = searchData.data.find(u => u.name.toLowerCase() === username.toLowerCase());
-    const userId = match ? match.id : searchData.data[0]?.id;
-    
-    if (!userId) return null;
-    
-    const userUrl = `https://users.roblox.com/v1/users/${userId}`;
-    const userRes = await fetch(userUrl);
-    const userData = await userRes.json();
-    
-    const avatarUrl = `https://thumbnails.roblox.com/v1/users/avatar-headshot?userIds=${userId}&size=720x720&format=Png&isCircular=false`;
-    const avatarRes = await fetch(avatarUrl);
-    const avatarData = await avatarRes.json();
-    
-    const headshot = avatarData.data?.[0]?.imageUrl || null;
-    
-    return {
-      id: userId,
-      username: userData.name,
-      displayName: userData.displayName,
-      headshot: headshot,
-      created: userData.created
-    };
+    return null;
   } catch (error) {
-    console.error("getRobloxUserInfo error:", error);
+    console.error("getUserId error:", error);
     return null;
   }
 }
 
-// Get user's current game with auth
-async function getCurrentGame(userId) {
+// Get user presence with cookie
+async function getUserPresence(userId) {
   try {
-    const headers = await getAuthHeaders();
+    await waitForRateLimit();
     
     const response = await fetch("https://presence.roblox.com/v1/presence/users", {
       method: "POST",
-      headers: headers,
+      headers: {
+        "Content-Type": "application/json",
+        "Cookie": `.ROBLOSECURITY=${ROBLOX_COOKIE}`
+      },
       body: JSON.stringify({ userIds: [userId] })
     });
     
     const data = await response.json();
     
-    if (!data.userPresences || data.userPresences.length === 0) return null;
+    if (data.userPresences && data.userPresences.length > 0) {
+      const presence = data.userPresences[0];
+      
+      if (presence.userPresenceType === 2) {
+        return {
+          online: true,
+          inGame: true,
+          placeId: presence.placeId,
+          gameId: presence.gameId,
+          lastLocation: presence.lastLocation
+        };
+      } else if (presence.userPresenceType === 1) {
+        return {
+          online: true,
+          inGame: false,
+          placeId: null
+        };
+      } else {
+        return {
+          online: false,
+          inGame: false,
+          placeId: null
+        };
+      }
+    }
     
-    const presence = data.userPresences[0];
-    
-    return {
-      placeId: presence.placeId,
-      gameId: presence.gameId,
-      status: presence.userPresenceType
-    };
+    return { online: false, inGame: false, placeId: null };
   } catch (error) {
-    console.error("getCurrentGame error:", error);
+    console.error("getUserPresence error:", error);
+    return { online: false, inGame: false, placeId: null };
+  }
+}
+
+// Get user avatar
+async function getUserAvatar(userId) {
+  try {
+    await waitForRateLimit();
+    const response = await fetch(`https://thumbnails.roblox.com/v1/users/avatar-headshot?userIds=${userId}&size=720x720&format=Png&isCircular=false`);
+    const data = await response.json();
+    return data.data?.[0]?.imageUrl || null;
+  } catch (error) {
     return null;
   }
 }
 
-// Find user in game servers
+// Get game name from place ID
+async function getGameName(placeId) {
+  if (!placeId) return "Unknown";
+  try {
+    await waitForRateLimit();
+    const response = await fetch(`https://games.roblox.com/v1/games?universeIds=${placeId}`);
+    const data = await response.json();
+    return data.data?.[0]?.name || "Unknown Game";
+  } catch (error) {
+    return "Unknown Game";
+  }
+}
+
+// Find user in Fame servers
 async function findUserInFameServers(userId) {
   let cursor = "";
   let serversScanned = 0;
-  let attempts = 0;
+  const userIdStr = userId.toString();
+  
+  console.log(`[SEARCH] Looking for user ${userIdStr} in ${FAME_GAME_NAME}`);
   
   try {
-    while (attempts < 30) {
+    for (let attempt = 0; attempt < 20; attempt++) {
+      await waitForRateLimit();
       const url = `https://games.roblox.com/v1/games/${FAME_GAME_ID}/servers/Public?limit=100${cursor ? `&cursor=${cursor}` : ""}`;
       const response = await fetch(url);
       
       if (response.status === 429) {
+        console.log("[SEARCH] Rate limited, waiting...");
         await new Promise(r => setTimeout(r, 2000));
         continue;
       }
       
       const data = await response.json();
-      
       if (!data.data || data.data.length === 0) break;
       
       for (const server of data.data) {
         serversScanned++;
         
-        let playerIds = [];
-        
         if (server.playing && Array.isArray(server.playing)) {
-          playerIds = server.playing.map(p => p.toString());
-        }
-        
-        if (playerIds.includes(userId.toString())) {
-          console.log(`Found user in server after scanning ${serversScanned} servers`);
-          return {
-            found: true,
-            jobId: server.id,
-            players: server.playing,
-            maxPlayers: server.maxPlayers,
-            serversScanned: serversScanned
-          };
+          if (server.playing.map(p => p.toString()).includes(userIdStr)) {
+            console.log(`[SEARCH] FOUND user after ${serversScanned} servers`);
+            return {
+              found: true,
+              jobId: server.id,
+              players: server.playing.length,
+              maxPlayers: server.maxPlayers,
+              scanned: serversScanned
+            };
+          }
         }
       }
       
-      cursor = data.nextPageCursor || "";
+      cursor = data.nextPageCursor;
       if (!cursor) break;
-      attempts++;
-      await new Promise(r => setTimeout(r, 100));
     }
     
-    console.log(`User not found after scanning ${serversScanned} servers`);
-    return {
-      found: false,
-      serversScanned: serversScanned
-    };
-    
+    console.log(`[SEARCH] NOT FOUND after ${serversScanned} servers`);
+    return { found: false, scanned: serversScanned };
   } catch (error) {
-    console.error("findUserInFameServers error:", error);
-    return { found: false, error: true, serversScanned: serversScanned };
+    console.error("[SEARCH] Error:", error);
+    return { found: false, scanned: serversScanned, error: true };
   }
 }
 
@@ -213,7 +230,7 @@ async function registerCommands() {
       .setDescription(`Find a player in ${FAME_GAME_NAME} and join their game`)
       .addStringOption(opt => 
         opt.setName("username")
-          .setDescription("Roblox username to find")
+          .setDescription("Roblox username")
           .setRequired(true)
       )
       .setIntegrationTypes([
@@ -231,7 +248,7 @@ async function registerCommands() {
   const rest = new REST({ version: "10" }).setToken(TOKEN);
   try {
     await rest.put(Routes.applicationCommands(CLIENT_ID), { body: commands });
-    console.log("Commands registered for Fame game!");
+    console.log("Commands registered!");
   } catch (err) {
     console.error("Command registration failed:", err);
   }
@@ -239,12 +256,7 @@ async function registerCommands() {
 
 client.once("ready", async () => {
   console.log(`Logged in as ${client.user.tag}`);
-  if (ROBLOX_COOKIE) {
-    await refreshCsrfToken();
-    console.log("Roblox cookie loaded");
-  } else {
-    console.warn("No ROBLOX_COOKIE set!");
-  }
+  console.log(`Sniping game: ${FAME_GAME_NAME}`);
   await registerCommands();
 });
 
@@ -258,98 +270,119 @@ client.on("interactionCreate", async (interaction) => {
     await interaction.deferReply();
     
     const username = interaction.options.getString("username");
-    const userId = interaction.user.id;
+    const discordUserId = interaction.user.id;
     
-    // Get user info with avatar
-    const userInfo = await getRobloxUserInfo(username);
-    if (!userInfo) {
+    console.log(`[SNIPE] Looking up user: ${username}`);
+    
+    // Step 1: Get user ID
+    const userData = await getUserId(username);
+    if (!userData) {
       const embed = new EmbedBuilder()
         .setTitle("User Not Found")
         .setDescription(`Could not find "${username}" on Roblox`)
         .setColor(0xFF0000);
-      return interaction.editReply({ content: `<@${userId}>`, embeds: [embed] });
+      return interaction.editReply({ content: `<@${discordUserId}>`, embeds: [embed] });
     }
     
-    // Get current game
-    const game = await getCurrentGame(userInfo.id);
+    const userId = userData.id;
+    const actualUsername = userData.name;
+    console.log(`[SNIPE] Found user: ${actualUsername} (${userId})`);
     
-    if (!game || game.status !== 2 || !game.placeId) {
-      const embed = new EmbedBuilder()
-        .setTitle("Cannot Snipe")
-        .setDescription(`${userInfo.username} is not in a public game or has privacy settings enabled.`)
-        .addFields(
-          { name: "Status", value: game?.status === 2 ? "In Game (Private/VIP Server)" : "Not in game", inline: true },
-          { name: "Note", value: "Private servers cannot be sniped - this is a Roblox limitation.", inline: false }
-        )
-        .setColor(0xFF0000)
-        .setThumbnail(userInfo.headshot);
-      return interaction.editReply({ content: `<@${userId}>`, embeds: [embed] });
-    }
+    // Step 2: Get user presence
+    const presence = await getUserPresence(userId);
+    console.log(`[SNIPE] Presence: online=${presence.online}, inGame=${presence.inGame}, placeId=${presence.placeId}`);
     
-    // Check if they're in Fame
-    if (game.placeId.toString() !== FAME_GAME_ID) {
-      let gameName = "Unknown Game";
-      try {
-        const gameRes = await fetch(`https://games.roblox.com/v1/games?universeIds=${game.placeId}`);
-        const gameData = await gameRes.json();
-        if (gameData.data && gameData.data[0]) {
-          gameName = gameData.data[0].name;
-        }
-      } catch (e) {}
-      
+    // Step 3: Check if offline
+    if (!presence.online) {
+      const avatar = await getUserAvatar(userId);
       const embed = new EmbedBuilder()
         .setTitle("Snipe Failed")
-        .setDescription(`**${userInfo.username}** is in a different game`)
+        .setDescription(`**${actualUsername}** is currently Offline`)
         .addFields(
-          { name: "Current Game", value: gameName, inline: true },
-          { name: "Target Game", value: FAME_GAME_NAME, inline: true }
+          { name: "Status", value: "Offline", inline: true },
+          { name: "Tip", value: "Try again when they come online!", inline: true }
         )
-        .setColor(0xFFA500)
-        .setThumbnail(userInfo.headshot);
-      return interaction.editReply({ content: `<@${userId}>`, embeds: [embed] });
+        .setColor(0xFF0000)
+        .setThumbnail(avatar);
+      return interaction.editReply({ content: `<@${discordUserId}>`, embeds: [embed] });
     }
     
-    // Searching embed
+    // Step 4: Check if online but not in game
+    if (!presence.inGame) {
+      const avatar = await getUserAvatar(userId);
+      const embed = new EmbedBuilder()
+        .setTitle("Snipe Failed")
+        .setDescription(`**${actualUsername}** is online but not in a game`)
+        .addFields(
+          { name: "Status", value: "Online", inline: true },
+          { name: "Tip", value: "Wait for them to join a game!", inline: true }
+        )
+        .setColor(0xFFA500)
+        .setThumbnail(avatar);
+      return interaction.editReply({ content: `<@${discordUserId}>`, embeds: [embed] });
+    }
+    
+    // Step 5: Check if they're in Fame
+    if (presence.placeId && presence.placeId.toString() !== FAME_GAME_ID) {
+      const avatar = await getUserAvatar(userId);
+      const gameName = await getGameName(presence.placeId);
+      const embed = new EmbedBuilder()
+        .setTitle("Snipe Failed")
+        .setDescription(`**${actualUsername}** is in a different game`)
+        .addFields(
+          { name: "Current Game", value: gameName, inline: true },
+          { name: "Target Game", value: FAME_GAME_NAME, inline: true },
+          { name: "Tip", value: `They need to be in ${FAME_GAME_NAME} to snipe!`, inline: false }
+        )
+        .setColor(0xFFA500)
+        .setThumbnail(avatar);
+      return interaction.editReply({ content: `<@${discordUserId}>`, embeds: [embed] });
+    }
+    
+    // Step 6: Get avatar for later
+    const avatar = await getUserAvatar(userId);
+    
+    // Step 7: Searching with YOUR CUSTOM EMOJI
     const searching = new EmbedBuilder()
-      .setTitle("Searching...")
-      .setDescription(`Looking for **${userInfo.username}** in **${FAME_GAME_NAME}**\nScanning public servers...`)
+      .setTitle("Searching for player...")
+      .setDescription(`${SEARCH_EMOJI} Looking for **${actualUsername}** in **${FAME_GAME_NAME}**\nScanning public servers...`)
       .setColor(0x5865F2)
-      .setThumbnail(userInfo.headshot);
+      .setThumbnail(avatar);
     
-    await interaction.editReply({ content: `<@${userId}>`, embeds: [searching] });
+    await interaction.editReply({ content: `<@${discordUserId}>`, embeds: [searching] });
     
-    // Find user in Fame servers
-    const result = await findUserInFameServers(userInfo.id);
-    const timeElapsed = ((Date.now() - startTime) / 1000).toFixed(2);
+    // Step 8: Find user in servers
+    const result = await findUserInFameServers(userId);
+    const elapsed = ((Date.now() - startTime) / 1000).toFixed(2);
     
     if (!result.found) {
       const embed = new EmbedBuilder()
         .setTitle("Snipe Failed")
-        .setDescription(`Could not locate **${userInfo.username}** in **${FAME_GAME_NAME}**`)
+        .setDescription(`Could not locate **${actualUsername}** in **${FAME_GAME_NAME}**`)
         .addFields(
-          { name: "Servers Scanned", value: `${result.serversScanned} servers`, inline: true },
-          { name: "Time", value: `${timeElapsed} seconds`, inline: true },
+          { name: "Servers Scanned", value: `${result.scanned} servers`, inline: true },
+          { name: "Time", value: `${elapsed} seconds`, inline: true },
           { name: "Possible Reason", value: "User may be in a private/VIP server", inline: false }
         )
         .setColor(0xFF0000)
-        .setThumbnail(userInfo.headshot);
-      return interaction.editReply({ content: `<@${userId}>`, embeds: [embed] });
+        .setThumbnail(avatar);
+      return interaction.editReply({ content: `<@${discordUserId}>`, embeds: [embed] });
     }
     
-    // SUCCESS! - This produces the exact output you want
+    // Step 9: Success!
     const joinLink = `https://www.roblox.com/games/${FAME_GAME_ID}?jobId=${result.jobId}`;
     
     const embed = new EmbedBuilder()
       .setTitle("Player Found!")
-      .setDescription(`Successfully found **${userInfo.username}** in **${FAME_GAME_NAME}**`)
+      .setDescription(`Successfully found **${actualUsername}** in **${FAME_GAME_NAME}**`)
       .addFields(
         { name: "Server Status", value: `${result.players}/${result.maxPlayers} players`, inline: false },
-        { name: "Search Time", value: `${timeElapsed} seconds`, inline: true },
+        { name: "Search Time", value: `${elapsed} seconds`, inline: true },
         { name: "Method", value: "public_api", inline: true }
       )
       .setColor(0x00FF00)
-      .setThumbnail(userInfo.headshot)
-      .setImage(userInfo.headshot);
+      .setThumbnail(avatar)
+      .setImage(avatar);
     
     const row = new ActionRowBuilder()
       .addComponents(
@@ -359,10 +392,10 @@ client.on("interactionCreate", async (interaction) => {
           .setStyle(ButtonStyle.Link)
       );
     
-    await interaction.editReply({ content: `<@${userId}>`, embeds: [embed], components: [row] });
+    await interaction.editReply({ content: `<@${discordUserId}>`, embeds: [embed], components: [row] });
     
   } catch (error) {
-    console.error("Command error:", error);
+    console.error("Snipe error:", error);
     const errorEmbed = new EmbedBuilder()
       .setTitle("Error")
       .setDescription(`An error occurred: ${error.message}`)
@@ -376,12 +409,7 @@ client.on("interactionCreate", async (interaction) => {
   }
 });
 
-process.on("unhandledRejection", (error) => {
-  console.error("Unhandled rejection:", error);
-});
-
-process.on("uncaughtException", (error) => {
-  console.error("Uncaught exception:", error);
-});
+process.on("unhandledRejection", console.error);
+process.on("uncaughtException", console.error);
 
 client.login(TOKEN);
