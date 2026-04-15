@@ -16,7 +16,7 @@ const {
 
 const TOKEN = process.env.TOKEN;
 const CLIENT_ID = process.env.CLIENT_ID;
-const ROBLOX_COOKIE = process.env.ROBLOX_COOKIE; // ADD THIS to Render env
+const ROBLOX_COOKIE = process.env.ROBLOX_COOKIE;
 const PORT = process.env.PORT || 3000;
 
 if (!TOKEN || !CLIENT_ID) {
@@ -24,11 +24,6 @@ if (!TOKEN || !CLIENT_ID) {
   process.exit(1);
 }
 
-if (!ROBLOX_COOKIE) {
-  console.warn("⚠️ No ROBLOX_COOKIE set - game detection will be limited!");
-}
-
-// Keep alive server for Render
 http.createServer((req, res) => {
   res.writeHead(200, { "Content-Type": "text/plain" });
   res.end("Bot is alive");
@@ -40,6 +35,23 @@ const client = new Client({
   intents: [GatewayIntentBits.Guilds, GatewayIntentBits.DirectMessages],
   partials: [Partials.Channel]
 });
+
+// Get CSRF token
+async function getCsrfToken() {
+  try {
+    const response = await fetch("https://auth.roblox.com/v2/logout", {
+      method: "POST",
+      headers: {
+        "Cookie": `.ROBLOSECURITY=${ROBLOX_COOKIE}`
+      }
+    });
+    const csrfToken = response.headers.get("x-csrf-token");
+    return csrfToken;
+  } catch (error) {
+    console.error("CSRF error:", error);
+    return null;
+  }
+}
 
 // Convert username to user ID
 async function usernameToId(username) {
@@ -56,35 +68,30 @@ async function usernameToId(username) {
   }
 }
 
-// Get user's current game - WITH COOKIE AUTHENTICATION
+// Get user's current game with proper auth
 async function getCurrentGame(userId) {
   try {
-    const headers = {
-      "Content-Type": "application/json"
-    };
+    const csrfToken = await getCsrfToken();
     
-    // Add cookie if available - THIS FIXES THE NULL ISSUE
-    if (ROBLOX_COOKIE) {
-      headers.Cookie = `.ROBLOSECURITY=${ROBLOX_COOKIE}`;
-    }
-    
-    const res = await fetch("https://presence.roblox.com/v1/presence/users", {
+    const response = await fetch("https://presence.roblox.com/v1/presence/users", {
       method: "POST",
-      headers: headers,
+      headers: {
+        "Content-Type": "application/json",
+        "Cookie": `.ROBLOSECURITY=${ROBLOX_COOKIE}`,
+        "x-csrf-token": csrfToken
+      },
       body: JSON.stringify({ userIds: [userId] })
     });
     
-    const data = await res.json();
+    const data = await response.json();
     
     if (!data.userPresences || data.userPresences.length === 0) return null;
     
     const presence = data.userPresences[0];
     
-    // Log for debugging
     console.log(`Presence for ${userId}:`, {
       type: presence.userPresenceType,
       placeId: presence.placeId,
-      gameId: presence.gameId,
       hasCookie: !!ROBLOX_COOKIE
     });
     
@@ -100,34 +107,67 @@ async function getCurrentGame(userId) {
   }
 }
 
-// Find user in game servers
+// FIXED: Find user in game servers - handles both array and object formats
 async function findUserServer(userId, placeId) {
   try {
     let cursor = "";
     let attempts = 0;
-    while (attempts < 10) {
+    
+    while (attempts < 20) {
       const url = `https://games.roblox.com/v1/games/${placeId}/servers/Public?limit=100${cursor ? `&cursor=${cursor}` : ""}`;
       const res = await fetch(url);
+      
       if (res.status === 429) {
         await new Promise(r => setTimeout(r, 2000));
         continue;
       }
+      
       const data = await res.json();
       if (!data.data) break;
+      
       for (const server of data.data) {
-        if (server.playing && server.playing.includes(userId.toString())) {
+        // FIX: Check if playing exists and handle both array and object formats
+        let playerList = [];
+        
+        if (server.playing) {
+          // If playing is an array
+          if (Array.isArray(server.playing)) {
+            playerList = server.playing;
+          } 
+          // If playing is an object with player IDs
+          else if (typeof server.playing === 'object') {
+            playerList = Object.values(server.playing);
+          }
+          // If playing is a string or number
+          else if (typeof server.playing === 'string' || typeof server.playing === 'number') {
+            playerList = [server.playing.toString()];
+          }
+        }
+        
+        // Also check playerTokens if available (older API format)
+        if (server.playerTokens && Array.isArray(server.playerTokens)) {
+          playerList = [...playerList, ...server.playerTokens];
+        }
+        
+        // Convert userId to string for comparison
+        const userIdStr = userId.toString();
+        
+        if (playerList.includes(userIdStr) || playerList.includes(userId)) {
+          console.log(`Found user in server: ${server.id}`);
           return {
             jobId: server.id,
-            players: server.playing.length,
-            maxPlayers: server.maxPlayers
+            players: server.playing ? (Array.isArray(server.playing) ? server.playing.length : Object.keys(server.playing).length) : 0,
+            maxPlayers: server.maxPlayers || 100
           };
         }
       }
+      
       cursor = data.nextPageCursor || "";
       if (!cursor) break;
       attempts++;
-      await new Promise(r => setTimeout(r, 200));
+      await new Promise(r => setTimeout(r, 100));
     }
+    
     return null;
   } catch (error) {
     console.error("findUserServer error:", error);
@@ -169,10 +209,6 @@ async function registerCommands() {
 
 client.once("ready", async () => {
   console.log(`✅ Logged in as ${client.user.tag}`);
-  if (!ROBLOX_COOKIE) {
-    console.warn("⚠️ No ROBLOX_COOKIE set! Game detection will be limited.");
-    console.warn("⚠️ Add ROBLOX_COOKIE to your Render environment variables.");
-  }
   await registerCommands();
 });
 
@@ -183,11 +219,11 @@ client.on("interactionCreate", async (interaction) => {
   const startTime = Date.now();
   
   try {
-    await interaction.deferReply({ fetchReply: true });
+    await interaction.deferReply();
     
     const username = interaction.options.getString("username");
     
-    // Step 1: Get user ID
+    // Get user ID
     const userId = await usernameToId(username);
     if (!userId) {
       const embed = new EmbedBuilder()
@@ -197,34 +233,22 @@ client.on("interactionCreate", async (interaction) => {
       return interaction.editReply({ embeds: [embed] });
     }
     
-    // Step 2: Get current game (NOW WITH COOKIE!)
+    // Get current game
     const game = await getCurrentGame(userId);
     
-    // Check if user is in game
-    if (!game || game.status !== 2) {
-      const statusText = game?.status === 1 ? "Online (not in game)" : 
-                        game?.status === 3 ? "In Studio" : "Offline";
+    if (!game || game.status !== 2 || !game.placeId) {
       const embed = new EmbedBuilder()
-        .setTitle("❌ User Not In Game")
-        .setDescription(`${username} is currently: **${statusText}**`)
+        .setTitle("❌ Cannot Snipe")
+        .setDescription(`${username} is not in a public game or has privacy settings enabled.`)
+        .addFields(
+          { name: "Status", value: game?.status === 2 ? "In Game (Private/VIP Server)" : "Not in game", inline: true },
+          { name: "Note", value: "Private servers cannot be sniped - this is a Roblox limitation.", inline: false }
+        )
         .setColor(0xFF0000);
       return interaction.editReply({ embeds: [embed] });
     }
     
-    // Check if we got placeId (if not, privacy settings are blocking it)
-    if (!game.placeId) {
-      const embed = new EmbedBuilder()
-        .setTitle("🔒 Cannot Detect Game")
-        .setDescription(`${username} is in a game, but their privacy settings (\"Who can join me?\") are not set to **Everyone**.\n\nBloxiana has the same limitation - this is a Roblox API restriction.`)
-        .addFields(
-          { name: "Status", value: "In Game (private)", inline: true },
-          { name: "Solution", value: "Ask the user to change their join settings to 'Everyone'", inline: false }
-        )
-        .setColor(0xFFA500);
-      return interaction.editReply({ embeds: [embed] });
-    }
-    
-    // Step 3: Get game name
+    // Get game name
     let gameName = "Unknown Game";
     try {
       const gameRes = await fetch(`https://games.roblox.com/v1/games?universeIds=${game.placeId}`);
@@ -234,57 +258,66 @@ client.on("interactionCreate", async (interaction) => {
       }
     } catch (e) {}
     
-    // Step 4: Send searching message
+    // Searching embed
     const searching = new EmbedBuilder()
-      .setTitle("🔍 Searching...")
-      .setDescription(`Looking for ${username} in ${gameName}...`)
+      .setTitle("🔍 Searching for player...")
+      .setDescription(`Looking for **${username}** in **${gameName}**\nScanning public servers...`)
       .setColor(0xFFA500);
     
     await interaction.editReply({ embeds: [searching] });
     
-    // Step 5: Find their server
+    // Find server
     const server = await findUserServer(userId, game.placeId);
     const timeElapsed = ((Date.now() - startTime) / 1000).toFixed(2);
     
     if (!server) {
       const embed = new EmbedBuilder()
         .setTitle("❌ Could Not Find Player")
-        .setDescription(`${username} might be in a private server or left the game during search`)
+        .setDescription(`Could not locate ${username} in any public server.`)
+        .addFields(
+          { name: "Possible Reasons", value: 
+            "• They are in a **Private/VIP Server** (cannot be sniped)\n" +
+            "• They left the game during search\n" +
+            "• The game has too many servers to scan fully"
+          }
+        )
         .setColor(0xFF0000);
       return interaction.editReply({ embeds: [embed] });
     }
     
-    // Step 6: Success!
+    // Success!
     const joinLink = `roblox://placeId=${game.placeId}&jobId=${server.jobId}`;
     const browserLink = `https://www.roblox.com/games/${game.placeId}?jobId=${server.jobId}`;
     
     const embed = new EmbedBuilder()
       .setTitle("✅ Player Found!")
-      .setDescription(`Search completed! The player was found using their public join data.`)
+      .setDescription(`Search completed! Found **${username}** in a public server.`)
       .addFields(
-        { name: "Game", value: `${gameName} [${game.placeId}]`, inline: false },
-        { name: "Sniped in", value: `${timeElapsed} seconds • ${new Date().toLocaleTimeString()}`, inline: false }
+        { name: "Game", value: `${gameName}`, inline: false },
+        { name: "Server", value: `${server.players}/${server.maxPlayers} players`, inline: true },
+        { name: "Time", value: `${timeElapsed} seconds`, inline: true }
       )
       .setColor(0x00FF00);
     
     const row = new ActionRowBuilder()
       .addComponents(
         new ButtonBuilder()
-          .setLabel("Join Game")
+          .setLabel("Join Game (App)")
           .setURL(joinLink)
           .setStyle(ButtonStyle.Link),
         new ButtonBuilder()
-          .setLabel("Join via Browser")
+          .setLabel("Join Game (Browser)")
           .setURL(browserLink)
           .setStyle(ButtonStyle.Link)
       );
     
     await interaction.editReply({ embeds: [embed], components: [row] });
+    
   } catch (error) {
     console.error("Command error:", error);
     const errorEmbed = new EmbedBuilder()
       .setTitle("❌ Error")
-      .setDescription("Something went wrong. Please try again.")
+      .setDescription(`An error occurred: ${error.message}`)
       .setColor(0xFF0000);
     
     if (interaction.deferred) {
