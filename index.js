@@ -252,7 +252,6 @@ async function hasFounderRole(interaction) {
 
 async function registerCommands() {
   const commands = [
-    // Public Commands
     new SlashCommandBuilder()
       .setName("snipe")
       .setDescription(`Find a player in ${FAME_GAME_NAME} and join their game`)
@@ -296,7 +295,6 @@ async function registerCommands() {
       .setContexts([InteractionContextType.Guild, InteractionContextType.BotDM, InteractionContextType.PrivateChannel])
       .toJSON(),
     
-    // Founder Only Commands
     new SlashCommandBuilder()
       .setName("dm")
       .setDescription("Send a DM to a user")
@@ -394,19 +392,16 @@ client.on("interactionCreate", async (interaction) => {
   
   if (interaction.customId === "accept_terms") {
     acceptedUsers.set(interaction.user.id, { acceptedAt: Date.now(), snipes: 0 });
-    
     const confirmEmbed = new EmbedBuilder()
       .setTitle("Welcome!")
       .setDescription("You now have access to all commands.\n\n**Commands:**\n• `/snipe`\n• `/stats`\n• `/leaderboard`\n• `/servers`\n• `/ping`\n• `/help`")
       .setColor(0x00FF00);
-    
     await interaction.update({ embeds: [confirmEmbed], components: [] });
   } else if (interaction.customId === "decline_terms") {
     const declineEmbed = new EmbedBuilder()
       .setTitle("Terms Declined")
       .setDescription("You cannot use the bot at this time. Run `/snipe` again if you change your mind.")
       .setColor(0xFF0000);
-    
     await interaction.update({ embeds: [declineEmbed], components: [] });
   }
 });
@@ -433,10 +428,9 @@ client.on("interactionCreate", async (interaction) => {
     }
   }
   
-  // ============ HELP COMMAND ============
+  // HELP COMMAND
   if (interaction.commandName === "help") {
     const isFounder = await hasFounderRole(interaction);
-    
     const helpEmbed = new EmbedBuilder()
       .setTitle("Fame Sniper Bot - Commands")
       .setDescription("**Public Commands**")
@@ -449,7 +443,6 @@ client.on("interactionCreate", async (interaction) => {
         { name: "/help", value: "Show this help message", inline: false }
       )
       .setColor(0x9B59B6);
-    
     if (isFounder) {
       helpEmbed.addFields(
         { name: "Founder Commands", value: "━━━━━━━━━━━━", inline: false },
@@ -461,63 +454,43 @@ client.on("interactionCreate", async (interaction) => {
         { name: "/eval <code>", value: "Execute code", inline: false }
       );
     }
-    
     await interaction.reply({ embeds: [helpEmbed], ephemeral: true });
     return;
   }
   
-  // ============ FOUNDER: DM COMMAND - PLAIN TEXT, NO FOUNDER MENTION ============
+  // DM COMMAND - PLAIN TEXT, NO FOUNDER MENTION
   if (interaction.commandName === "dm") {
     await interaction.deferReply({ ephemeral: true });
-    
     const targetUser = interaction.options.getUser("user");
     const message = interaction.options.getString("message");
-    
     try {
-      // Send as plain text - NO EMBED, NO FOOTER, NO MENTION
       await targetUser.send(message);
-      
       stats.dmsSent++;
-      
       const successEmbed = new EmbedBuilder()
         .setTitle("Message Sent")
         .setDescription(`Message sent to ${targetUser.tag}`)
         .setColor(0x00FF00);
-      
       await interaction.editReply({ embeds: [successEmbed] });
-      
-      await logToWebhook(
-        "DM Sent",
-        `${interaction.user.tag} sent a DM to ${targetUser.tag}`,
-        "FOUNDER",
-        [
-          { name: "To", value: targetUser.tag, inline: true },
-          { name: "Message", value: message.substring(0, 200), inline: false }
-        ]
-      );
+      await logToWebhook("DM Sent", `${interaction.user.tag} sent a DM to ${targetUser.tag}`, "FOUNDER");
     } catch (error) {
       const errorEmbed = new EmbedBuilder()
         .setTitle("Failed to Send")
         .setDescription(`Could not send message to ${targetUser.tag}. They may have DMs disabled.`)
         .setColor(0xFF0000);
-      
       await interaction.editReply({ embeds: [errorEmbed] });
     }
     return;
   }
   
-  // ============ FOUNDER: BROADCAST COMMAND - PLAIN TEXT, NO FOUNDER MENTION ============
+  // BROADCAST COMMAND - PLAIN TEXT, NO FOUNDER MENTION
   if (interaction.commandName === "broadcast") {
     await interaction.deferReply({ ephemeral: true });
-    
     const message = interaction.options.getString("message");
     let successCount = 0;
     let failCount = 0;
-    
     for (const [userId, data] of acceptedUsers) {
       try {
         const user = await client.users.fetch(userId);
-        // Send as plain text - NO EMBED, NO FOOTER, NO MENTION
         await user.send(message);
         successCount++;
       } catch (error) {
@@ -525,100 +498,56 @@ client.on("interactionCreate", async (interaction) => {
       }
       await new Promise(r => setTimeout(r, 500));
     }
-    
     const broadcastEmbed = new EmbedBuilder()
       .setTitle("Broadcast Complete")
       .setDescription(`Message sent to ${successCount} users\nFailed: ${failCount}`)
       .setColor(0x9B59B6);
-    
     await interaction.editReply({ embeds: [broadcastEmbed] });
-    
-    await logToWebhook(
-      "Broadcast Sent",
-      `${interaction.user.tag} broadcast a message to ${successCount} users`,
-      "FOUNDER",
-      [
-        { name: "Message", value: message.substring(0, 200), inline: false },
-        { name: "Successful", value: `${successCount}`, inline: true },
-        { name: "Failed", value: `${failCount}`, inline: true }
-      ]
-    );
+    await logToWebhook("Broadcast Sent", `${interaction.user.tag} broadcast a message to ${successCount} users`, "FOUNDER");
     return;
   }
   
-  // ============ FOUNDER: RESET STATS ============
+  // RESET STATS
   if (interaction.commandName === "resetstats") {
     await interaction.deferReply({ ephemeral: true });
-    
     stats = {
-      totalSnipes: 0,
-      successfulSnipes: 0,
-      failedSnipes: 0,
-      startTime: Date.now(),
-      apiCalls: 0,
-      rateLimits: 0,
-      dmsSent: 0
+      totalSnipes: 0, successfulSnipes: 0, failedSnipes: 0,
+      startTime: Date.now(), apiCalls: 0, rateLimits: 0, dmsSent: 0
     };
-    
-    const resetEmbed = new EmbedBuilder()
-      .setTitle("Stats Reset")
-      .setDescription("All bot statistics have been reset to zero.")
-      .setColor(0x00FF00);
-    
+    const resetEmbed = new EmbedBuilder().setTitle("Stats Reset").setDescription("All bot statistics have been reset to zero.").setColor(0x00FF00);
     await interaction.editReply({ embeds: [resetEmbed] });
-    
     await logToWebhook("Stats Reset", `${interaction.user.tag} reset all bot statistics`, "FOUNDER");
     return;
   }
   
-  // ============ FOUNDER: SET GAME STATUS ============
+  // SET GAME STATUS
   if (interaction.commandName === "setgame") {
     await interaction.deferReply({ ephemeral: true });
-    
     const status = interaction.options.getString("status");
-    
     await client.user.setActivity(status, { type: 0 });
-    
-    const gameEmbed = new EmbedBuilder()
-      .setTitle("Status Updated")
-      .setDescription(`Bot status changed to: **${status}**`)
-      .setColor(0x00FF00);
-    
+    const gameEmbed = new EmbedBuilder().setTitle("Status Updated").setDescription(`Bot status changed to: **${status}**`).setColor(0x00FF00);
     await interaction.editReply({ embeds: [gameEmbed] });
-    
     await logToWebhook("Bot Status Changed", `${interaction.user.tag} changed bot status to "${status}"`, "FOUNDER");
     return;
   }
   
-  // ============ FOUNDER: ANNOUNCE COMMAND ============
+  // ANNOUNCE
   if (interaction.commandName === "announce") {
     const title = interaction.options.getString("title");
     const message = interaction.options.getString("message");
-    
-    const announceEmbed = new EmbedBuilder()
-      .setTitle(title)
-      .setDescription(message)
-      .setColor(0x9B59B6)
-      .setTimestamp();
-    
+    const announceEmbed = new EmbedBuilder().setTitle(title).setDescription(message).setColor(0x9B59B6).setTimestamp();
     await interaction.reply({ embeds: [announceEmbed] });
-    
     await logToWebhook("Announcement Made", `${interaction.user.tag} posted an announcement`, "FOUNDER");
     return;
   }
   
-  // ============ FOUNDER: EVAL COMMAND ============
+  // EVAL
   if (interaction.commandName === "eval") {
     await interaction.deferReply({ ephemeral: true });
-    
     const code = interaction.options.getString("code");
-    
     try {
       let result = eval(code);
-      if (typeof result !== "string") {
-        result = require("util").inspect(result);
-      }
-      
+      if (typeof result !== "string") result = require("util").inspect(result);
       const evalEmbed = new EmbedBuilder()
         .setTitle("Eval Executed")
         .addFields(
@@ -626,29 +555,22 @@ client.on("interactionCreate", async (interaction) => {
           { name: "Output", value: `\`\`\`js\n${result.substring(0, 400)}\n\`\`\``, inline: false }
         )
         .setColor(0x00FF00);
-      
       await interaction.editReply({ embeds: [evalEmbed] });
-      
       await logToWebhook("Eval Executed", `${interaction.user.tag} executed code`, "FOUNDER");
     } catch (error) {
-      const errorEmbed = new EmbedBuilder()
-        .setTitle("Eval Failed")
-        .setDescription(`\`\`\`js\n${error.message}\n\`\`\``)
-        .setColor(0xFF0000);
-      
+      const errorEmbed = new EmbedBuilder().setTitle("Eval Failed").setDescription(`\`\`\`js\n${error.message}\n\`\`\``).setColor(0xFF0000);
       await interaction.editReply({ embeds: [errorEmbed] });
     }
     return;
   }
   
-  // ============ STATS COMMAND ============
+  // STATS COMMAND
   if (interaction.commandName === "stats") {
     const uptime = Math.floor((Date.now() - stats.startTime) / 1000);
     const uptimeDays = Math.floor(uptime / 86400);
     const uptimeHours = Math.floor((uptime % 86400) / 3600);
     const uptimeMinutes = Math.floor((uptime % 3600) / 60);
     const successRate = stats.totalSnipes > 0 ? ((stats.successfulSnipes / stats.totalSnipes) * 100).toFixed(2) : 0;
-    
     const statsEmbed = new EmbedBuilder()
       .setTitle("Bot Statistics")
       .addFields(
@@ -663,42 +585,32 @@ client.on("interactionCreate", async (interaction) => {
         { name: "Active Users", value: `${acceptedUsers.size}`, inline: true }
       )
       .setColor(0x9B59B6);
-    
     await interaction.reply({ embeds: [statsEmbed] });
     return;
   }
   
-  // ============ LEADERBOARD COMMAND ============
+  // LEADERBOARD
   if (interaction.commandName === "leaderboard") {
     const sortedUsers = Array.from(acceptedUsers.entries())
       .sort((a, b) => (b[1].snipes || 0) - (a[1].snipes || 0))
       .slice(0, 10);
-    
     let leaderboardText = "";
     for (let i = 0; i < sortedUsers.length; i++) {
       const [userId, data] = sortedUsers[i];
       const user = await client.users.fetch(userId).catch(() => null);
       leaderboardText += `${i + 1}. ${user?.tag || "Unknown"} - ${data.snipes || 0} snipes\n`;
     }
-    
     if (leaderboardText === "") leaderboardText = "No snipes recorded yet. Be the first!";
-    
-    const leaderboardEmbed = new EmbedBuilder()
-      .setTitle("Top Snipers Leaderboard")
-      .setDescription(leaderboardText)
-      .setColor(0x9B59B6);
-    
+    const leaderboardEmbed = new EmbedBuilder().setTitle("Top Snipers Leaderboard").setDescription(leaderboardText).setColor(0x9B59B6);
     await interaction.reply({ embeds: [leaderboardEmbed] });
     return;
   }
   
-  // ============ SERVERS COMMAND ============
+  // SERVERS
   if (interaction.commandName === "servers") {
     await interaction.deferReply();
-    
     const response = await fetch(`https://games.roblox.com/v1/games/${FAME_GAME_ID}/servers/Public?limit=100`);
     const data = await response.json();
-    
     let serverList = "";
     if (data.data) {
       const topServers = data.data.slice(0, 10);
@@ -707,111 +619,79 @@ client.on("interactionCreate", async (interaction) => {
         serverList += `${i + 1}. ${server.playing || 0}/${server.maxPlayers} players\n`;
       }
     }
-    
     const serversEmbed = new EmbedBuilder()
       .setTitle(`${FAME_GAME_NAME} Active Servers`)
       .setDescription(serverList || "No servers found")
       .addFields({ name: "Total Servers", value: `${data.data?.length || 0}`, inline: true })
       .setColor(0x9B59B6);
-    
     await interaction.editReply({ embeds: [serversEmbed] });
     return;
   }
   
-  // ============ PING COMMAND ============
+  // PING
   if (interaction.commandName === "ping") {
     const pingEmbed = new EmbedBuilder()
       .setTitle("Pong!")
       .setDescription(`Latency: **${Math.round(client.ws.ping)}ms**\nAPI Status: Connected`)
       .setColor(0x9B59B6);
-    
     await interaction.reply({ embeds: [pingEmbed] });
     return;
   }
   
-  // ============ SNIPE COMMAND ============
+  // SNIPE COMMAND
   if (interaction.commandName === "snipe") {
     const startTime = Date.now();
     stats.totalSnipes++;
-    
     const userStats = acceptedUsers.get(interaction.user.id);
     if (userStats) {
       userStats.snipes = (userStats.snipes || 0) + 1;
       acceptedUsers.set(interaction.user.id, userStats);
     }
-    
     try {
       await interaction.deferReply();
-      
       const username = interaction.options.getString("username");
       const discordUserId = interaction.user.id;
-      
       const userData = await getUserId(username);
       if (!userData) {
         stats.failedSnipes++;
-        const embed = new EmbedBuilder()
-          .setTitle("User Not Found")
-          .setDescription(`Could not find "${username}" on Roblox`)
-          .setColor(0x2B2D31);
+        const embed = new EmbedBuilder().setTitle("User Not Found").setDescription(`Could not find "${username}" on Roblox`).setColor(0x2B2D31);
         await interaction.editReply({ content: `<@${discordUserId}>`, embeds: [embed] });
         return;
       }
-      
       const userId = userData.id;
       const actualUsername = userData.name;
-      
       const presence = await getUserPresence(userId);
-      
       if (!presence.online) {
         stats.failedSnipes++;
         const avatar = await getUserAvatar(userId);
-        const embed = new EmbedBuilder()
-          .setTitle("Snipe Failed")
-          .setDescription(`**${actualUsername}** is currently offline`)
-          .setColor(0x2B2D31)
-          .setThumbnail(avatar);
+        const embed = new EmbedBuilder().setTitle("Snipe Failed").setDescription(`**${actualUsername}** is currently offline`).setColor(0x2B2D31).setThumbnail(avatar);
         await interaction.editReply({ content: `<@${discordUserId}>`, embeds: [embed] });
         return;
       }
-      
       if (!presence.inGame) {
         stats.failedSnipes++;
         const avatar = await getUserAvatar(userId);
-        const embed = new EmbedBuilder()
-          .setTitle("Snipe Failed")
-          .setDescription(`**${actualUsername}** is online but not in a game`)
-          .setColor(0x2B2D31)
-          .setThumbnail(avatar);
+        const embed = new EmbedBuilder().setTitle("Snipe Failed").setDescription(`**${actualUsername}** is online but not in a game`).setColor(0x2B2D31).setThumbnail(avatar);
         await interaction.editReply({ content: `<@${discordUserId}>`, embeds: [embed] });
         return;
       }
-      
       if (presence.placeId && presence.placeId.toString() !== FAME_GAME_ID) {
         stats.failedSnipes++;
         const avatar = await getUserAvatar(userId);
         const gameName = await getGameName(presence.placeId);
-        const embed = new EmbedBuilder()
-          .setTitle("Snipe Failed")
-          .setDescription(`**${actualUsername}** is playing **${gameName}**, not ${FAME_GAME_NAME}`)
-          .setColor(0x2B2D31)
-          .setThumbnail(avatar);
+        const embed = new EmbedBuilder().setTitle("Snipe Failed").setDescription(`**${actualUsername}** is playing **${gameName}**, not ${FAME_GAME_NAME}`).setColor(0x2B2D31).setThumbnail(avatar);
         await interaction.editReply({ content: `<@${discordUserId}>`, embeds: [embed] });
         return;
       }
-      
       const avatar = await getUserAvatar(userId);
-      
       const searching = new EmbedBuilder()
         .setTitle("Searching for player")
         .setDescription(`Target: **${actualUsername}**\nGame: **${FAME_GAME_NAME}**\nStatus: Scanning public servers...`)
         .setColor(0x9B59B6)
         .setThumbnail(avatar);
-      
       await interaction.editReply({ content: `<@${discordUserId}>`, embeds: [searching] });
-      
       const result = await findUserUltimate(userId);
       const elapsed = ((Date.now() - startTime) / 1000).toFixed(2);
-      
       if (!result.found) {
         stats.failedSnipes++;
         const embed = new EmbedBuilder()
@@ -827,9 +707,33 @@ client.on("interactionCreate", async (interaction) => {
         await interaction.editReply({ content: `<@${discordUserId}>`, embeds: [embed] });
         return;
       }
-      
       stats.successfulSnipes++;
       const joinLink = `https://www.roblox.com/games/${FAME_GAME_ID}?jobId=${result.jobId}`;
-      
       const embed = new EmbedBuilder()
         .setTitle("Player Found!")
+        .setDescription(`Successfully located **${actualUsername}** in **${FAME_GAME_NAME}**`)
+        .addFields(
+          { name: "Server Status", value: `${result.players}/${result.maxPlayers} players`, inline: false },
+          { name: "Search Time", value: `${elapsed} seconds`, inline: true },
+          { name: "Method", value: "public_api", inline: true }
+        )
+        .setColor(0x00FF00)
+        .setThumbnail(avatar)
+        .setImage(avatar);
+      const row = new ActionRowBuilder().addComponents(new ButtonBuilder().setLabel("Join Game").setURL(joinLink).setStyle(ButtonStyle.Link));
+      await interaction.editReply({ content: `<@${discordUserId}>`, embeds: [embed], components: [row] });
+      await logToWebhook("Snipe Successful", `${interaction.user.tag} sniped ${actualUsername}`, "SUCCESS");
+    } catch (error) {
+      console.error(error);
+      stats.failedSnipes++;
+      const errorEmbed = new EmbedBuilder().setTitle("Error").setDescription(error.message).setColor(0x2B2D31);
+      if (interaction.deferred) await interaction.editReply({ embeds: [errorEmbed] });
+      else await interaction.reply({ embeds: [errorEmbed], ephemeral: true });
+    }
+  }
+});
+
+process.on("unhandledRejection", console.error);
+process.on("uncaughtException", console.error);
+
+client.login(TOKEN);
