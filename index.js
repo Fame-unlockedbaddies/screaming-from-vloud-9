@@ -923,4 +923,12 @@ client.on("interactionCreate", async (interaction) => {
             { name: "Status Now", value: recheck.status === "offline" ? "Offline" : "Online", inline: true }
           )
           .setColor(0xFF0000)
-          .
+          .setThumbnail(userInfo.headshot);
+        return interaction.editReply({ content: `<@${userId}>`, embeds: [embed] });
+      }
+      
+      const embed = new EmbedBuilder()
+        .setTitle("Snipe Failed")
+        .setDescription(`Could not locate **${userInfo.username}** in **${FAME_GAME_NAME}**`)
+        .addFields(
+          { name: "Servers Scanned", value: `${result.s
