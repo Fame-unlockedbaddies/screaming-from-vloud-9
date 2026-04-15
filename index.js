@@ -186,12 +186,14 @@ async function getRobloxUserInfo(username) {
   }
 }
 
-async function findUserInGame(userId, gamePlaceId) {
+// SCAN SERVERS TO FIND THE SPECIFIC USER
+async function findUserInServers(userId, gamePlaceId) {
+  let cursor = "";
+  let serversScanned = 0;
+  let attempts = 0;
+  
   try {
-    let cursor = "";
-    let attempts = 0;
-    
-    while (attempts < 20) {
+    while (attempts < 30) {
       const url = `https://games.roblox.com/v1/games/${gamePlaceId}/servers/Public?limit=100${cursor ? `&cursor=${cursor}` : ""}`;
       const response = await fetch(url);
       
@@ -205,37 +207,22 @@ async function findUserInGame(userId, gamePlaceId) {
       if (!data.data || data.data.length === 0) break;
       
       for (const server of data.data) {
-        let playerList = [];
+        serversScanned++;
         
-        if (server.playing) {
-          if (Array.isArray(server.playing)) {
-            playerList = server.playing;
-          } else if (typeof server.playing === 'object') {
-            playerList = Object.values(server.playing);
-          } else if (typeof server.playing === 'number') {
-            // If playing is just a count, we can't match by ID
-            // Just return any server with players
-            if (server.playing > 0) {
-              return {
-                jobId: server.id,
-                players: server.playing,
-                maxPlayers: server.maxPlayers || 100,
-                method: "public_api"
-              };
-            }
-          }
+        let playerIds = [];
+        
+        if (server.playing && Array.isArray(server.playing)) {
+          playerIds = server.playing.map(p => p.toString());
         }
         
-        if (server.playerTokens && Array.isArray(server.playerTokens)) {
-          playerList = [...playerList, ...server.playerTokens];
-        }
-        
-        if (playerList.includes(userId.toString()) || playerList.includes(userId)) {
+        if (playerIds.includes(userId.toString())) {
+          console.log(`✅ Found user in server after scanning ${serversScanned} servers`);
           return {
+            found: true,
             jobId: server.id,
-            players: server.playing ? (Array.isArray(server.playing) ? server.playing.length : server.playing) : 0,
-            maxPlayers: server.maxPlayers || 100,
-            method: "public_api"
+            players: server.playing,
+            maxPlayers: server.maxPlayers,
+            serversScanned: serversScanned
           };
         }
       }
@@ -246,25 +233,15 @@ async function findUserInGame(userId, gamePlaceId) {
       await new Promise(r => setTimeout(r, 100));
     }
     
-    // If we couldn't find by ID, return the first server with players
-    const firstPage = await fetch(`https://games.roblox.com/v1/games/${gamePlaceId}/servers/Public?limit=100`);
-    const firstData = await firstPage.json();
-    if (firstData.data && firstData.data.length > 0) {
-      const serverWithPlayers = firstData.data.find(s => s.playing > 0);
-      if (serverWithPlayers) {
-        return {
-          jobId: serverWithPlayers.id,
-          players: serverWithPlayers.playing,
-          maxPlayers: serverWithPlayers.maxPlayers || 100,
-          method: "public_api_fallback"
-        };
-      }
-    }
+    console.log(`❌ User not found after scanning ${serversScanned} servers`);
+    return {
+      found: false,
+      serversScanned: serversScanned
+    };
     
-    return null;
   } catch (error) {
-    console.error("findUserInGame error:", error);
-    return null;
+    console.error("findUserInServers error:", error);
+    return { found: false, error: true, serversScanned: serversScanned };
   }
 }
 
@@ -274,13 +251,14 @@ async function performSnipe(username) {
     return { success: false, error: "User not found on Roblox" };
   }
   
-  const result = await findUserInGame(userInfo.id, FAME_GAME_ID);
+  const result = await findUserInServers(userInfo.id, FAME_GAME_ID);
   
-  if (!result || !result.jobId) {
+  if (!result.found) {
     return {
       success: false,
       username: userInfo.username,
-      error: "User not found in Fame (possibly in private server)"
+      serversScanned: result.serversScanned,
+      error: "User not found in Fame public servers"
     };
   }
   
@@ -294,8 +272,8 @@ async function performSnipe(username) {
     jobId: result.jobId,
     players: result.players,
     maxPlayers: result.maxPlayers,
-    joinLink: `https://www.roblox.com/games/${FAME_GAME_ID}?jobId=${result.jobId}`,
-    method: result.method
+    serversScanned: result.serversScanned,
+    joinLink: `https://www.roblox.com/games/${FAME_GAME_ID}?jobId=${result.jobId}`
   };
 }
 
@@ -369,56 +347,48 @@ client.on("interactionCreate", async (interaction) => {
       return interaction.editReply({ embeds: [embed] });
     }
     
-    // Searching embed with avatar
+    // Searching embed
     const searching = new EmbedBuilder()
-      .setTitle("🔍 Searching for player...")
-      .setDescription(`Looking for **${userInfo.username}** in **${FAME_GAME_NAME}**`)
-      .addFields(
-        { name: "Game", value: FAME_GAME_NAME, inline: true },
-        { name: "Status", value: "Scanning public servers...", inline: true }
-      )
+      .setTitle("🔍 Searching...")
+      .setDescription(`Looking for **${userInfo.username}** in **${FAME_GAME_NAME}**\nScanning public servers...`)
       .setColor(0xFFA500)
       .setThumbnail(userInfo.headshot);
     
     await interaction.editReply({ embeds: [searching] });
     
-    // Find the user
-    const result = await findUserInGame(userInfo.id, FAME_GAME_ID);
+    // SCAN SERVERS TO FIND THE USER
+    const result = await findUserInServers(userInfo.id, FAME_GAME_ID);
     const timeElapsed = ((Date.now() - startTime) / 1000).toFixed(2);
     
-    if (!result || !result.jobId) {
+    if (!result.found) {
       const embed = new EmbedBuilder()
-        .setTitle("❌ Could Not Find Player")
+        .setTitle("❌ Player Not Found")
         .setDescription(`Could not locate **${userInfo.username}** in **${FAME_GAME_NAME}**`)
         .addFields(
-          { name: "Possible Reasons", value: 
-            "• They are in a **Private/VIP Server** (cannot be sniped)\n" +
-            "• They are not playing Fame right now\n" +
-            "• They left the game during search"
-          },
-          { name: "Time Spent", value: `${timeElapsed} seconds`, inline: true }
+          { name: "Servers Scanned", value: `${result.serversScanned} servers`, inline: true },
+          { name: "Time", value: `${timeElapsed} seconds`, inline: true },
+          { name: "Possible Reason", value: "User may be in a private/VIP server or not playing Fame", inline: false }
         )
         .setColor(0xFF0000)
         .setThumbnail(userInfo.headshot);
       return interaction.editReply({ embeds: [embed] });
     }
     
-    // SUCCESS! Create join link (using https:// so Discord accepts it)
+    // SUCCESS - FOUND THE USER!
     const joinLink = `https://www.roblox.com/games/${FAME_GAME_ID}?jobId=${result.jobId}`;
     
+    // BLOXIANA STYLE EMBED - NO METHOD
     const embed = new EmbedBuilder()
       .setTitle("✅ Player Found!")
-      .setDescription(`Successfully found **${userInfo.username}** in **${FAME_GAME_NAME}**`)
+      .setDescription(`Search completed, **${result.serversScanned} servers** scanned!`)
       .addFields(
-        { name: "Server Status", value: `${result.players}/${result.maxPlayers} players`, inline: true },
-        { name: "Search Time", value: `${timeElapsed} seconds`, inline: true },
-        { name: "Method", value: result.method || "Public Server Scan", inline: true }
+        { name: "Game", value: `🔓 ${FAME_GAME_NAME}`, inline: true },
+        { name: "Players", value: `${result.players}/${result.maxPlayers}`, inline: true }
       )
       .setColor(0x00FF00)
       .setThumbnail(userInfo.headshot)
-      .setFooter({ text: "Click the button below to join their game!" });
+      .setFooter({ text: `Sniped in ${timeElapsed} seconds` });
     
-    // Button with https:// URL (Discord accepts this)
     const row = new ActionRowBuilder()
       .addComponents(
         new ButtonBuilder()
