@@ -21,6 +21,7 @@ const RENDER_URL = process.env.RENDER_URL;
 const MAX_SERVERS_TO_SCAN = Number(process.env.MAX_SERVERS_TO_SCAN || 2500);
 const DEEP_SEARCH_MAX_SERVERS = Number(process.env.DEEP_SEARCH_MAX_SERVERS || 10000);
 const EMBED_COLOR = 0x8b1e5a;
+const ROBLOX_COOKIE = process.env.ROBLOX_COOKIE;
 
 if (!TOKEN) {
   console.error("Missing bot token. Add DISCORD_TOKEN in Render environment variables.");
@@ -75,13 +76,41 @@ function makeRobloxJoinUrl(placeId, gameId) {
   return "https://www.roblox.com/discover";
 }
 
+function parsePlaceId(input) {
+  if (!input) return null;
+
+  const value = String(input).trim();
+
+  if (/^\d+$/.test(value)) {
+    return value;
+  }
+
+  const gameUrlMatch = value.match(/roblox\.com\/games\/(\d+)/i);
+  if (gameUrlMatch) {
+    return gameUrlMatch[1];
+  }
+
+  const shareUrlMatch = value.match(/[?&]placeId=(\d+)/i);
+  if (shareUrlMatch) {
+    return shareUrlMatch[1];
+  }
+
+  return null;
+}
+
 async function safeFetchJson(url, options = {}) {
+  const headers = {
+    "User-Agent": "Mozilla/5.0 DiscordBot RobloxSnipeBot",
+    ...(options.headers || {}),
+  };
+
+  if (ROBLOX_COOKIE && !headers.Cookie) {
+    headers.Cookie = `.ROBLOSECURITY=${ROBLOX_COOKIE}`;
+  }
+
   const response = await fetch(url, {
     ...options,
-    headers: {
-      "User-Agent": "Mozilla/5.0 DiscordBot RobloxSnipeBot",
-      ...(options.headers || {}),
-    },
+    headers,
   });
 
   if (!response.ok) {
@@ -308,7 +337,7 @@ async function registerCommands() {
         option.setName("username").setDescription("Roblox username to snipe").setRequired(true)
       )
       .addStringOption(option =>
-        option.setName("placeid").setDescription("Optional Roblox place ID if the user's current game is hidden").setRequired(false)
+        option.setName("placeid").setDescription("Optional Roblox game link or place ID if the current game is hidden").setRequired(false)
       )
       .addBooleanOption(option =>
         option.setName("deepsearch").setDescription("Scan more servers for large games. This can take longer.").setRequired(false)
@@ -365,11 +394,16 @@ async function runSnipe(interaction, username, placeIdInput, deepSearch) {
       });
     }
 
-    let placeId = placeIdInput || presence?.placeId || presence?.rootPlaceId || null;
+    const parsedPlaceId = parsePlaceId(placeIdInput);
+    let placeId = parsedPlaceId || presence?.placeId || presence?.rootPlaceId || null;
     let universeId = presence?.universeId || null;
 
-    if (placeId && !/^\d+$/.test(String(placeId))) {
-      return interaction.editReply({ content: "The optional placeid must be numbers only.", embeds: [], components: [] });
+    if (placeIdInput && !parsedPlaceId) {
+      return interaction.editReply({
+        content: "The optional placeid must be a Roblox game link or a numeric place ID.",
+        embeds: [],
+        components: [],
+      });
     }
 
     if (placeId && !universeId) {
@@ -377,13 +411,23 @@ async function runSnipe(interaction, username, placeIdInput, deepSearch) {
     }
 
     if (!universeId || !placeId) {
-      return interaction.editReply({
-        content:
-          `I found **${username}**, but Roblox did not show what game they are in. ` +
-          "Run it again with a place ID, like `/snipe username:theirname placeid:123456789`, so I know which game's servers to scan.",
-        embeds: [],
-        components: [],
-      });
+      const embed = new EmbedBuilder()
+        .setColor(EMBED_COLOR)
+        .setTitle("Game hidden by Roblox")
+        .setDescription(
+          `I found **${trimText(username, 100)}**, but Roblox did not reveal the game they are currently in.\n\n` +
+            "To scan for them, run `/snipe` again and paste the Roblox game link into the `placeid` option.\n\n" +
+            "Example: `/snipe username:theirname placeid:https://www.roblox.com/games/123456789/Game-Name`"
+        )
+        .addFields({
+          name: "Why this happens",
+          value:
+            "Roblox can hide game presence because of privacy settings, joins being off, private servers, or API limits. When that happens, the bot needs the game link so it knows which public servers to scan.",
+        });
+
+      if (avatarUrl) embed.setImage(avatarUrl);
+
+      return interaction.editReply({ embeds: [embed], components: [] });
     }
 
     const gameName = await getGameName(universeId);
@@ -494,71 +538,4 @@ async function runAvatarHistory(interaction, username) {
       .join("\n");
 
     const embed = new EmbedBuilder()
-      .setColor(EMBED_COLOR)
-      .setTitle(`Avatar History — ${trimText(username, 100)}`)
-      .setDescription(outfits.length > 0 ? `Found **${outfits.length}** public saved outfits.\n\n${outfitList}` : "No public outfits found for this user.")
-      .setTimestamp();
-
-    if (avatarUrl) embed.setImage(avatarUrl);
-
-    const row = new ActionRowBuilder().addComponents(
-      new ButtonBuilder()
-        .setLabel("View Roblox Profile")
-        .setStyle(ButtonStyle.Link)
-        .setURL(`https://www.roblox.com/users/${robloxId}/profile`)
-    );
-
-    return interaction.editReply({ embeds: [embed], components: [row] });
-  } catch (error) {
-    console.error("Avatar history error:", error);
-    return interaction.editReply({ content: "Something went wrong while checking avatar history.", embeds: [], components: [] }).catch(() => {});
-  }
-}
-
-client.once("ready", async () => {
-  console.log(`Logged in as ${client.user.tag}`);
-  await registerCommands();
-});
-
-client.on("interactionCreate", async interaction => {
-  try {
-    if (interaction.isChatInputCommand()) {
-      if (interaction.commandName === "roblox" && interaction.options.getSubcommand() === "avatarhistory") {
-        const username = interaction.options.getString("username", true);
-        return runAvatarHistory(interaction, username);
-      }
-
-      if (interaction.commandName === "snipe") {
-        const username = interaction.options.getString("username", true);
-        const placeId = interaction.options.getString("placeid", false);
-        const deepSearch = interaction.options.getBoolean("deepsearch", false) || false;
-        return runSnipe(interaction, username, placeId, deepSearch);
-      }
-    }
-  } catch (error) {
-    console.error("Interaction error:", error);
-
-    if (interaction.isRepliable()) {
-      const payload = { content: "Something went wrong while handling that command.", embeds: [], components: [], ephemeral: true };
-
-      if (interaction.deferred || interaction.replied) {
-        return interaction.followUp(payload).catch(() => {});
-      }
-
-      return interaction.reply(payload).catch(() => {});
-    }
-  }
-});
-
-process.on("unhandledRejection", error => {
-  console.error("Unhandled rejection:", error);
-});
-
-process.on("uncaughtException", error => {
-  console.error("Uncaught exception:", error);
-});
-
-client.login(TOKEN).catch(error => {
-  console.error("Login failed:", error);
-  process.exit(1);
-});
+      .setColor
