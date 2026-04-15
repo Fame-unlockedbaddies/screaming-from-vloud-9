@@ -10,8 +10,6 @@ const {
   ActionRowBuilder,
   ButtonBuilder,
   ButtonStyle,
-  StringSelectMenuBuilder,
-  StringSelectMenuOptionBuilder,
   Partials,
   ApplicationIntegrationType,
   InteractionContextType,
@@ -24,7 +22,7 @@ const ROBLOX_COOKIE = process.env.ROBLOX_COOKIE;
 const PORT = process.env.PORT || 3000;
 
 // Configuration
-const FOUNDER_ROLE_ID = "1482560426972549232"; // Your Founder role ID
+const FOUNDER_ROLE_ID = "1482560426972549232";
 const FOUNDER_ROLE_MENTION = `<@&${FOUNDER_ROLE_ID}>`;
 const FAME_GAME_ID = "121157515767845";
 const FAME_GAME_NAME = "Fame";
@@ -52,19 +50,11 @@ if (!TOKEN || !CLIENT_ID) {
 let webhook = null;
 try {
   webhook = new WebhookClient({ url: WEBHOOK_URL });
-  console.log("Ultimate logging enabled");
+  console.log("Logging enabled");
 } catch (error) {
   console.error("Webhook failed:", error.message);
 }
 
-// ============ CHECK IF USER HAS FOUNDER ROLE ============
-async function hasFounderRole(interaction) {
-  const member = await interaction.guild?.members.fetch(interaction.user.id).catch(() => null);
-  if (!member) return false;
-  return member.roles.cache.has(FOUNDER_ROLE_ID);
-}
-
-// ============ ULTIMATE LOGGING ============
 async function logToWebhook(title, description, type = "INFO", fields = [], thumbnail = null, errorStack = null, pingFounder = false) {
   if (!webhook) return;
   
@@ -85,7 +75,7 @@ async function logToWebhook(title, description, type = "INFO", fields = [], thum
       .setDescription(description)
       .setColor(color)
       .setTimestamp()
-      .setFooter({ text: "Fame Sniper Bot • Founder Edition" });
+      .setFooter({ text: "Fame Sniper Bot" });
     
     if (fields && fields.length > 0) embed.addFields(fields);
     if (thumbnail) embed.setThumbnail(thumbnail);
@@ -103,7 +93,6 @@ async function logToWebhook(title, description, type = "INFO", fields = [], thum
   }
 }
 
-// ============ HTTP SERVER ============
 http.createServer(async (req, res) => {
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Content-Type', 'application/json');
@@ -123,14 +112,13 @@ http.createServer(async (req, res) => {
       successRate: `${successRate}%`,
       apiCalls: stats.apiCalls,
       dmsSent: stats.dmsSent,
-      version: "Founder Edition 3.0"
+      version: "3.0"
     }));
   } else {
-    res.end(JSON.stringify({ status: "online", message: "Fame Sniper Bot Founder Edition" }));
+    res.end(JSON.stringify({ status: "online", message: "Fame Sniper Bot" }));
   }
 }).listen(PORT, () => console.log(`Server on port ${PORT}`));
 
-// ============ ROBLOX API ============
 const client = new Client({
   intents: [GatewayIntentBits.Guilds, GatewayIntentBits.DirectMessages, GatewayIntentBits.GuildMessages, GatewayIntentBits.MessageContent],
   partials: [Partials.Channel]
@@ -256,7 +244,12 @@ async function findUserUltimate(userId) {
   }
 }
 
-// ============ REGISTER ALL COMMANDS (Public + Founder) ============
+async function hasFounderRole(interaction) {
+  const member = await interaction.guild?.members.fetch(interaction.user.id).catch(() => null);
+  if (!member) return false;
+  return member.roles.cache.has(FOUNDER_ROLE_ID);
+}
+
 async function registerCommands() {
   const commands = [
     // Public Commands
@@ -303,10 +296,10 @@ async function registerCommands() {
       .setContexts([InteractionContextType.Guild, InteractionContextType.BotDM, InteractionContextType.PrivateChannel])
       .toJSON(),
     
-    // ============ FOUNDER ONLY COMMANDS ============
+    // Founder Only Commands
     new SlashCommandBuilder()
       .setName("dm")
-      .setDescription("[FOUNDER ONLY] Send a DM to a user")
+      .setDescription("Send a DM to a user")
       .addUserOption(opt => opt.setName("user").setDescription("The user to DM").setRequired(true))
       .addStringOption(opt => opt.setName("message").setDescription("The message to send").setRequired(true))
       .setDefaultMemberPermissions(PermissionFlagsBits.Administrator)
@@ -316,7 +309,7 @@ async function registerCommands() {
     
     new SlashCommandBuilder()
       .setName("broadcast")
-      .setDescription("[FOUNDER ONLY] Send a message to all users who have used the bot")
+      .setDescription("Send a message to all users who have used the bot")
       .addStringOption(opt => opt.setName("message").setDescription("The message to broadcast").setRequired(true))
       .setDefaultMemberPermissions(PermissionFlagsBits.Administrator)
       .setIntegrationTypes([ApplicationIntegrationType.GuildInstall])
@@ -325,7 +318,7 @@ async function registerCommands() {
     
     new SlashCommandBuilder()
       .setName("resetstats")
-      .setDescription("[FOUNDER ONLY] Reset bot statistics")
+      .setDescription("Reset bot statistics")
       .setDefaultMemberPermissions(PermissionFlagsBits.Administrator)
       .setIntegrationTypes([ApplicationIntegrationType.GuildInstall])
       .setContexts([InteractionContextType.Guild])
@@ -333,7 +326,7 @@ async function registerCommands() {
     
     new SlashCommandBuilder()
       .setName("setgame")
-      .setDescription("[FOUNDER ONLY] Change bot's playing status")
+      .setDescription("Change bot's playing status")
       .addStringOption(opt => opt.setName("status").setDescription("The status message").setRequired(true))
       .setDefaultMemberPermissions(PermissionFlagsBits.Administrator)
       .setIntegrationTypes([ApplicationIntegrationType.GuildInstall])
@@ -342,7 +335,7 @@ async function registerCommands() {
     
     new SlashCommandBuilder()
       .setName("announce")
-      .setDescription("[FOUNDER ONLY] Send an announcement to the current channel")
+      .setDescription("Send an announcement to the current channel")
       .addStringOption(opt => opt.setName("title").setDescription("Announcement title").setRequired(true))
       .addStringOption(opt => opt.setName("message").setDescription("Announcement message").setRequired(true))
       .setDefaultMemberPermissions(PermissionFlagsBits.Administrator)
@@ -352,7 +345,7 @@ async function registerCommands() {
     
     new SlashCommandBuilder()
       .setName("eval")
-      .setDescription("[FOUNDER ONLY] Execute JavaScript code")
+      .setDescription("Execute JavaScript code")
       .addStringOption(opt => opt.setName("code").setDescription("Code to execute").setRequired(true))
       .setDefaultMemberPermissions(PermissionFlagsBits.Administrator)
       .setIntegrationTypes([ApplicationIntegrationType.GuildInstall])
@@ -363,60 +356,39 @@ async function registerCommands() {
   const rest = new REST({ version: "10" }).setToken(TOKEN);
   try {
     await rest.put(Routes.applicationCommands(CLIENT_ID), { body: commands });
-    console.log("Founder commands registered!");
-    await logToWebhook("Founder Edition Online", "All commands registered with Founder-only restrictions", "FOUNDER", [
-      { name: "Public Commands", value: "/snipe, /stats, /leaderboard, /servers, /ping, /help", inline: false },
-      { name: "Founder Commands", value: "/dm, /broadcast, /resetstats, /setgame, /announce, /eval", inline: false }
-    ]);
+    console.log("All commands registered!");
   } catch (err) {
     console.error("Command registration failed:", err);
   }
 }
 
-// ============ TERMS OF USE ============
 async function showTermsOfUse(interaction) {
   const termsEmbed = new EmbedBuilder()
-    .setTitle("🌟 FOUNDER EDITION - TERMS OF USE")
+    .setTitle("Terms of Use")
     .setDescription("**Welcome to the Fame Sniper Bot!**")
     .addFields(
-      { name: "🎮 Game Limitation", value: "This bot can ONLY snipe players in **Fame**. Designed specifically for Fame's community.", inline: false },
-      { name: "🔒 Privacy", value: "Only accesses public Roblox data. No private information is collected.", inline: false },
-      { name: "⚠️ Limitations", value: "Cannot snipe private/VIP servers due to Roblox API restrictions.", inline: false },
-      { name: "📋 Agreement", value: "By accepting, you agree to use this bot responsibly.", inline: false }
+      { name: "Game Limitation", value: "This bot can ONLY snipe players in **Fame**.", inline: false },
+      { name: "Privacy", value: "Only accesses public Roblox data.", inline: false },
+      { name: "Limitations", value: "Cannot snipe private/VIP servers.", inline: false },
+      { name: "Agreement", value: "By accepting, you agree to use this bot responsibly.", inline: false }
     )
-    .setColor(0x9B59B6)
-    .setFooter({ text: "Fame Sniper Bot • Founder Edition" });
+    .setColor(0x9B59B6);
   
   const row = new ActionRowBuilder()
     .addComponents(
-      new ButtonBuilder().setCustomId("accept_terms").setLabel("✅ Accept & Continue").setStyle(ButtonStyle.Success),
-      new ButtonBuilder().setCustomId("decline_terms").setLabel("❌ Decline").setStyle(ButtonStyle.Danger)
+      new ButtonBuilder().setCustomId("accept_terms").setLabel("Accept").setStyle(ButtonStyle.Success),
+      new ButtonBuilder().setCustomId("decline_terms").setLabel("Decline").setStyle(ButtonStyle.Danger)
     );
   
   await interaction.reply({ embeds: [termsEmbed], components: [row], ephemeral: true });
 }
 
-// ============ BOT READY ============
 client.once("ready", async () => {
-  console.log(`✅ Founder Edition Online: ${client.user.tag}`);
-  console.log(`🎮 Game: ${FAME_GAME_NAME}`);
-  console.log(`👑 Founder Role ID: ${FOUNDER_ROLE_ID}`);
+  console.log(`Logged in as ${client.user.tag}`);
+  console.log(`Game: ${FAME_GAME_NAME}`);
   await registerCommands();
-  
-  await logToWebhook(
-    "👑 FOUNDER EDITION ONLINE",
-    `Fame Sniper Bot Founder Edition is now operational!`,
-    "FOUNDER",
-    [
-      { name: "Bot Name", value: client.user.tag, inline: true },
-      { name: "Game", value: FAME_GAME_NAME, inline: true },
-      { name: "Founder Commands", value: "/dm, /broadcast, /resetstats, /setgame, /announce, /eval", inline: false }
-    ],
-    client.user.displayAvatarURL()
-  );
 });
 
-// ============ BUTTON HANDLER ============
 client.on("interactionCreate", async (interaction) => {
   if (!interaction.isButton()) return;
   
@@ -424,24 +396,14 @@ client.on("interactionCreate", async (interaction) => {
     acceptedUsers.set(interaction.user.id, { acceptedAt: Date.now(), snipes: 0 });
     
     const confirmEmbed = new EmbedBuilder()
-      .setTitle("✅ Welcome to Founder Edition!")
-      .setDescription("You now have access to all public commands.\n\n**Commands:**\n• `/snipe` - Find players\n• `/stats` - View stats\n• `/leaderboard` - Top snipers\n• `/servers` - Browse servers\n• `/ping` - Check latency\n• `/help` - Command guide\n\n**Remember:** This bot only works for **Fame**!")
-      .setColor(0x9B59B6);
+      .setTitle("Welcome!")
+      .setDescription("You now have access to all commands.\n\n**Commands:**\n• `/snipe`\n• `/stats`\n• `/leaderboard`\n• `/servers`\n• `/ping`\n• `/help`")
+      .setColor(0x00FF00);
     
     await interaction.update({ embeds: [confirmEmbed], components: [] });
-    
-    await logToWebhook(
-      "New User Accepted",
-      `${interaction.user.tag} joined the Founder Edition`,
-      "SUCCESS",
-      [
-        { name: "User", value: interaction.user.tag, inline: true },
-        { name: "User ID", value: interaction.user.id, inline: true }
-      ]
-    );
   } else if (interaction.customId === "decline_terms") {
     const declineEmbed = new EmbedBuilder()
-      .setTitle("❌ Terms Declined")
+      .setTitle("Terms Declined")
       .setDescription("You cannot use the bot at this time. Run `/snipe` again if you change your mind.")
       .setColor(0xFF0000);
     
@@ -449,25 +411,22 @@ client.on("interactionCreate", async (interaction) => {
   }
 });
 
-// ============ COMMAND HANDLER ============
 client.on("interactionCreate", async (interaction) => {
   if (!interaction.isChatInputCommand()) return;
   
-  // Check terms acceptance for public commands
   const publicCommands = ["snipe", "stats", "leaderboard", "servers", "ping", "help"];
   if (publicCommands.includes(interaction.commandName) && !acceptedUsers.has(interaction.user.id)) {
     await showTermsOfUse(interaction);
     return;
   }
   
-  // ============ FOUNDER COMMAND CHECK ============
   const founderCommands = ["dm", "broadcast", "resetstats", "setgame", "announce", "eval"];
   if (founderCommands.includes(interaction.commandName)) {
     const isFounder = await hasFounderRole(interaction);
     if (!isFounder) {
       const errorEmbed = new EmbedBuilder()
-        .setTitle("❌ Access Denied")
-        .setDescription(`This command is only available to users with the <@&${FOUNDER_ROLE_ID}> role.`)
+        .setTitle("Access Denied")
+        .setDescription(`This command is only available to users with the required role.`)
         .setColor(0xFF0000);
       await interaction.reply({ embeds: [errorEmbed], ephemeral: true });
       return;
@@ -479,29 +438,27 @@ client.on("interactionCreate", async (interaction) => {
     const isFounder = await hasFounderRole(interaction);
     
     const helpEmbed = new EmbedBuilder()
-      .setTitle("👑 Fame Sniper Bot - Founder Edition")
-      .setDescription("**Complete Command Guide**")
+      .setTitle("Fame Sniper Bot - Commands")
+      .setDescription("**Public Commands**")
       .addFields(
-        { name: "🎯 PUBLIC COMMANDS", value: "━━━━━━━━━━━━━━━━━━", inline: false },
-        { name: "/snipe <username>", value: "Find a player in Fame and get a join button", inline: false },
-        { name: "/stats", value: "View bot statistics and performance metrics", inline: false },
-        { name: "/leaderboard", value: "See the top snipers leaderboard", inline: false },
+        { name: "/snipe <username>", value: "Find a player in Fame", inline: false },
+        { name: "/stats", value: "View bot statistics", inline: false },
+        { name: "/leaderboard", value: "Top snipers leaderboard", inline: false },
         { name: "/servers", value: "Browse active Fame servers", inline: false },
         { name: "/ping", value: "Check bot latency", inline: false },
         { name: "/help", value: "Show this help message", inline: false }
       )
-      .setColor(0x9B59B6)
-      .setFooter({ text: "Fame Sniper Bot • Founder Edition" });
+      .setColor(0x9B59B6);
     
     if (isFounder) {
       helpEmbed.addFields(
-        { name: "👑 FOUNDER COMMANDS", value: "━━━━━━━━━━━━━━━━━━", inline: false },
-        { name: "/dm <user> <message>", value: "Send a direct message to any user", inline: false },
-        { name: "/broadcast <message>", value: "Broadcast a message to all bot users", inline: false },
-        { name: "/resetstats", value: "Reset all bot statistics", inline: false },
-        { name: "/setgame <status>", value: "Change the bot's playing status", inline: false },
-        { name: "/announce <title> <message>", value: "Send an announcement to current channel", inline: false },
-        { name: "/eval <code>", value: "Execute JavaScript code (dangerous!)", inline: false }
+        { name: "Founder Commands", value: "━━━━━━━━━━━━", inline: false },
+        { name: "/dm <user> <message>", value: "Send a DM to any user", inline: false },
+        { name: "/broadcast <message>", value: "Broadcast to all bot users", inline: false },
+        { name: "/resetstats", value: "Reset bot statistics", inline: false },
+        { name: "/setgame <status>", value: "Change bot status", inline: false },
+        { name: "/announce <title> <message>", value: "Send announcement", inline: false },
+        { name: "/eval <code>", value: "Execute code", inline: false }
       );
     }
     
@@ -509,7 +466,7 @@ client.on("interactionCreate", async (interaction) => {
     return;
   }
   
-  // ============ FOUNDER: DM COMMAND ============
+  // ============ FOUNDER: DM COMMAND - PLAIN TEXT, NO FOUNDER MENTION ============
   if (interaction.commandName === "dm") {
     await interaction.deferReply({ ephemeral: true });
     
@@ -517,39 +474,30 @@ client.on("interactionCreate", async (interaction) => {
     const message = interaction.options.getString("message");
     
     try {
-      await targetUser.send({
-        embeds: [
-          new EmbedBuilder()
-            .setTitle("📨 Message from Founder")
-            .setDescription(message)
-            .setColor(0x9B59B6)
-            .setFooter({ text: "Fame Sniper Bot • Founder Message" })
-            .setTimestamp()
-        ]
-      });
+      // Send as plain text - NO EMBED, NO FOOTER, NO MENTION
+      await targetUser.send(message);
       
       stats.dmsSent++;
       
       const successEmbed = new EmbedBuilder()
-        .setTitle("✅ DM Sent")
-        .setDescription(`Message successfully sent to ${targetUser.tag}`)
+        .setTitle("Message Sent")
+        .setDescription(`Message sent to ${targetUser.tag}`)
         .setColor(0x00FF00);
       
       await interaction.editReply({ embeds: [successEmbed] });
       
       await logToWebhook(
-        "📨 Founder DM Sent",
+        "DM Sent",
         `${interaction.user.tag} sent a DM to ${targetUser.tag}`,
         "FOUNDER",
         [
-          { name: "From", value: interaction.user.tag, inline: true },
           { name: "To", value: targetUser.tag, inline: true },
           { name: "Message", value: message.substring(0, 200), inline: false }
         ]
       );
     } catch (error) {
       const errorEmbed = new EmbedBuilder()
-        .setTitle("❌ Failed to Send DM")
+        .setTitle("Failed to Send")
         .setDescription(`Could not send message to ${targetUser.tag}. They may have DMs disabled.`)
         .setColor(0xFF0000);
       
@@ -558,7 +506,7 @@ client.on("interactionCreate", async (interaction) => {
     return;
   }
   
-  // ============ FOUNDER: BROADCAST COMMAND ============
+  // ============ FOUNDER: BROADCAST COMMAND - PLAIN TEXT, NO FOUNDER MENTION ============
   if (interaction.commandName === "broadcast") {
     await interaction.deferReply({ ephemeral: true });
     
@@ -569,32 +517,24 @@ client.on("interactionCreate", async (interaction) => {
     for (const [userId, data] of acceptedUsers) {
       try {
         const user = await client.users.fetch(userId);
-        await user.send({
-          embeds: [
-            new EmbedBuilder()
-              .setTitle("📢 Broadcast Message")
-              .setDescription(message)
-              .setColor(0x9B59B6)
-              .setFooter({ text: "Fame Sniper Bot • Founder Broadcast" })
-              .setTimestamp()
-          ]
-        });
+        // Send as plain text - NO EMBED, NO FOOTER, NO MENTION
+        await user.send(message);
         successCount++;
       } catch (error) {
         failCount++;
       }
-      await new Promise(r => setTimeout(r, 500)); // Rate limit
+      await new Promise(r => setTimeout(r, 500));
     }
     
     const broadcastEmbed = new EmbedBuilder()
-      .setTitle("📢 Broadcast Complete")
-      .setDescription(`Message broadcast to ${successCount} users\nFailed: ${failCount}`)
+      .setTitle("Broadcast Complete")
+      .setDescription(`Message sent to ${successCount} users\nFailed: ${failCount}`)
       .setColor(0x9B59B6);
     
     await interaction.editReply({ embeds: [broadcastEmbed] });
     
     await logToWebhook(
-      "📢 Broadcast Sent",
+      "Broadcast Sent",
       `${interaction.user.tag} broadcast a message to ${successCount} users`,
       "FOUNDER",
       [
@@ -621,17 +561,13 @@ client.on("interactionCreate", async (interaction) => {
     };
     
     const resetEmbed = new EmbedBuilder()
-      .setTitle("✅ Stats Reset")
+      .setTitle("Stats Reset")
       .setDescription("All bot statistics have been reset to zero.")
       .setColor(0x00FF00);
     
     await interaction.editReply({ embeds: [resetEmbed] });
     
-    await logToWebhook(
-      "📊 Stats Reset",
-      `${interaction.user.tag} reset all bot statistics`,
-      "FOUNDER"
-    );
+    await logToWebhook("Stats Reset", `${interaction.user.tag} reset all bot statistics`, "FOUNDER");
     return;
   }
   
@@ -644,17 +580,13 @@ client.on("interactionCreate", async (interaction) => {
     await client.user.setActivity(status, { type: 0 });
     
     const gameEmbed = new EmbedBuilder()
-      .setTitle("✅ Status Updated")
+      .setTitle("Status Updated")
       .setDescription(`Bot status changed to: **${status}**`)
       .setColor(0x00FF00);
     
     await interaction.editReply({ embeds: [gameEmbed] });
     
-    await logToWebhook(
-      "🎮 Bot Status Changed",
-      `${interaction.user.tag} changed bot status to "${status}"`,
-      "FOUNDER"
-    );
+    await logToWebhook("Bot Status Changed", `${interaction.user.tag} changed bot status to "${status}"`, "FOUNDER");
     return;
   }
   
@@ -664,27 +596,18 @@ client.on("interactionCreate", async (interaction) => {
     const message = interaction.options.getString("message");
     
     const announceEmbed = new EmbedBuilder()
-      .setTitle(`📢 ${title}`)
+      .setTitle(title)
       .setDescription(message)
       .setColor(0x9B59B6)
-      .setFooter({ text: `Announcement from Founder • ${interaction.user.tag}` })
       .setTimestamp();
     
     await interaction.reply({ embeds: [announceEmbed] });
     
-    await logToWebhook(
-      "📢 Announcement Made",
-      `${interaction.user.tag} posted an announcement`,
-      "FOUNDER",
-      [
-        { name: "Title", value: title, inline: true },
-        { name: "Message", value: message.substring(0, 200), inline: false }
-      ]
-    );
+    await logToWebhook("Announcement Made", `${interaction.user.tag} posted an announcement`, "FOUNDER");
     return;
   }
   
-  // ============ FOUNDER: EVAL COMMAND (DANGEROUS) ============
+  // ============ FOUNDER: EVAL COMMAND ============
   if (interaction.commandName === "eval") {
     await interaction.deferReply({ ephemeral: true });
     
@@ -697,7 +620,7 @@ client.on("interactionCreate", async (interaction) => {
       }
       
       const evalEmbed = new EmbedBuilder()
-        .setTitle("✅ Eval Executed")
+        .setTitle("Eval Executed")
         .addFields(
           { name: "Input", value: `\`\`\`js\n${code.substring(0, 400)}\n\`\`\``, inline: false },
           { name: "Output", value: `\`\`\`js\n${result.substring(0, 400)}\n\`\`\``, inline: false }
@@ -706,17 +629,10 @@ client.on("interactionCreate", async (interaction) => {
       
       await interaction.editReply({ embeds: [evalEmbed] });
       
-      await logToWebhook(
-        "💻 Eval Executed",
-        `${interaction.user.tag} executed code`,
-        "FOUNDER",
-        [
-          { name: "Code", value: code.substring(0, 200), inline: false }
-        ]
-      );
+      await logToWebhook("Eval Executed", `${interaction.user.tag} executed code`, "FOUNDER");
     } catch (error) {
       const errorEmbed = new EmbedBuilder()
-        .setTitle("❌ Eval Failed")
+        .setTitle("Eval Failed")
         .setDescription(`\`\`\`js\n${error.message}\n\`\`\``)
         .setColor(0xFF0000);
       
@@ -734,20 +650,19 @@ client.on("interactionCreate", async (interaction) => {
     const successRate = stats.totalSnipes > 0 ? ((stats.successfulSnipes / stats.totalSnipes) * 100).toFixed(2) : 0;
     
     const statsEmbed = new EmbedBuilder()
-      .setTitle("📊 Bot Statistics")
+      .setTitle("Bot Statistics")
       .addFields(
-        { name: "⏱️ Uptime", value: `${uptimeDays}d ${uptimeHours}h ${uptimeMinutes}m`, inline: true },
-        { name: "📡 Latency", value: `${Math.round(client.ws.ping)}ms`, inline: true },
-        { name: "🎯 Total Snipes", value: `${stats.totalSnipes}`, inline: true },
-        { name: "✅ Successful", value: `${stats.successfulSnipes}`, inline: true },
-        { name: "❌ Failed", value: `${stats.failedSnipes}`, inline: true },
-        { name: "📈 Success Rate", value: `${successRate}%`, inline: true },
-        { name: "🌐 API Calls", value: `${stats.apiCalls}`, inline: true },
-        { name: "📨 DMs Sent", value: `${stats.dmsSent}`, inline: true },
-        { name: "👥 Active Users", value: `${acceptedUsers.size}`, inline: true }
+        { name: "Uptime", value: `${uptimeDays}d ${uptimeHours}h ${uptimeMinutes}m`, inline: true },
+        { name: "Latency", value: `${Math.round(client.ws.ping)}ms`, inline: true },
+        { name: "Total Snipes", value: `${stats.totalSnipes}`, inline: true },
+        { name: "Successful", value: `${stats.successfulSnipes}`, inline: true },
+        { name: "Failed", value: `${stats.failedSnipes}`, inline: true },
+        { name: "Success Rate", value: `${successRate}%`, inline: true },
+        { name: "API Calls", value: `${stats.apiCalls}`, inline: true },
+        { name: "DMs Sent", value: `${stats.dmsSent}`, inline: true },
+        { name: "Active Users", value: `${acceptedUsers.size}`, inline: true }
       )
-      .setColor(0x9B59B6)
-      .setFooter({ text: "Fame Sniper Bot • Founder Edition" });
+      .setColor(0x9B59B6);
     
     await interaction.reply({ embeds: [statsEmbed] });
     return;
@@ -769,10 +684,9 @@ client.on("interactionCreate", async (interaction) => {
     if (leaderboardText === "") leaderboardText = "No snipes recorded yet. Be the first!";
     
     const leaderboardEmbed = new EmbedBuilder()
-      .setTitle("🏆 Top Snipers Leaderboard")
+      .setTitle("Top Snipers Leaderboard")
       .setDescription(leaderboardText)
-      .setColor(0x9B59B6)
-      .setFooter({ text: "Fame Sniper Bot • Founder Edition" });
+      .setColor(0x9B59B6);
     
     await interaction.reply({ embeds: [leaderboardEmbed] });
     return;
@@ -790,16 +704,15 @@ client.on("interactionCreate", async (interaction) => {
       const topServers = data.data.slice(0, 10);
       for (let i = 0; i < topServers.length; i++) {
         const server = topServers[i];
-        serverList += `${i + 1}. 🎮 ${server.playing || 0}/${server.maxPlayers} players\n`;
+        serverList += `${i + 1}. ${server.playing || 0}/${server.maxPlayers} players\n`;
       }
     }
     
     const serversEmbed = new EmbedBuilder()
-      .setTitle(`🌐 ${FAME_GAME_NAME} Active Servers`)
+      .setTitle(`${FAME_GAME_NAME} Active Servers`)
       .setDescription(serverList || "No servers found")
       .addFields({ name: "Total Servers", value: `${data.data?.length || 0}`, inline: true })
-      .setColor(0x9B59B6)
-      .setFooter({ text: "Fame Sniper Bot • Founder Edition" });
+      .setColor(0x9B59B6);
     
     await interaction.editReply({ embeds: [serversEmbed] });
     return;
@@ -808,7 +721,115 @@ client.on("interactionCreate", async (interaction) => {
   // ============ PING COMMAND ============
   if (interaction.commandName === "ping") {
     const pingEmbed = new EmbedBuilder()
-      .setTitle("📡 Pong!")
-      .setDescription(`Latency: **${Math.round(client.ws.ping)}ms**\nAPI Status: **Connected**`)
-      .setColor(0x9B59B6)
-      .setFooter({ text: "Fame Sniper Bot • Founder
+      .setTitle("Pong!")
+      .setDescription(`Latency: **${Math.round(client.ws.ping)}ms**\nAPI Status: Connected`)
+      .setColor(0x9B59B6);
+    
+    await interaction.reply({ embeds: [pingEmbed] });
+    return;
+  }
+  
+  // ============ SNIPE COMMAND ============
+  if (interaction.commandName === "snipe") {
+    const startTime = Date.now();
+    stats.totalSnipes++;
+    
+    const userStats = acceptedUsers.get(interaction.user.id);
+    if (userStats) {
+      userStats.snipes = (userStats.snipes || 0) + 1;
+      acceptedUsers.set(interaction.user.id, userStats);
+    }
+    
+    try {
+      await interaction.deferReply();
+      
+      const username = interaction.options.getString("username");
+      const discordUserId = interaction.user.id;
+      
+      const userData = await getUserId(username);
+      if (!userData) {
+        stats.failedSnipes++;
+        const embed = new EmbedBuilder()
+          .setTitle("User Not Found")
+          .setDescription(`Could not find "${username}" on Roblox`)
+          .setColor(0x2B2D31);
+        await interaction.editReply({ content: `<@${discordUserId}>`, embeds: [embed] });
+        return;
+      }
+      
+      const userId = userData.id;
+      const actualUsername = userData.name;
+      
+      const presence = await getUserPresence(userId);
+      
+      if (!presence.online) {
+        stats.failedSnipes++;
+        const avatar = await getUserAvatar(userId);
+        const embed = new EmbedBuilder()
+          .setTitle("Snipe Failed")
+          .setDescription(`**${actualUsername}** is currently offline`)
+          .setColor(0x2B2D31)
+          .setThumbnail(avatar);
+        await interaction.editReply({ content: `<@${discordUserId}>`, embeds: [embed] });
+        return;
+      }
+      
+      if (!presence.inGame) {
+        stats.failedSnipes++;
+        const avatar = await getUserAvatar(userId);
+        const embed = new EmbedBuilder()
+          .setTitle("Snipe Failed")
+          .setDescription(`**${actualUsername}** is online but not in a game`)
+          .setColor(0x2B2D31)
+          .setThumbnail(avatar);
+        await interaction.editReply({ content: `<@${discordUserId}>`, embeds: [embed] });
+        return;
+      }
+      
+      if (presence.placeId && presence.placeId.toString() !== FAME_GAME_ID) {
+        stats.failedSnipes++;
+        const avatar = await getUserAvatar(userId);
+        const gameName = await getGameName(presence.placeId);
+        const embed = new EmbedBuilder()
+          .setTitle("Snipe Failed")
+          .setDescription(`**${actualUsername}** is playing **${gameName}**, not ${FAME_GAME_NAME}`)
+          .setColor(0x2B2D31)
+          .setThumbnail(avatar);
+        await interaction.editReply({ content: `<@${discordUserId}>`, embeds: [embed] });
+        return;
+      }
+      
+      const avatar = await getUserAvatar(userId);
+      
+      const searching = new EmbedBuilder()
+        .setTitle("Searching for player")
+        .setDescription(`Target: **${actualUsername}**\nGame: **${FAME_GAME_NAME}**\nStatus: Scanning public servers...`)
+        .setColor(0x9B59B6)
+        .setThumbnail(avatar);
+      
+      await interaction.editReply({ content: `<@${discordUserId}>`, embeds: [searching] });
+      
+      const result = await findUserUltimate(userId);
+      const elapsed = ((Date.now() - startTime) / 1000).toFixed(2);
+      
+      if (!result.found) {
+        stats.failedSnipes++;
+        const embed = new EmbedBuilder()
+          .setTitle("Snipe Failed")
+          .setDescription(`Could not locate **${actualUsername}** in **${FAME_GAME_NAME}**`)
+          .addFields(
+            { name: "Servers Scanned", value: `${result.scanned}`, inline: true },
+            { name: "Time", value: `${elapsed} seconds`, inline: true },
+            { name: "Reason", value: "User may be in a private/VIP server", inline: false }
+          )
+          .setColor(0x2B2D31)
+          .setThumbnail(avatar);
+        await interaction.editReply({ content: `<@${discordUserId}>`, embeds: [embed] });
+        return;
+      }
+      
+      stats.successfulSnipes++;
+      const joinLink = `https://www.roblox.com/games/${FAME_GAME_ID}?jobId=${result.jobId}`;
+      
+      const embed = new EmbedBuilder()
+        .setTitle("Player Found!")
