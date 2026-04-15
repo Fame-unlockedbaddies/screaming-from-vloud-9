@@ -1,5 +1,4 @@
 const http = require("http");
-const { WebhookClient } = require("discord.js");
 const {
   Client,
   GatewayIntentBits,
@@ -12,8 +11,7 @@ const {
   ButtonStyle,
   Partials,
   ApplicationIntegrationType,
-  InteractionContextType,
-  PermissionFlagsBits
+  InteractionContextType
 } = require("discord.js");
 
 const TOKEN = process.env.TOKEN;
@@ -21,123 +19,42 @@ const CLIENT_ID = process.env.CLIENT_ID;
 const ROBLOX_COOKIE = process.env.ROBLOX_COOKIE;
 const PORT = process.env.PORT || 3000;
 
-// Configuration
-const FOUNDER_ROLE_ID = "1482560426972549232";
-const FOUNDER_ROLE_MENTION = `<@&${FOUNDER_ROLE_ID}>`;
-const FAME_GAME_ID = "121157515767845";
-const FAME_GAME_NAME = "Fame";
-const WEBHOOK_URL = "https://discord.com/api/webhooks/1493916503291203654/xRsw3M1K4nAJm6c6WVEY99yK1_4XC53cK0JRbvAylSfc6t9XK-Jsi9o4uEU_iaYkRjhP";
-
-// Store accepted users
-const acceptedUsers = new Map();
-
-// Statistics
-let stats = {
-  totalSnipes: 0,
-  successfulSnipes: 0,
-  failedSnipes: 0,
-  startTime: Date.now(),
-  apiCalls: 0,
-  rateLimits: 0,
-  dmsSent: 0
-};
-
 if (!TOKEN || !CLIENT_ID) {
   console.error("Missing TOKEN or CLIENT_ID");
   process.exit(1);
 }
 
-let webhook = null;
-try {
-  webhook = new WebhookClient({ url: WEBHOOK_URL });
-  console.log("Logging enabled");
-} catch (error) {
-  console.error("Webhook failed:", error.message);
-}
+const FAME_GAME_ID = "121157515767845";
+const FAME_GAME_NAME = "Fame";
 
-async function logToWebhook(title, description, type = "INFO", fields = [], thumbnail = null, errorStack = null, pingFounder = false) {
-  if (!webhook) return;
-  
-  try {
-    let color = 0x2B2D31;
-    let founderPing = "";
-    
-    switch(type) {
-      case "SUCCESS": color = 0x00FF00; break;
-      case "ERROR": color = 0xFF0000; if (pingFounder) founderPing = `${FOUNDER_ROLE_MENTION} `; break;
-      case "WARNING": color = 0xFFA500; break;
-      case "FOUNDER": color = 0x9B59B6; break;
-      default: color = 0x2B2D31;
-    }
-    
-    const embed = new EmbedBuilder()
-      .setTitle(title)
-      .setDescription(description)
-      .setColor(color)
-      .setTimestamp()
-      .setFooter({ text: "Fame Sniper Bot" });
-    
-    if (fields && fields.length > 0) embed.addFields(fields);
-    if (thumbnail) embed.setThumbnail(thumbnail);
-    if (errorStack) {
-      embed.addFields({
-        name: "Technical Details",
-        value: `\`\`\`diff\n- ${errorStack.slice(0, 400)}\n\`\`\``,
-        inline: false
-      });
-    }
-    
-    await webhook.send({ content: founderPing || undefined, embeds: [embed] });
-  } catch (error) {
-    console.error("Webhook error:", error.message);
-  }
-}
-
-http.createServer(async (req, res) => {
-  res.setHeader('Access-Control-Allow-Origin', '*');
-  res.setHeader('Content-Type', 'application/json');
-  
-  if (req.url === '/stats') {
-    const uptime = Math.floor((Date.now() - stats.startTime) / 1000);
-    const successRate = stats.totalSnipes > 0 ? ((stats.successfulSnipes / stats.totalSnipes) * 100).toFixed(2) : 0;
-    
-    res.end(JSON.stringify({
-      status: "online",
-      bot: client.user?.tag,
-      game: FAME_GAME_NAME,
-      uptime: uptime,
-      totalSnipes: stats.totalSnipes,
-      successfulSnipes: stats.successfulSnipes,
-      failedSnipes: stats.failedSnipes,
-      successRate: `${successRate}%`,
-      apiCalls: stats.apiCalls,
-      dmsSent: stats.dmsSent,
-      version: "3.0"
-    }));
-  } else {
-    res.end(JSON.stringify({ status: "online", message: "Fame Sniper Bot" }));
-  }
-}).listen(PORT, () => console.log(`Server on port ${PORT}`));
+// Keep alive server for Render
+http.createServer((req, res) => {
+  res.writeHead(200, { "Content-Type": "text/plain" });
+  res.end("Bot is alive");
+}).listen(PORT, () => {
+  console.log(`Server running on port ${PORT}`);
+});
 
 const client = new Client({
-  intents: [GatewayIntentBits.Guilds, GatewayIntentBits.DirectMessages, GatewayIntentBits.GuildMessages, GatewayIntentBits.MessageContent],
+  intents: [GatewayIntentBits.Guilds, GatewayIntentBits.DirectMessages],
   partials: [Partials.Channel]
 });
 
+// Rate limiting
 let lastRequest = 0;
-const REQUEST_DELAY = 100;
+const REQUEST_DELAY = 200;
 
-async function rateLimit() {
+async function waitForRateLimit() {
   const now = Date.now();
   const wait = lastRequest + REQUEST_DELAY - now;
   if (wait > 0) await new Promise(r => setTimeout(r, wait));
   lastRequest = Date.now();
-  stats.apiCalls++;
 }
 
+// Get user ID from username
 async function getUserId(username) {
   try {
-    await rateLimit();
+    await waitForRateLimit();
     const res = await fetch("https://users.roblox.com/v1/usernames/users", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -149,13 +66,15 @@ async function getUserId(username) {
     }
     return null;
   } catch (error) {
+    console.error("getUserId error:", error);
     return null;
   }
 }
 
+// Get user presence (online/offline/in game)
 async function getUserPresence(userId) {
   try {
-    await rateLimit();
+    await waitForRateLimit();
     const res = await fetch("https://presence.roblox.com/v1/presence/users", {
       method: "POST",
       headers: {
@@ -167,6 +86,7 @@ async function getUserPresence(userId) {
     const data = await res.json();
     if (data.userPresences && data.userPresences[0]) {
       const p = data.userPresences[0];
+      // userPresenceType: 0=Offline, 1=Online, 2=InGame, 3=InStudio
       if (p.userPresenceType === 2) {
         return { online: true, inGame: true, placeId: p.placeId };
       } else if (p.userPresenceType === 1) {
@@ -175,13 +95,15 @@ async function getUserPresence(userId) {
     }
     return { online: false, inGame: false, placeId: null };
   } catch (error) {
+    console.error("getUserPresence error:", error);
     return { online: false, inGame: false, placeId: null };
   }
 }
 
+// Get user avatar
 async function getUserAvatar(userId) {
   try {
-    await rateLimit();
+    await waitForRateLimit();
     const res = await fetch(`https://thumbnails.roblox.com/v1/users/avatar-headshot?userIds=${userId}&size=720x720&format=Png&isCircular=false`);
     const data = await res.json();
     return data.data?.[0]?.imageUrl || null;
@@ -190,10 +112,11 @@ async function getUserAvatar(userId) {
   }
 }
 
+// Get game name from place ID
 async function getGameName(placeId) {
   if (!placeId) return "Unknown";
   try {
-    await rateLimit();
+    await waitForRateLimit();
     const res = await fetch(`https://games.roblox.com/v1/games?universeIds=${placeId}`);
     const data = await res.json();
     return data.data?.[0]?.name || "Unknown Game";
@@ -202,533 +125,240 @@ async function getGameName(placeId) {
   }
 }
 
-async function findUserUltimate(userId) {
+// SCAN ALL SERVERS TO FIND THE USER
+async function findUserInServers(userId) {
   let cursor = "";
   let serversScanned = 0;
   const userIdStr = userId.toString();
   
+  console.log(`[SEARCH] Looking for user ${userIdStr} in ${FAME_GAME_NAME}`);
+  
   try {
-    const firstPage = await fetch(`https://games.roblox.com/v1/games/${FAME_GAME_ID}/servers/Public?limit=100`);
-    const firstData = await firstPage.json();
-    
-    const allServers = [];
-    if (firstData.data) allServers.push(...firstData.data);
-    
-    let nextCursor = firstData.nextPageCursor;
-    while (nextCursor && allServers.length < 2000) {
-      const page = await fetch(`https://games.roblox.com/v1/games/${FAME_GAME_ID}/servers/Public?limit=100&cursor=${nextCursor}`);
-      const pageData = await page.json();
-      if (pageData.data) allServers.push(...pageData.data);
-      nextCursor = pageData.nextPageCursor;
-      await rateLimit();
-    }
-    
-    for (const server of allServers) {
-      serversScanned++;
-      if (server.playing && Array.isArray(server.playing)) {
-        if (server.playing.map(p => p.toString()).includes(userIdStr)) {
-          return {
-            found: true,
-            jobId: server.id,
-            players: server.playing.length,
-            maxPlayers: server.maxPlayers,
-            scanned: serversScanned
-          };
+    // Scan up to 30 pages (3000 servers)
+    for (let attempt = 0; attempt < 30; attempt++) {
+      await waitForRateLimit();
+      const url = `https://games.roblox.com/v1/games/${FAME_GAME_ID}/servers/Public?limit=100${cursor ? `&cursor=${cursor}` : ""}`;
+      const res = await fetch(url);
+      
+      if (res.status === 429) {
+        console.log("[SEARCH] Rate limited, waiting...");
+        await new Promise(r => setTimeout(r, 2000));
+        continue;
+      }
+      
+      const data = await res.json();
+      if (!data.data || data.data.length === 0) break;
+      
+      for (const server of data.data) {
+        serversScanned++;
+        
+        // Check if user is in this server's player list
+        if (server.playing && Array.isArray(server.playing)) {
+          if (server.playing.map(p => p.toString()).includes(userIdStr)) {
+            console.log(`[SEARCH] FOUND user after scanning ${serversScanned} servers`);
+            return {
+              found: true,
+              jobId: server.id,
+              players: server.playing.length,
+              maxPlayers: server.maxPlayers,
+              scanned: serversScanned
+            };
+          }
         }
       }
+      
+      cursor = data.nextPageCursor;
+      if (!cursor) break;
     }
     
+    console.log(`[SEARCH] NOT FOUND after scanning ${serversScanned} servers`);
     return { found: false, scanned: serversScanned };
+    
   } catch (error) {
+    console.error("[SEARCH] Error:", error);
     return { found: false, scanned: serversScanned, error: true };
   }
 }
 
-async function hasFounderRole(interaction) {
-  const member = await interaction.guild?.members.fetch(interaction.user.id).catch(() => null);
-  if (!member) return false;
-  return member.roles.cache.has(FOUNDER_ROLE_ID);
-}
-
+// Register slash command
 async function registerCommands() {
   const commands = [
     new SlashCommandBuilder()
       .setName("snipe")
       .setDescription(`Find a player in ${FAME_GAME_NAME} and join their game`)
-      .addStringOption(opt => opt.setName("username").setDescription("Roblox username").setRequired(true))
-      .setIntegrationTypes([ApplicationIntegrationType.GuildInstall, ApplicationIntegrationType.UserInstall])
-      .setContexts([InteractionContextType.Guild, InteractionContextType.BotDM, InteractionContextType.PrivateChannel])
-      .toJSON(),
-    
-    new SlashCommandBuilder()
-      .setName("stats")
-      .setDescription("View bot statistics and performance")
-      .setIntegrationTypes([ApplicationIntegrationType.GuildInstall, ApplicationIntegrationType.UserInstall])
-      .setContexts([InteractionContextType.Guild, InteractionContextType.BotDM, InteractionContextType.PrivateChannel])
-      .toJSON(),
-    
-    new SlashCommandBuilder()
-      .setName("leaderboard")
-      .setDescription("View top snipers leaderboard")
-      .setIntegrationTypes([ApplicationIntegrationType.GuildInstall, ApplicationIntegrationType.UserInstall])
-      .setContexts([InteractionContextType.Guild, InteractionContextType.BotDM, InteractionContextType.PrivateChannel])
-      .toJSON(),
-    
-    new SlashCommandBuilder()
-      .setName("servers")
-      .setDescription(`View active ${FAME_GAME_NAME} servers`)
-      .setIntegrationTypes([ApplicationIntegrationType.GuildInstall, ApplicationIntegrationType.UserInstall])
-      .setContexts([InteractionContextType.Guild, InteractionContextType.BotDM, InteractionContextType.PrivateChannel])
-      .toJSON(),
-    
-    new SlashCommandBuilder()
-      .setName("ping")
-      .setDescription("Check bot latency")
-      .setIntegrationTypes([ApplicationIntegrationType.GuildInstall, ApplicationIntegrationType.UserInstall])
-      .setContexts([InteractionContextType.Guild, InteractionContextType.BotDM, InteractionContextType.PrivateChannel])
-      .toJSON(),
-    
-    new SlashCommandBuilder()
-      .setName("help")
-      .setDescription("Show all bot commands and information")
-      .setIntegrationTypes([ApplicationIntegrationType.GuildInstall, ApplicationIntegrationType.UserInstall])
-      .setContexts([InteractionContextType.Guild, InteractionContextType.BotDM, InteractionContextType.PrivateChannel])
-      .toJSON(),
-    
-    new SlashCommandBuilder()
-      .setName("dm")
-      .setDescription("Send a DM to a user")
-      .addUserOption(opt => opt.setName("user").setDescription("The user to DM").setRequired(true))
-      .addStringOption(opt => opt.setName("message").setDescription("The message to send").setRequired(true))
-      .setDefaultMemberPermissions(PermissionFlagsBits.Administrator)
-      .setIntegrationTypes([ApplicationIntegrationType.GuildInstall])
-      .setContexts([InteractionContextType.Guild])
-      .toJSON(),
-    
-    new SlashCommandBuilder()
-      .setName("broadcast")
-      .setDescription("Send a message to all users who have used the bot")
-      .addStringOption(opt => opt.setName("message").setDescription("The message to broadcast").setRequired(true))
-      .setDefaultMemberPermissions(PermissionFlagsBits.Administrator)
-      .setIntegrationTypes([ApplicationIntegrationType.GuildInstall])
-      .setContexts([InteractionContextType.Guild])
-      .toJSON(),
-    
-    new SlashCommandBuilder()
-      .setName("resetstats")
-      .setDescription("Reset bot statistics")
-      .setDefaultMemberPermissions(PermissionFlagsBits.Administrator)
-      .setIntegrationTypes([ApplicationIntegrationType.GuildInstall])
-      .setContexts([InteractionContextType.Guild])
-      .toJSON(),
-    
-    new SlashCommandBuilder()
-      .setName("setgame")
-      .setDescription("Change bot's playing status")
-      .addStringOption(opt => opt.setName("status").setDescription("The status message").setRequired(true))
-      .setDefaultMemberPermissions(PermissionFlagsBits.Administrator)
-      .setIntegrationTypes([ApplicationIntegrationType.GuildInstall])
-      .setContexts([InteractionContextType.Guild])
-      .toJSON(),
-    
-    new SlashCommandBuilder()
-      .setName("announce")
-      .setDescription("Send an announcement to the current channel")
-      .addStringOption(opt => opt.setName("title").setDescription("Announcement title").setRequired(true))
-      .addStringOption(opt => opt.setName("message").setDescription("Announcement message").setRequired(true))
-      .setDefaultMemberPermissions(PermissionFlagsBits.Administrator)
-      .setIntegrationTypes([ApplicationIntegrationType.GuildInstall])
-      .setContexts([InteractionContextType.Guild])
-      .toJSON(),
-    
-    new SlashCommandBuilder()
-      .setName("eval")
-      .setDescription("Execute JavaScript code")
-      .addStringOption(opt => opt.setName("code").setDescription("Code to execute").setRequired(true))
-      .setDefaultMemberPermissions(PermissionFlagsBits.Administrator)
-      .setIntegrationTypes([ApplicationIntegrationType.GuildInstall])
-      .setContexts([InteractionContextType.Guild])
+      .addStringOption(opt => 
+        opt.setName("username")
+          .setDescription("Roblox username")
+          .setRequired(true)
+      )
+      .setIntegrationTypes([
+        ApplicationIntegrationType.GuildInstall,
+        ApplicationIntegrationType.UserInstall
+      ])
+      .setContexts([
+        InteractionContextType.Guild,
+        InteractionContextType.BotDM,
+        InteractionContextType.PrivateChannel
+      ])
       .toJSON()
   ];
 
   const rest = new REST({ version: "10" }).setToken(TOKEN);
   try {
     await rest.put(Routes.applicationCommands(CLIENT_ID), { body: commands });
-    console.log("All commands registered!");
+    console.log("Snipe command registered!");
   } catch (err) {
     console.error("Command registration failed:", err);
   }
 }
 
-async function showTermsOfUse(interaction) {
-  const termsEmbed = new EmbedBuilder()
-    .setTitle("Terms of Use")
-    .setDescription("**Welcome to the Fame Sniper Bot!**")
-    .addFields(
-      { name: "Game Limitation", value: "This bot can ONLY snipe players in **Fame**.", inline: false },
-      { name: "Privacy", value: "Only accesses public Roblox data.", inline: false },
-      { name: "Limitations", value: "Cannot snipe private/VIP servers.", inline: false },
-      { name: "Agreement", value: "By accepting, you agree to use this bot responsibly.", inline: false }
-    )
-    .setColor(0x9B59B6);
-  
-  const row = new ActionRowBuilder()
-    .addComponents(
-      new ButtonBuilder().setCustomId("accept_terms").setLabel("Accept").setStyle(ButtonStyle.Success),
-      new ButtonBuilder().setCustomId("decline_terms").setLabel("Decline").setStyle(ButtonStyle.Danger)
-    );
-  
-  await interaction.reply({ embeds: [termsEmbed], components: [row], ephemeral: true });
-}
-
 client.once("ready", async () => {
   console.log(`Logged in as ${client.user.tag}`);
-  console.log(`Game: ${FAME_GAME_NAME}`);
+  console.log(`Sniping game: ${FAME_GAME_NAME}`);
   await registerCommands();
 });
 
 client.on("interactionCreate", async (interaction) => {
-  if (!interaction.isButton()) return;
-  
-  if (interaction.customId === "accept_terms") {
-    acceptedUsers.set(interaction.user.id, { acceptedAt: Date.now(), snipes: 0 });
-    const confirmEmbed = new EmbedBuilder()
-      .setTitle("Welcome!")
-      .setDescription("You now have access to all commands.\n\n**Commands:**\n• `/snipe`\n• `/stats`\n• `/leaderboard`\n• `/servers`\n• `/ping`\n• `/help`")
-      .setColor(0x00FF00);
-    await interaction.update({ embeds: [confirmEmbed], components: [] });
-  } else if (interaction.customId === "decline_terms") {
-    const declineEmbed = new EmbedBuilder()
-      .setTitle("Terms Declined")
-      .setDescription("You cannot use the bot at this time. Run `/snipe` again if you change your mind.")
-      .setColor(0xFF0000);
-    await interaction.update({ embeds: [declineEmbed], components: [] });
-  }
-});
-
-client.on("interactionCreate", async (interaction) => {
   if (!interaction.isChatInputCommand()) return;
+  if (interaction.commandName !== "snipe") return;
+
+  const startTime = Date.now();
   
-  const publicCommands = ["snipe", "stats", "leaderboard", "servers", "ping", "help"];
-  if (publicCommands.includes(interaction.commandName) && !acceptedUsers.has(interaction.user.id)) {
-    await showTermsOfUse(interaction);
-    return;
-  }
-  
-  const founderCommands = ["dm", "broadcast", "resetstats", "setgame", "announce", "eval"];
-  if (founderCommands.includes(interaction.commandName)) {
-    const isFounder = await hasFounderRole(interaction);
-    if (!isFounder) {
-      const errorEmbed = new EmbedBuilder()
-        .setTitle("Access Denied")
-        .setDescription(`This command is only available to users with the required role.`)
+  try {
+    await interaction.deferReply();
+    
+    const username = interaction.options.getString("username");
+    const discordUserId = interaction.user.id;
+    
+    console.log(`[SNIPE] Request for user: ${username}`);
+    
+    // STEP 1: Get user ID
+    const userData = await getUserId(username);
+    if (!userData) {
+      const embed = new EmbedBuilder()
+        .setTitle("User Not Found")
+        .setDescription(`Could not find "${username}" on Roblox`)
         .setColor(0xFF0000);
-      await interaction.reply({ embeds: [errorEmbed], ephemeral: true });
+      await interaction.editReply({ content: `<@${discordUserId}>`, embeds: [embed] });
       return;
     }
-  }
-  
-  // HELP COMMAND
-  if (interaction.commandName === "help") {
-    const isFounder = await hasFounderRole(interaction);
-    const helpEmbed = new EmbedBuilder()
-      .setTitle("Fame Sniper Bot - Commands")
-      .setDescription("**Public Commands**")
-      .addFields(
-        { name: "/snipe <username>", value: "Find a player in Fame", inline: false },
-        { name: "/stats", value: "View bot statistics", inline: false },
-        { name: "/leaderboard", value: "Top snipers leaderboard", inline: false },
-        { name: "/servers", value: "Browse active Fame servers", inline: false },
-        { name: "/ping", value: "Check bot latency", inline: false },
-        { name: "/help", value: "Show this help message", inline: false }
-      )
-      .setColor(0x9B59B6);
-    if (isFounder) {
-      helpEmbed.addFields(
-        { name: "Founder Commands", value: "━━━━━━━━━━━━", inline: false },
-        { name: "/dm <user> <message>", value: "Send a DM to any user", inline: false },
-        { name: "/broadcast <message>", value: "Broadcast to all bot users", inline: false },
-        { name: "/resetstats", value: "Reset bot statistics", inline: false },
-        { name: "/setgame <status>", value: "Change bot status", inline: false },
-        { name: "/announce <title> <message>", value: "Send announcement", inline: false },
-        { name: "/eval <code>", value: "Execute code", inline: false }
-      );
-    }
-    await interaction.reply({ embeds: [helpEmbed], ephemeral: true });
-    return;
-  }
-  
-  // DM COMMAND - PLAIN TEXT, NO FOUNDER MENTION
-  if (interaction.commandName === "dm") {
-    await interaction.deferReply({ ephemeral: true });
-    const targetUser = interaction.options.getUser("user");
-    const message = interaction.options.getString("message");
-    try {
-      await targetUser.send(message);
-      stats.dmsSent++;
-      const successEmbed = new EmbedBuilder()
-        .setTitle("Message Sent")
-        .setDescription(`Message sent to ${targetUser.tag}`)
-        .setColor(0x00FF00);
-      await interaction.editReply({ embeds: [successEmbed] });
-      await logToWebhook("DM Sent", `${interaction.user.tag} sent a DM to ${targetUser.tag}`, "FOUNDER");
-    } catch (error) {
-      const errorEmbed = new EmbedBuilder()
-        .setTitle("Failed to Send")
-        .setDescription(`Could not send message to ${targetUser.tag}. They may have DMs disabled.`)
-        .setColor(0xFF0000);
-      await interaction.editReply({ embeds: [errorEmbed] });
-    }
-    return;
-  }
-  
-  // BROADCAST COMMAND - PLAIN TEXT, NO FOUNDER MENTION
-  if (interaction.commandName === "broadcast") {
-    await interaction.deferReply({ ephemeral: true });
-    const message = interaction.options.getString("message");
-    let successCount = 0;
-    let failCount = 0;
-    for (const [userId, data] of acceptedUsers) {
-      try {
-        const user = await client.users.fetch(userId);
-        await user.send(message);
-        successCount++;
-      } catch (error) {
-        failCount++;
-      }
-      await new Promise(r => setTimeout(r, 500));
-    }
-    const broadcastEmbed = new EmbedBuilder()
-      .setTitle("Broadcast Complete")
-      .setDescription(`Message sent to ${successCount} users\nFailed: ${failCount}`)
-      .setColor(0x9B59B6);
-    await interaction.editReply({ embeds: [broadcastEmbed] });
-    await logToWebhook("Broadcast Sent", `${interaction.user.tag} broadcast a message to ${successCount} users`, "FOUNDER");
-    return;
-  }
-  
-  // RESET STATS
-  if (interaction.commandName === "resetstats") {
-    await interaction.deferReply({ ephemeral: true });
-    stats = {
-      totalSnipes: 0, successfulSnipes: 0, failedSnipes: 0,
-      startTime: Date.now(), apiCalls: 0, rateLimits: 0, dmsSent: 0
-    };
-    const resetEmbed = new EmbedBuilder().setTitle("Stats Reset").setDescription("All bot statistics have been reset to zero.").setColor(0x00FF00);
-    await interaction.editReply({ embeds: [resetEmbed] });
-    await logToWebhook("Stats Reset", `${interaction.user.tag} reset all bot statistics`, "FOUNDER");
-    return;
-  }
-  
-  // SET GAME STATUS
-  if (interaction.commandName === "setgame") {
-    await interaction.deferReply({ ephemeral: true });
-    const status = interaction.options.getString("status");
-    await client.user.setActivity(status, { type: 0 });
-    const gameEmbed = new EmbedBuilder().setTitle("Status Updated").setDescription(`Bot status changed to: **${status}**`).setColor(0x00FF00);
-    await interaction.editReply({ embeds: [gameEmbed] });
-    await logToWebhook("Bot Status Changed", `${interaction.user.tag} changed bot status to "${status}"`, "FOUNDER");
-    return;
-  }
-  
-  // ANNOUNCE
-  if (interaction.commandName === "announce") {
-    const title = interaction.options.getString("title");
-    const message = interaction.options.getString("message");
-    const announceEmbed = new EmbedBuilder().setTitle(title).setDescription(message).setColor(0x9B59B6).setTimestamp();
-    await interaction.reply({ embeds: [announceEmbed] });
-    await logToWebhook("Announcement Made", `${interaction.user.tag} posted an announcement`, "FOUNDER");
-    return;
-  }
-  
-  // EVAL
-  if (interaction.commandName === "eval") {
-    await interaction.deferReply({ ephemeral: true });
-    const code = interaction.options.getString("code");
-    try {
-      let result = eval(code);
-      if (typeof result !== "string") result = require("util").inspect(result);
-      const evalEmbed = new EmbedBuilder()
-        .setTitle("Eval Executed")
-        .addFields(
-          { name: "Input", value: `\`\`\`js\n${code.substring(0, 400)}\n\`\`\``, inline: false },
-          { name: "Output", value: `\`\`\`js\n${result.substring(0, 400)}\n\`\`\``, inline: false }
-        )
-        .setColor(0x00FF00);
-      await interaction.editReply({ embeds: [evalEmbed] });
-      await logToWebhook("Eval Executed", `${interaction.user.tag} executed code`, "FOUNDER");
-    } catch (error) {
-      const errorEmbed = new EmbedBuilder().setTitle("Eval Failed").setDescription(`\`\`\`js\n${error.message}\n\`\`\``).setColor(0xFF0000);
-      await interaction.editReply({ embeds: [errorEmbed] });
-    }
-    return;
-  }
-  
-  // STATS COMMAND
-  if (interaction.commandName === "stats") {
-    const uptime = Math.floor((Date.now() - stats.startTime) / 1000);
-    const uptimeDays = Math.floor(uptime / 86400);
-    const uptimeHours = Math.floor((uptime % 86400) / 3600);
-    const uptimeMinutes = Math.floor((uptime % 3600) / 60);
-    const successRate = stats.totalSnipes > 0 ? ((stats.successfulSnipes / stats.totalSnipes) * 100).toFixed(2) : 0;
-    const statsEmbed = new EmbedBuilder()
-      .setTitle("Bot Statistics")
-      .addFields(
-        { name: "Uptime", value: `${uptimeDays}d ${uptimeHours}h ${uptimeMinutes}m`, inline: true },
-        { name: "Latency", value: `${Math.round(client.ws.ping)}ms`, inline: true },
-        { name: "Total Snipes", value: `${stats.totalSnipes}`, inline: true },
-        { name: "Successful", value: `${stats.successfulSnipes}`, inline: true },
-        { name: "Failed", value: `${stats.failedSnipes}`, inline: true },
-        { name: "Success Rate", value: `${successRate}%`, inline: true },
-        { name: "API Calls", value: `${stats.apiCalls}`, inline: true },
-        { name: "DMs Sent", value: `${stats.dmsSent}`, inline: true },
-        { name: "Active Users", value: `${acceptedUsers.size}`, inline: true }
-      )
-      .setColor(0x9B59B6);
-    await interaction.reply({ embeds: [statsEmbed] });
-    return;
-  }
-  
-  // LEADERBOARD
-  if (interaction.commandName === "leaderboard") {
-    const sortedUsers = Array.from(acceptedUsers.entries())
-      .sort((a, b) => (b[1].snipes || 0) - (a[1].snipes || 0))
-      .slice(0, 10);
-    let leaderboardText = "";
-    for (let i = 0; i < sortedUsers.length; i++) {
-      const [userId, data] = sortedUsers[i];
-      const user = await client.users.fetch(userId).catch(() => null);
-      leaderboardText += `${i + 1}. ${user?.tag || "Unknown"} - ${data.snipes || 0} snipes\n`;
-    }
-    if (leaderboardText === "") leaderboardText = "No snipes recorded yet. Be the first!";
-    const leaderboardEmbed = new EmbedBuilder().setTitle("Top Snipers Leaderboard").setDescription(leaderboardText).setColor(0x9B59B6);
-    await interaction.reply({ embeds: [leaderboardEmbed] });
-    return;
-  }
-  
-  // SERVERS
-  if (interaction.commandName === "servers") {
-    await interaction.deferReply();
-    const response = await fetch(`https://games.roblox.com/v1/games/${FAME_GAME_ID}/servers/Public?limit=100`);
-    const data = await response.json();
-    let serverList = "";
-    if (data.data) {
-      const topServers = data.data.slice(0, 10);
-      for (let i = 0; i < topServers.length; i++) {
-        const server = topServers[i];
-        serverList += `${i + 1}. ${server.playing || 0}/${server.maxPlayers} players\n`;
-      }
-    }
-    const serversEmbed = new EmbedBuilder()
-      .setTitle(`${FAME_GAME_NAME} Active Servers`)
-      .setDescription(serverList || "No servers found")
-      .addFields({ name: "Total Servers", value: `${data.data?.length || 0}`, inline: true })
-      .setColor(0x9B59B6);
-    await interaction.editReply({ embeds: [serversEmbed] });
-    return;
-  }
-  
-  // PING
-  if (interaction.commandName === "ping") {
-    const pingEmbed = new EmbedBuilder()
-      .setTitle("Pong!")
-      .setDescription(`Latency: **${Math.round(client.ws.ping)}ms**\nAPI Status: Connected`)
-      .setColor(0x9B59B6);
-    await interaction.reply({ embeds: [pingEmbed] });
-    return;
-  }
-  
-  // SNIPE COMMAND
-  if (interaction.commandName === "snipe") {
-    const startTime = Date.now();
-    stats.totalSnipes++;
-    const userStats = acceptedUsers.get(interaction.user.id);
-    if (userStats) {
-      userStats.snipes = (userStats.snipes || 0) + 1;
-      acceptedUsers.set(interaction.user.id, userStats);
-    }
-    try {
-      await interaction.deferReply();
-      const username = interaction.options.getString("username");
-      const discordUserId = interaction.user.id;
-      const userData = await getUserId(username);
-      if (!userData) {
-        stats.failedSnipes++;
-        const embed = new EmbedBuilder().setTitle("User Not Found").setDescription(`Could not find "${username}" on Roblox`).setColor(0x2B2D31);
-        await interaction.editReply({ content: `<@${discordUserId}>`, embeds: [embed] });
-        return;
-      }
-      const userId = userData.id;
-      const actualUsername = userData.name;
-      const presence = await getUserPresence(userId);
-      if (!presence.online) {
-        stats.failedSnipes++;
-        const avatar = await getUserAvatar(userId);
-        const embed = new EmbedBuilder().setTitle("Snipe Failed").setDescription(`**${actualUsername}** is currently offline`).setColor(0x2B2D31).setThumbnail(avatar);
-        await interaction.editReply({ content: `<@${discordUserId}>`, embeds: [embed] });
-        return;
-      }
-      if (!presence.inGame) {
-        stats.failedSnipes++;
-        const avatar = await getUserAvatar(userId);
-        const embed = new EmbedBuilder().setTitle("Snipe Failed").setDescription(`**${actualUsername}** is online but not in a game`).setColor(0x2B2D31).setThumbnail(avatar);
-        await interaction.editReply({ content: `<@${discordUserId}>`, embeds: [embed] });
-        return;
-      }
-      if (presence.placeId && presence.placeId.toString() !== FAME_GAME_ID) {
-        stats.failedSnipes++;
-        const avatar = await getUserAvatar(userId);
-        const gameName = await getGameName(presence.placeId);
-        const embed = new EmbedBuilder().setTitle("Snipe Failed").setDescription(`**${actualUsername}** is playing **${gameName}**, not ${FAME_GAME_NAME}`).setColor(0x2B2D31).setThumbnail(avatar);
-        await interaction.editReply({ content: `<@${discordUserId}>`, embeds: [embed] });
-        return;
-      }
+    
+    const userId = userData.id;
+    const actualUsername = userData.name;
+    console.log(`[SNIPE] Found user: ${actualUsername} (${userId})`);
+    
+    // STEP 2: Check if they're online and in game
+    const presence = await getUserPresence(userId);
+    
+    if (!presence.online) {
       const avatar = await getUserAvatar(userId);
-      const searching = new EmbedBuilder()
-        .setTitle("Searching for player")
-        .setDescription(`Target: **${actualUsername}**\nGame: **${FAME_GAME_NAME}**\nStatus: Scanning public servers...`)
-        .setColor(0x9B59B6)
-        .setThumbnail(avatar);
-      await interaction.editReply({ content: `<@${discordUserId}>`, embeds: [searching] });
-      const result = await findUserUltimate(userId);
-      const elapsed = ((Date.now() - startTime) / 1000).toFixed(2);
-      if (!result.found) {
-        stats.failedSnipes++;
-        const embed = new EmbedBuilder()
-          .setTitle("Snipe Failed")
-          .setDescription(`Could not locate **${actualUsername}** in **${FAME_GAME_NAME}**`)
-          .addFields(
-            { name: "Servers Scanned", value: `${result.scanned}`, inline: true },
-            { name: "Time", value: `${elapsed} seconds`, inline: true },
-            { name: "Reason", value: "User may be in a private/VIP server", inline: false }
-          )
-          .setColor(0x2B2D31)
-          .setThumbnail(avatar);
-        await interaction.editReply({ content: `<@${discordUserId}>`, embeds: [embed] });
-        return;
-      }
-      stats.successfulSnipes++;
-      const joinLink = `https://www.roblox.com/games/${FAME_GAME_ID}?jobId=${result.jobId}`;
       const embed = new EmbedBuilder()
-        .setTitle("Player Found!")
-        .setDescription(`Successfully located **${actualUsername}** in **${FAME_GAME_NAME}**`)
+        .setTitle("Snipe Failed")
+        .setDescription(`**${actualUsername}** is currently offline`)
+        .addFields({ name: "Status", value: "Offline", inline: true })
+        .setColor(0xFF0000)
+        .setThumbnail(avatar);
+      await interaction.editReply({ content: `<@${discordUserId}>`, embeds: [embed] });
+      return;
+    }
+    
+    if (!presence.inGame) {
+      const avatar = await getUserAvatar(userId);
+      const embed = new EmbedBuilder()
+        .setTitle("Snipe Failed")
+        .setDescription(`**${actualUsername}** is online but not in a game`)
+        .addFields({ name: "Status", value: "Online (Idle)", inline: true })
+        .setColor(0xFFA500)
+        .setThumbnail(avatar);
+      await interaction.editReply({ content: `<@${discordUserId}>`, embeds: [embed] });
+      return;
+    }
+    
+    // STEP 3: Check if they're playing Fame
+    if (presence.placeId && presence.placeId.toString() !== FAME_GAME_ID) {
+      const avatar = await getUserAvatar(userId);
+      const gameName = await getGameName(presence.placeId);
+      const embed = new EmbedBuilder()
+        .setTitle("Snipe Failed")
+        .setDescription(`**${actualUsername}** is playing **${gameName}**, not ${FAME_GAME_NAME}`)
         .addFields(
-          { name: "Server Status", value: `${result.players}/${result.maxPlayers} players`, inline: false },
-          { name: "Search Time", value: `${elapsed} seconds`, inline: true },
-          { name: "Method", value: "public_api", inline: true }
+          { name: "Current Game", value: gameName, inline: true },
+          { name: "Target Game", value: FAME_GAME_NAME, inline: true }
         )
-        .setColor(0x00FF00)
-        .setThumbnail(avatar)
-        .setImage(avatar);
-      const row = new ActionRowBuilder().addComponents(new ButtonBuilder().setLabel("Join Game").setURL(joinLink).setStyle(ButtonStyle.Link));
-      await interaction.editReply({ content: `<@${discordUserId}>`, embeds: [embed], components: [row] });
-      await logToWebhook("Snipe Successful", `${interaction.user.tag} sniped ${actualUsername}`, "SUCCESS");
-    } catch (error) {
-      console.error(error);
-      stats.failedSnipes++;
-      const errorEmbed = new EmbedBuilder().setTitle("Error").setDescription(error.message).setColor(0x2B2D31);
-      if (interaction.deferred) await interaction.editReply({ embeds: [errorEmbed] });
-      else await interaction.reply({ embeds: [errorEmbed], ephemeral: true });
+        .setColor(0xFFA500)
+        .setThumbnail(avatar);
+      await interaction.editReply({ content: `<@${discordUserId}>`, embeds: [embed] });
+      return;
+    }
+    
+    const avatar = await getUserAvatar(userId);
+    
+    // STEP 4: Searching embed
+    const searching = new EmbedBuilder()
+      .setTitle("Searching...")
+      .setDescription(`Looking for **${actualUsername}** in **${FAME_GAME_NAME}**\nScanning public servers...`)
+      .setColor(0x5865F2)
+      .setThumbnail(avatar);
+    
+    await interaction.editReply({ content: `<@${discordUserId}>`, embeds: [searching] });
+    
+    // STEP 5: Scan all servers to find the user
+    const result = await findUserInServers(userId);
+    const elapsed = ((Date.now() - startTime) / 1000).toFixed(2);
+    
+    if (!result.found) {
+      const embed = new EmbedBuilder()
+        .setTitle("Snipe Failed")
+        .setDescription(`Could not locate **${actualUsername}** in **${FAME_GAME_NAME}**`)
+        .addFields(
+          { name: "Servers Scanned", value: `${result.scanned} servers`, inline: true },
+          { name: "Time", value: `${elapsed} seconds`, inline: true },
+          { name: "Reason", value: "User may be in a private/VIP server", inline: false }
+        )
+        .setColor(0xFF0000)
+        .setThumbnail(avatar);
+      await interaction.editReply({ content: `<@${discordUserId}>`, embeds: [embed] });
+      return;
+    }
+    
+    // STEP 6: SUCCESS - Found the user!
+    const joinLink = `https://www.roblox.com/games/${FAME_GAME_ID}?jobId=${result.jobId}`;
+    
+    const embed = new EmbedBuilder()
+      .setTitle("Player Found!")
+      .setDescription(`Successfully found **${actualUsername}** in **${FAME_GAME_NAME}**`)
+      .addFields(
+        { name: "Server Status", value: `${result.players}/${result.maxPlayers} players`, inline: false },
+        { name: "Search Time", value: `${elapsed} seconds`, inline: true },
+        { name: "Method", value: "public_api", inline: true }
+      )
+      .setColor(0x00FF00)
+      .setThumbnail(avatar)
+      .setImage(avatar);
+    
+    const row = new ActionRowBuilder()
+      .addComponents(
+        new ButtonBuilder()
+          .setLabel("Join Game")
+          .setURL(joinLink)
+          .setStyle(ButtonStyle.Link)
+      );
+    
+    await interaction.editReply({ content: `<@${discordUserId}>`, embeds: [embed], components: [row] });
+    
+    console.log(`[SNIPE] SUCCESS - Found ${actualUsername} in ${result.scanned} servers`);
+    
+  } catch (error) {
+    console.error("Snipe error:", error);
+    const errorEmbed = new EmbedBuilder()
+      .setTitle("Error")
+      .setDescription(error.message)
+      .setColor(0xFF0000);
+    
+    if (interaction.deferred) {
+      await interaction.editReply({ embeds: [errorEmbed] });
+    } else {
+      await interaction.reply({ embeds: [errorEmbed], ephemeral: true });
     }
   }
 });
