@@ -1,9 +1,10 @@
 {
-  "name": "roblox-sniper",
-  "version": "1.0.0",
-  "scripts": { "start": "node index.js" },
+  "type": "module",
+  "scripts": {
+    "start": "node index.js"
+  },
   "dependencies": {
-    "discord.js": "^14.14.1",
+    "discord.js": "^14.19.3",
     "express": "^4.18.2"
   }
 }
