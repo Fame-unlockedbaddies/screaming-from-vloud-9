@@ -30,7 +30,7 @@ const FAME_GAME_ID = "121157515767845";
 const FAME_GAME_NAME = "Fame";
 const WEBHOOK_URL = "https://discord.com/api/webhooks/1493916503291203654/xRsw3M1K4nAJm6c6WVEY99yK1_4XC53cK0JRbvAylSfc6t9XK-Jsi9o4uEU_iaYkRjhP";
 
-// Allowed server IDs where invites are permitted
+// Allowed server IDs where invites are permitted (YOUR SERVER ID ADDED)
 const ALLOWED_SERVER_IDS = [
   "1428878035926388809" // Your server ID
 ];
@@ -361,7 +361,6 @@ client.on("messageCreate", async (message) => {
         await message.delete();
         console.log(`[PROTECTION] Deleted invite from ${message.author.tag}`);
         
-        // Send to discord-logs channel
         await sendToLogChannel(
           message.guild,
           "Invite Link Blocked",
@@ -376,7 +375,6 @@ client.on("messageCreate", async (message) => {
           message.author.displayAvatarURL()
         );
         
-        // Log to webhook
         await logToWebhook(
           "Invite Link Blocked",
           `Blocked invite from ${message.author.tag} in ${message.guild?.name || "DM"}`,
@@ -388,7 +386,6 @@ client.on("messageCreate", async (message) => {
           ]
         );
         
-        // Track violations
         const violations = (userViolations.get(message.author.id) || 0) + 1;
         userViolations.set(message.author.id, violations);
         
@@ -398,7 +395,6 @@ client.on("messageCreate", async (message) => {
         let actionBy = "Bot (Automatic)";
         
         if (violations >= 3) {
-          // Timeout the user for 10 minutes
           const member = await message.guild?.members.fetch(message.author.id).catch(() => null);
           if (member) {
             try {
@@ -408,7 +404,6 @@ client.on("messageCreate", async (message) => {
               stats.autoTimeouts++;
               consequence = `User has been timed out for ${muteDuration}.`;
               
-              // Send to discord-logs channel with detailed info
               await sendToLogChannel(
                 message.guild,
                 "User Timed Out (Automatic)",
@@ -437,7 +432,6 @@ client.on("messageCreate", async (message) => {
                 ]
               );
               
-              // Clear violations after timeout
               setTimeout(async () => {
                 userViolations.delete(message.author.id);
                 console.log(`[PROTECTION] ${message.author.tag} violations cleared after timeout`);
@@ -459,17 +453,6 @@ client.on("messageCreate", async (message) => {
             } catch (timeoutError) {
               console.error("[PROTECTION] Failed to timeout user:", timeoutError);
               consequence = "Warning issued. (Bot lacks timeout permissions)";
-              await sendToLogChannel(
-                message.guild,
-                "Timeout Failed",
-                `Failed to automatically timeout ${message.author.tag} - Bot may lack "Moderate Members" permission.`,
-                0xFF0000,
-                [
-                  { name: "User", value: message.author.tag, inline: true },
-                  { name: "Action By", value: "Bot (Automatic)", inline: true },
-                  { name: "Error", value: timeoutError.message, inline: false }
-                ]
-              );
             }
           } else {
             consequence = "Warning issued. (Could not find member in guild)";
@@ -493,10 +476,8 @@ client.on("messageCreate", async (message) => {
           );
         }
         
-        // Send DM to user
         await sendViolationDM(message.author, violations, isMuted, muteDuration, actionBy);
         
-        // Send public warning (auto-delete after 5 seconds)
         const warningEmbed = new EmbedBuilder()
           .setTitle("Invite Link Blocked")
           .setDescription(`${message.author}, you are not allowed to post invite links to other servers.`)
@@ -512,12 +493,6 @@ client.on("messageCreate", async (message) => {
         
       } catch (error) {
         console.error("[PROTECTION] Failed to delete message:", error);
-        await logToWebhook(
-          "Protection Error",
-          `Failed to delete invite message from ${message.author.tag}`,
-          "ERROR",
-          [{ name: "Error", value: error.message, inline: false }]
-        );
       }
       break;
     }
@@ -530,35 +505,23 @@ async function registerCommands() {
     new SlashCommandBuilder()
       .setName("snipe")
       .setDescription(`Find a player in ${FAME_GAME_NAME} and join their game`)
-      .addStringOption(opt => 
-        opt.setName("username")
-          .setDescription("Roblox username")
-          .setRequired(true)
-      )
-      .setIntegrationTypes([
-        ApplicationIntegrationType.GuildInstall,
-        ApplicationIntegrationType.UserInstall
-      ])
-      .setContexts([
-        InteractionContextType.Guild,
-        InteractionContextType.BotDM,
-        InteractionContextType.PrivateChannel
-      ])
+      .addStringOption(opt => opt.setName("username").setDescription("Roblox username").setRequired(true))
+      .setIntegrationTypes([ApplicationIntegrationType.GuildInstall, ApplicationIntegrationType.UserInstall])
+      .setContexts([InteractionContextType.Guild, InteractionContextType.BotDM, InteractionContextType.PrivateChannel])
+      .toJSON(),
+    
+    new SlashCommandBuilder()
+      .setName("stats")
+      .setDescription("View bot statistics")
+      .setIntegrationTypes([ApplicationIntegrationType.GuildInstall, ApplicationIntegrationType.UserInstall])
+      .setContexts([InteractionContextType.Guild, InteractionContextType.BotDM, InteractionContextType.PrivateChannel])
       .toJSON(),
     
     new SlashCommandBuilder()
       .setName("allowserver")
       .setDescription("[ADMIN] Add a server ID to the allowed list for invites")
-      .addStringOption(opt => 
-        opt.setName("serverid")
-          .setDescription("Discord server ID to allow")
-          .setRequired(true)
-      )
-      .addStringOption(opt =>
-        opt.setName("name")
-          .setDescription("Server name (optional)")
-          .setRequired(false)
-      )
+      .addStringOption(opt => opt.setName("serverid").setDescription("Discord server ID to allow").setRequired(true))
+      .addStringOption(opt => opt.setName("name").setDescription("Server name (optional)").setRequired(false))
       .setDefaultMemberPermissions(PermissionsBitField.Flags.Administrator)
       .toJSON(),
     
@@ -571,81 +534,37 @@ async function registerCommands() {
     new SlashCommandBuilder()
       .setName("removeallowed")
       .setDescription("[ADMIN] Remove a server from the allowed list")
-      .addStringOption(opt => 
-        opt.setName("serverid")
-          .setDescription("Discord server ID to remove")
-          .setRequired(true)
-      )
+      .addStringOption(opt => opt.setName("serverid").setDescription("Discord server ID to remove").setRequired(true))
       .setDefaultMemberPermissions(PermissionsBitField.Flags.Administrator)
       .toJSON(),
     
     new SlashCommandBuilder()
       .setName("clearwarnings")
       .setDescription("[ADMIN] Clear invite violations for a user")
-      .addUserOption(opt =>
-        opt.setName("user")
-          .setDescription("User to clear warnings for")
-          .setRequired(true)
-      )
+      .addUserOption(opt => opt.setName("user").setDescription("User to clear warnings for").setRequired(true))
       .setDefaultMemberPermissions(PermissionsBitField.Flags.Administrator)
-      .toJSON(),
-    
-    new SlashCommandBuilder()
-      .setName("stats")
-      .setDescription("View bot statistics")
-      .setIntegrationTypes([
-        ApplicationIntegrationType.GuildInstall,
-        ApplicationIntegrationType.UserInstall
-      ])
-      .setContexts([
-        InteractionContextType.Guild,
-        InteractionContextType.BotDM,
-        InteractionContextType.PrivateChannel
-      ])
       .toJSON(),
     
     new SlashCommandBuilder()
       .setName("timeout")
       .setDescription("[MOD] Timeout a user")
-      .addUserOption(opt =>
-        opt.setName("user")
-          .setDescription("User to timeout")
-          .setRequired(true)
-      )
-      .addIntegerOption(opt =>
-        opt.setName("minutes")
-          .setDescription("Duration in minutes (1-60)")
-          .setRequired(true)
-          .setMinValue(1)
-          .setMaxValue(60)
-      )
-      .addStringOption(opt =>
-        opt.setName("reason")
-          .setDescription("Reason for timeout")
-          .setRequired(false)
-      )
+      .addUserOption(opt => opt.setName("user").setDescription("User to timeout").setRequired(true))
+      .addIntegerOption(opt => opt.setName("minutes").setDescription("Duration in minutes (1-60)").setRequired(true).setMinValue(1).setMaxValue(60))
+      .addStringOption(opt => opt.setName("reason").setDescription("Reason for timeout").setRequired(false))
       .setDefaultMemberPermissions(PermissionsBitField.Flags.ModerateMembers)
       .toJSON(),
     
     new SlashCommandBuilder()
       .setName("untimeout")
       .setDescription("[MOD] Remove timeout from a user")
-      .addUserOption(opt =>
-        opt.setName("user")
-          .setDescription("User to remove timeout from")
-          .setRequired(true)
-      )
+      .addUserOption(opt => opt.setName("user").setDescription("User to remove timeout from").setRequired(true))
       .setDefaultMemberPermissions(PermissionsBitField.Flags.ModerateMembers)
       .toJSON(),
     
     new SlashCommandBuilder()
       .setName("warnings")
       .setDescription("[ADMIN] View invite violations for a user")
-      .addUserOption(opt =>
-        opt.setName("user")
-          .setDescription("User to check warnings for")
-          .setRequired(true)
-      )
+      .addUserOption(opt => opt.setName("user").setDescription("User to check warnings for").setRequired(true))
       .setDefaultMemberPermissions(PermissionsBitField.Flags.Administrator)
       .toJSON()
   ];
@@ -654,60 +573,175 @@ async function registerCommands() {
   try {
     await rest.put(Routes.applicationCommands(CLIENT_ID), { body: commands });
     console.log("Commands registered!");
-    await logToWebhook(
-      "Bot Online",
-      `Fame Sniper Bot is now operational with invite protection and logging to #${LOG_CHANNEL_NAME}`,
-      "SUCCESS",
-      [
-        { name: "Game", value: FAME_GAME_NAME, inline: true },
-        { name: "Commands", value: "/snipe, /stats, /timeout, /warnings", inline: true },
-        { name: "Log Channel", value: `#${LOG_CHANNEL_NAME}`, inline: true },
-        { name: "Your Server ID", value: "1428878035926388809 (Allowed)", inline: true },
-        { name: "Protection", value: "Active", inline: true }
-      ]
-    );
   } catch (err) {
     console.error("Command registration failed:", err);
-    await logToWebhook(
-      "Command Registration Failed",
-      err.message,
-      "ERROR"
-    );
   }
 }
 
 client.once("ready", async () => {
   console.log(`Logged in as ${client.user.tag}`);
   console.log(`Sniping game: ${FAME_GAME_NAME}`);
-  console.log(`[PROTECTION] Invite protection enabled. Allowed servers: ${ALLOWED_SERVER_IDS.length}`);
-  console.log(`[PROTECTION] Your server ID 1428878035926388809 is allowed`);
-  console.log(`[LOG] Looking for #${LOG_CHANNEL_NAME} channel for logs`);
+  console.log(`[PROTECTION] Invite protection enabled. Your server ID 1428878035926388809 is allowed`);
   await registerCommands();
-  
-  // Send startup message to log channel
-  const guilds = client.guilds.cache;
-  for (const [guildId, guild] of guilds) {
-    await sendToLogChannel(
-      guild,
-      "Bot Online",
-      `Fame Sniper Bot is now online and monitoring for invite violations.`,
-      0x00FF00,
-      [
-        { name: "Bot Name", value: client.user.tag, inline: true },
-        { name: "Commands", value: "/snipe, /stats, /timeout, /warnings", inline: true },
-        { name: "Your Server ID", value: "1428878035926388809 (Auto-Allowed)", inline: true },
-        { name: "Protection", value: "Active", inline: true }
-      ],
-      client.user.displayAvatarURL()
-    );
-  }
 });
 
-// Handle timeout command
+// Command handler
 client.on("interactionCreate", async (interaction) => {
   if (!interaction.isChatInputCommand()) return;
   
-  // TIMEOUT COMMAND (Manual by moderator)
+  // SNIPE COMMAND
+  if (interaction.commandName === "snipe") {
+    const startTime = Date.now();
+    stats.totalSnipes++;
+    
+    try {
+      await interaction.deferReply();
+      
+      const username = interaction.options.getString("username");
+      const discordUserId = interaction.user.id;
+      const discordUserTag = interaction.user.tag;
+      
+      const userData = await getUserId(username);
+      if (!userData) {
+        stats.failedSnipes++;
+        const embed = new EmbedBuilder()
+          .setTitle("User Not Found")
+          .setDescription(`${discordUserTag} tried to find "${username}" but they don't exist on Roblox`)
+          .setColor(0xFF0000);
+        await interaction.editReply({ embeds: [embed] });
+        return;
+      }
+      
+      const userId = userData.id;
+      const actualUsername = userData.name;
+      
+      const presence = await getUserPresence(userId);
+      
+      if (!presence.online) {
+        stats.failedSnipes++;
+        const avatar = await getUserAvatar(userId);
+        const embed = new EmbedBuilder()
+          .setTitle("Snipe Failed")
+          .setDescription(`${discordUserTag} tried to snipe **${actualUsername}** but they are offline`)
+          .setColor(0xFF0000)
+          .setThumbnail(avatar);
+        await interaction.editReply({ embeds: [embed] });
+        return;
+      }
+      
+      if (!presence.inGame) {
+        stats.failedSnipes++;
+        const avatar = await getUserAvatar(userId);
+        const embed = new EmbedBuilder()
+          .setTitle("Snipe Failed")
+          .setDescription(`${discordUserTag} tried to snipe **${actualUsername}** but they are online and not in a game`)
+          .setColor(0xFFA500)
+          .setThumbnail(avatar);
+        await interaction.editReply({ embeds: [embed] });
+        return;
+      }
+      
+      if (presence.placeId && presence.placeId.toString() !== FAME_GAME_ID) {
+        stats.failedSnipes++;
+        const avatar = await getUserAvatar(userId);
+        const gameName = await getGameName(presence.placeId);
+        const embed = new EmbedBuilder()
+          .setTitle("Snipe Failed")
+          .setDescription(`${discordUserTag} tried to snipe **${actualUsername}** but they are playing **${gameName}**, not ${FAME_GAME_NAME}`)
+          .setColor(0xFFA500)
+          .setThumbnail(avatar);
+        await interaction.editReply({ embeds: [embed] });
+        return;
+      }
+      
+      const avatar = await getUserAvatar(userId);
+      
+      const searching = new EmbedBuilder()
+        .setTitle("Searching for player...")
+        .setDescription(`${discordUserTag} is looking for **${actualUsername}** in **${FAME_GAME_NAME}**\n\nScanning public servers...`)
+        .setColor(0x5865F2)
+        .setThumbnail(avatar);
+      
+      await interaction.editReply({ embeds: [searching] });
+      
+      const result = await findUserInServers(userId);
+      const elapsed = ((Date.now() - startTime) / 1000).toFixed(2);
+      
+      if (!result.found) {
+        stats.failedSnipes++;
+        const embed = new EmbedBuilder()
+          .setTitle("Snipe Failed")
+          .setDescription(`${discordUserTag} could not find **${actualUsername}** in **${FAME_GAME_NAME}**`)
+          .addFields(
+            { name: "Servers Scanned", value: `${result.scanned} servers`, inline: true },
+            { name: "Time", value: `${elapsed} seconds`, inline: true }
+          )
+          .setColor(0xFF0000)
+          .setThumbnail(avatar);
+        await interaction.editReply({ embeds: [embed] });
+        return;
+      }
+      
+      stats.successfulSnipes++;
+      const joinLink = `https://www.roblox.com/games/${FAME_GAME_ID}?jobId=${result.jobId}`;
+      
+      const embed = new EmbedBuilder()
+        .setTitle("Player Found")
+        .setDescription(`${discordUserTag} successfully found **${actualUsername}** in **${FAME_GAME_NAME}**`)
+        .addFields(
+          { name: "Server Status", value: `${result.players}/${result.maxPlayers} players`, inline: true },
+          { name: "Search Time", value: `${elapsed} seconds`, inline: true },
+          { name: "Servers Scanned", value: `${result.scanned} servers`, inline: true }
+        )
+        .setColor(0x00FF00)
+        .setThumbnail(avatar)
+        .setImage(avatar)
+        .setFooter({ text: `Sniped by ${discordUserTag}` });
+      
+      const row = new ActionRowBuilder()
+        .addComponents(new ButtonBuilder().setLabel("Join Game").setURL(joinLink).setStyle(ButtonStyle.Link));
+      
+      await interaction.editReply({ embeds: [embed], components: [row] });
+      
+    } catch (error) {
+      console.error("Snipe error:", error);
+      stats.failedSnipes++;
+      const errorEmbed = new EmbedBuilder().setTitle("Error").setDescription(error.message).setColor(0xFF0000);
+      if (interaction.deferred) await interaction.editReply({ embeds: [errorEmbed] });
+      else await interaction.reply({ embeds: [errorEmbed] });
+    }
+    return;
+  }
+  
+  // STATS COMMAND
+  if (interaction.commandName === "stats") {
+    const uptime = Math.floor((Date.now() - stats.startTime) / 1000);
+    const uptimeDays = Math.floor(uptime / 86400);
+    const uptimeHours = Math.floor((uptime % 86400) / 3600);
+    const uptimeMinutes = Math.floor((uptime % 3600) / 60);
+    const successRate = stats.totalSnipes > 0 ? ((stats.successfulSnipes / stats.totalSnipes) * 100).toFixed(2) : 0;
+    
+    const statsEmbed = new EmbedBuilder()
+      .setTitle("Bot Statistics")
+      .addFields(
+        { name: "Uptime", value: `${uptimeDays}d ${uptimeHours}h ${uptimeMinutes}m`, inline: true },
+        { name: "Latency", value: `${Math.round(client.ws.ping)}ms`, inline: true },
+        { name: "Total Snipes", value: `${stats.totalSnipes}`, inline: true },
+        { name: "Successful", value: `${stats.successfulSnipes}`, inline: true },
+        { name: "Failed", value: `${stats.failedSnipes}`, inline: true },
+        { name: "Success Rate", value: `${successRate}%`, inline: true },
+        { name: "Blocked Invites", value: `${stats.blockedInvites}`, inline: true },
+        { name: "Total Timeouts", value: `${stats.totalTimeouts}`, inline: true },
+        { name: "Auto Timeouts", value: `${stats.autoTimeouts}`, inline: true },
+        { name: "Manual Timeouts", value: `${stats.manualTimeouts}`, inline: true }
+      )
+      .setColor(0x5865F2);
+    
+    await interaction.reply({ embeds: [statsEmbed] });
+    return;
+  }
+  
+  // TIMEOUT COMMAND
   if (interaction.commandName === "timeout") {
     const targetUser = interaction.options.getUser("user");
     const minutes = interaction.options.getInteger("minutes");
@@ -718,10 +752,7 @@ client.on("interactionCreate", async (interaction) => {
       const member = await interaction.guild.members.fetch(targetUser.id);
       
       if (!member.moderatable) {
-        const embed = new EmbedBuilder()
-          .setTitle("Cannot Timeout User")
-          .setDescription("I cannot timeout this user. They may have higher permissions than me.")
-          .setColor(0xFF0000);
+        const embed = new EmbedBuilder().setTitle("Cannot Timeout User").setDescription("I cannot timeout this user.").setColor(0xFF0000);
         await interaction.reply({ embeds: [embed], ephemeral: true });
         return;
       }
@@ -742,7 +773,6 @@ client.on("interactionCreate", async (interaction) => {
         .setColor(0xFFA500);
       await interaction.reply({ embeds: [embed] });
       
-      // Send to discord-logs channel with detailed info
       await sendToLogChannel(
         interaction.guild,
         "User Timed Out (Manual)",
@@ -750,34 +780,16 @@ client.on("interactionCreate", async (interaction) => {
         0xFFA500,
         [
           { name: "User", value: targetUser.tag, inline: true },
-          { name: "User ID", value: targetUser.id, inline: true },
           { name: "Moderator", value: moderator.tag, inline: true },
-          { name: "Moderator ID", value: moderator.id, inline: true },
-          { name: "Action By", value: `${moderator.tag} (Manual Timeout)`, inline: true },
+          { name: "Action By", value: `${moderator.tag} (Manual)`, inline: true },
           { name: "Duration", value: `${minutes} minutes`, inline: true },
           { name: "Reason", value: reason, inline: false }
         ],
         targetUser.displayAvatarURL()
       );
       
-      await logToWebhook(
-        "Manual Timeout",
-        `${moderator.tag} manually timed out ${targetUser.tag} for ${minutes} minutes`,
-        "PROTECTION",
-        [
-          { name: "User", value: targetUser.tag, inline: true },
-          { name: "Moderator", value: moderator.tag, inline: true },
-          { name: "Action By", value: "Manual (Moderator)", inline: true },
-          { name: "Duration", value: `${minutes} minutes`, inline: true },
-          { name: "Reason", value: reason, inline: false }
-        ]
-      );
-      
     } catch (error) {
-      const embed = new EmbedBuilder()
-        .setTitle("Error")
-        .setDescription(`Failed to timeout user: ${error.message}`)
-        .setColor(0xFF0000);
+      const embed = new EmbedBuilder().setTitle("Error").setDescription(`Failed to timeout user: ${error.message}`).setColor(0xFF0000);
       await interaction.reply({ embeds: [embed], ephemeral: true });
     }
     return;
@@ -790,20 +802,15 @@ client.on("interactionCreate", async (interaction) => {
     
     try {
       const member = await interaction.guild.members.fetch(targetUser.id);
-      
       await member.timeout(null);
       
       const embed = new EmbedBuilder()
         .setTitle("Timeout Removed")
         .setDescription(`${targetUser.tag} is no longer timed out.`)
-        .addFields(
-          { name: "Moderator", value: moderator.tag, inline: true },
-          { name: "Action By", value: `${moderator.tag} (Manual)`, inline: true }
-        )
+        .addFields({ name: "Moderator", value: moderator.tag, inline: true })
         .setColor(0x00FF00);
       await interaction.reply({ embeds: [embed] });
       
-      // Send to discord-logs channel
       await sendToLogChannel(
         interaction.guild,
         "Timeout Removed",
@@ -811,97 +818,28 @@ client.on("interactionCreate", async (interaction) => {
         0x00FF00,
         [
           { name: "User", value: targetUser.tag, inline: true },
-          { name: "User ID", value: targetUser.id, inline: true },
           { name: "Moderator", value: moderator.tag, inline: true },
-          { name: "Moderator ID", value: moderator.id, inline: true },
-          { name: "Action By", value: `${moderator.tag} (Manual Removal)`, inline: true }
+          { name: "Action By", value: `${moderator.tag} (Manual)`, inline: true }
         ],
         targetUser.displayAvatarURL()
       );
       
     } catch (error) {
-      const embed = new EmbedBuilder()
-        .setTitle("Error")
-        .setDescription(`Failed to remove timeout: ${error.message}`)
-        .setColor(0xFF0000);
+      const embed = new EmbedBuilder().setTitle("Error").setDescription(`Failed to remove timeout: ${error.message}`).setColor(0xFF0000);
       await interaction.reply({ embeds: [embed], ephemeral: true });
     }
     return;
   }
   
-  // WARNINGS COMMAND
-  if (interaction.commandName === "warnings") {
-    const targetUser = interaction.options.getUser("user");
-    const violations = userViolations.get(targetUser.id) || 0;
-    
-    const embed = new EmbedBuilder()
-      .setTitle("User Violation Warnings")
-      .setDescription(`Warning information for ${targetUser.tag}`)
-      .addFields(
-        { name: "Violation Count", value: `${violations}/3`, inline: true },
-        { name: "Status", value: violations >= 3 ? "Would be timed out on next violation" : "Active", inline: true },
-        { name: "Note", value: "Violations reset after timeout expires", inline: false }
-      )
-      .setColor(violations >= 3 ? 0xFF0000 : 0xFFA500);
-    
-    await interaction.reply({ embeds: [embed], ephemeral: true });
-    return;
-  }
-  
-  // Handle allowserver command
+  // ALLOWSERVER COMMAND
   if (interaction.commandName === "allowserver") {
     const serverId = interaction.options.getString("serverid");
     const serverName = interaction.options.getString("name") || "Unknown";
     
     if (ALLOWED_SERVER_IDS.includes(serverId)) {
-      const embed = new EmbedBuilder()
-        .setTitle("Server Already Allowed")
-        .setDescription(`Server ID \`${serverId}\` is already in the allowed list.`)
-        .setColor(0xFFA500);
+      const embed = new EmbedBuilder().setTitle("Server Already Allowed").setDescription(`Server ID \`${serverId}\` is already in the allowed list.`).setColor(0xFFA500);
       await interaction.reply({ embeds: [embed], ephemeral: true });
       return;
     }
     
-    ALLOWED_SERVER_IDS.push(serverId);
-    const embed = new EmbedBuilder()
-      .setTitle("Server Added to Allowlist")
-      .setDescription(`Server **${serverName}** (\`${serverId}\`) has been added to the allowed invite list.`)
-      .addFields({ name: "Total Allowed Servers", value: `${ALLOWED_SERVER_IDS.length}`, inline: true })
-      .setColor(0x00FF00);
-    await interaction.reply({ embeds: [embed], ephemeral: true });
-    
-    await sendToLogChannel(
-      interaction.guild,
-      "Allowlist Updated",
-      `A new server has been added to the invite allowlist.`,
-      0x00FF00,
-      [
-        { name: "Server Name", value: serverName, inline: true },
-        { name: "Server ID", value: serverId, inline: true },
-        { name: "Added By", value: interaction.user.tag, inline: true },
-        { name: "Action By", value: `${interaction.user.tag} (Manual Add)`, inline: true }
-      ]
-    );
-    
-    await logToWebhook(
-      "Server Added to Allowlist",
-      `${interaction.user.tag} added server ${serverName} (${serverId})`,
-      "PROTECTION",
-      [
-        { name: "Added By", value: interaction.user.tag, inline: true },
-        { name: "Server ID", value: serverId, inline: true }
-      ]
-    );
-    return;
-  }
-  
-  // Handle allowlist command
-  if (interaction.commandName === "allowlist") {
-    let listText = "";
-    for (let i = 0; i < ALLOWED_SERVER_IDS.length; i++) {
-      const serverId = ALLOWED_SERVER_IDS[i];
-      let serverName = "Unknown";
-      try {
-        const guild = await client.guilds.fetch(serverId);
-        serverName = guild.name;
-      } catch
+    ALLOWED_S
