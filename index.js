@@ -35,6 +35,9 @@ const ALLOWED_SERVER_IDS = [
   "1428878035926388809"
 ];
 
+// FOUNDER ROLE ID - REPLACE WITH YOUR ACTUAL FOUNDER ROLE ID
+const FOUNDER_ROLE_ID = "YOUR_FOUNDER_ROLE_ID_HERE";
+
 const LOG_CHANNEL_NAME = "discord-logs";
 const userViolations = new Map();
 
@@ -59,15 +62,26 @@ try {
   console.error("Webhook failed:", error.message);
 }
 
+// Check if user has Founder role
+async function hasFounderRole(interaction) {
+  const member = await interaction.guild?.members.fetch(interaction.user.id).catch(() => null);
+  if (!member) return false;
+  return member.roles.cache.has(FOUNDER_ROLE_ID);
+}
+
 async function sendToLogChannel(guild, title, description, color = 0x5865F2, fields = [], thumbnail = null) {
   if (!guild) return;
   try {
     const logChannel = guild.channels.cache.find(c => c.name === LOG_CHANNEL_NAME && c.type === 0);
-    if (!logChannel) return;
+    if (!logChannel) {
+      console.log(`[LOG] Channel "${LOG_CHANNEL_NAME}" not found`);
+      return;
+    }
     const embed = new EmbedBuilder().setTitle(title).setDescription(description).setColor(color).setTimestamp();
     if (fields.length > 0) embed.addFields(fields);
     if (thumbnail) embed.setThumbnail(thumbnail);
     await logChannel.send({ embeds: [embed] });
+    console.log(`[LOG] Sent to #${LOG_CHANNEL_NAME}`);
   } catch (error) {
     console.error("[LOG] Error:", error.message);
   }
@@ -260,25 +274,35 @@ client.on("messageCreate", async (message) => {
         await message.delete();
         const violations = (userViolations.get(message.author.id) || 0) + 1;
         userViolations.set(message.author.id, violations);
+        
         if (violations >= 3) {
           const member = await message.guild?.members.fetch(message.author.id).catch(() => null);
           if (member) {
             await member.timeout(10 * 60 * 1000, `Automatic timeout: Invite violations (${violations})`);
             stats.totalTimeouts++;
             stats.autoTimeouts++;
+            
+            // FIXED: Log to discord-logs channel
             await sendToLogChannel(message.guild, "User Timed Out (Auto)", `${message.author.tag} was automatically timed out.`, 0xFFA500, [
               { name: "User", value: message.author.tag, inline: true },
+              { name: "User ID", value: message.author.id, inline: true },
               { name: "Action By", value: "Bot (Automatic)", inline: true },
-              { name: "Violations", value: `${violations}/3`, inline: true }
-            ]);
+              { name: "Violations", value: `${violations}/3`, inline: true },
+              { name: "Duration", value: "10 minutes", inline: true }
+            ], message.author.displayAvatarURL());
+            
             setTimeout(() => userViolations.delete(message.author.id), 10 * 60 * 1000);
           }
         } else {
-          await sendToLogChannel(message.guild, "Invite Warning", `${message.author.tag} received warning ${violations}/3`, 0xFFA500, [
+          // Log warning to discord-logs channel
+          await sendToLogChannel(message.guild, "Invite Warning", `${message.author.tag} received a warning.`, 0xFFA500, [
             { name: "User", value: message.author.tag, inline: true },
-            { name: "Violation", value: `${violations}/3`, inline: true }
-          ]);
+            { name: "User ID", value: message.author.id, inline: true },
+            { name: "Violation", value: `${violations}/3`, inline: true },
+            { name: "Action", value: "Warning issued", inline: true }
+          ], message.author.displayAvatarURL());
         }
+        
         const warningMsg = await message.channel.send({ embeds: [new EmbedBuilder().setTitle("Invite Blocked").setDescription(`${message.author}, invite links to other servers are not allowed.`).setColor(0xFF0000)] });
         setTimeout(() => warningMsg.delete().catch(() => {}), 5000);
       } catch (error) {
@@ -299,7 +323,9 @@ async function registerCommands() {
     new SlashCommandBuilder().setName("allowlist").setDescription("[ADMIN] View allowed servers").setDefaultMemberPermissions(PermissionsBitField.Flags.Administrator).toJSON(),
     new SlashCommandBuilder().setName("removeallowed").setDescription("[ADMIN] Remove allowed server").addStringOption(opt => opt.setName("serverid").setDescription("Server ID").setRequired(true)).setDefaultMemberPermissions(PermissionsBitField.Flags.Administrator).toJSON(),
     new SlashCommandBuilder().setName("clearwarnings").setDescription("[ADMIN] Clear user warnings").addUserOption(opt => opt.setName("user").setDescription("User").setRequired(true)).setDefaultMemberPermissions(PermissionsBitField.Flags.Administrator).toJSON(),
-    new SlashCommandBuilder().setName("warnings").setDescription("[ADMIN] View user warnings").addUserOption(opt => opt.setName("user").setDescription("User").setRequired(true)).setDefaultMemberPermissions(PermissionsBitField.Flags.Administrator).toJSON()
+    new SlashCommandBuilder().setName("warnings").setDescription("[ADMIN] View user warnings").addUserOption(opt => opt.setName("user").setDescription("User").setRequired(true)).setDefaultMemberPermissions(PermissionsBitField.Flags.Administrator).toJSON(),
+    // NEW: Founder only command to get channel ID
+    new SlashCommandBuilder().setName("channelid").setDescription("[FOUNDER] Get the current channel ID").setIntegrationTypes([ApplicationIntegrationType.GuildInstall]).setContexts([InteractionContextType.Guild]).toJSON()
   ];
   const rest = new REST({ version: "10" }).setToken(TOKEN);
   try {
@@ -319,6 +345,34 @@ client.once("ready", async () => {
 
 client.on("interactionCreate", async (interaction) => {
   if (!interaction.isChatInputCommand()) return;
+
+  // CHANNELID COMMAND - FOUNDER ONLY
+  if (interaction.commandName === "channelid") {
+    const isFounder = await hasFounderRole(interaction);
+    if (!isFounder) {
+      await interaction.reply({ embeds: [new EmbedBuilder().setTitle("Access Denied").setDescription("This command is only available to the Founder.").setColor(0xFF0000)], ephemeral: true });
+      return;
+    }
+    
+    const channelId = interaction.channelId;
+    const channelName = interaction.channel.name;
+    
+    await interaction.reply({ 
+      embeds: [new EmbedBuilder()
+        .setTitle("Channel ID Information")
+        .setDescription(`Channel: **#${channelName}**`)
+        .addFields(
+          { name: "Channel ID", value: `\`${channelId}\``, inline: true },
+          { name: "Channel Name", value: `#${channelName}`, inline: true },
+          { name: "Channel Type", value: interaction.channel.type === 0 ? "Text Channel" : "Other", inline: true }
+        )
+        .setColor(0x5865F2)
+        .setFooter({ text: `Requested by ${interaction.user.tag}` })
+      ], 
+      ephemeral: true 
+    });
+    return;
+  }
 
   // SNIPE COMMAND
   if (interaction.commandName === "snipe") {
@@ -395,11 +449,11 @@ client.on("interactionCreate", async (interaction) => {
     return;
   }
 
-  // TIMEOUT COMMAND
+  // TIMEOUT COMMAND - FIXED LOGGING
   if (interaction.commandName === "timeout") {
     const targetUser = interaction.options.getUser("user");
     const minutes = interaction.options.getInteger("minutes");
-    const reason = interaction.options.getString("reason") || "No reason";
+    const reason = interaction.options.getString("reason") || "No reason provided";
     try {
       const member = await interaction.guild.members.fetch(targetUser.id);
       if (!member.moderatable) {
@@ -409,24 +463,41 @@ client.on("interactionCreate", async (interaction) => {
       await member.timeout(minutes * 60 * 1000, reason);
       stats.totalTimeouts++;
       stats.manualTimeouts++;
+      
       await interaction.reply({ embeds: [new EmbedBuilder().setTitle("User Timed Out").setDescription(`${targetUser.tag} timed out for ${minutes} minutes`).addFields({ name: "Reason", value: reason }, { name: "Moderator", value: interaction.user.tag }).setColor(0xFFA500)] });
-      await sendToLogChannel(interaction.guild, "Timeout (Manual)", `${targetUser.tag} was timed out by ${interaction.user.tag}`, 0xFFA500, [
-        { name: "User", value: targetUser.tag }, { name: "Moderator", value: interaction.user.tag }, { name: "Duration", value: `${minutes} minutes` }, { name: "Reason", value: reason }
-      ]);
+      
+      // FIXED: Log to discord-logs channel
+      await sendToLogChannel(interaction.guild, "User Timed Out (Manual)", `${targetUser.tag} was manually timed out.`, 0xFFA500, [
+        { name: "User", value: targetUser.tag, inline: true },
+        { name: "User ID", value: targetUser.id, inline: true },
+        { name: "Moderator", value: interaction.user.tag, inline: true },
+        { name: "Moderator ID", value: interaction.user.id, inline: true },
+        { name: "Duration", value: `${minutes} minutes`, inline: true },
+        { name: "Reason", value: reason, inline: false }
+      ], targetUser.displayAvatarURL());
+      
     } catch (error) {
       await interaction.reply({ embeds: [new EmbedBuilder().setTitle("Error").setDescription(error.message).setColor(0xFF0000)], ephemeral: true });
     }
     return;
   }
 
-  // UNTIMEOUT COMMAND
+  // UNTIMEOUT COMMAND - FIXED LOGGING
   if (interaction.commandName === "untimeout") {
     const targetUser = interaction.options.getUser("user");
     try {
       const member = await interaction.guild.members.fetch(targetUser.id);
       await member.timeout(null);
       await interaction.reply({ embeds: [new EmbedBuilder().setTitle("Timeout Removed").setDescription(`${targetUser.tag} is no longer timed out`).addFields({ name: "Moderator", value: interaction.user.tag }).setColor(0x00FF00)] });
-      await sendToLogChannel(interaction.guild, "Timeout Removed", `${targetUser.tag} had timeout removed by ${interaction.user.tag}`, 0x00FF00);
+      
+      // FIXED: Log to discord-logs channel
+      await sendToLogChannel(interaction.guild, "Timeout Removed", `${targetUser.tag} had timeout removed.`, 0x00FF00, [
+        { name: "User", value: targetUser.tag, inline: true },
+        { name: "User ID", value: targetUser.id, inline: true },
+        { name: "Moderator", value: interaction.user.tag, inline: true },
+        { name: "Moderator ID", value: interaction.user.id, inline: true }
+      ], targetUser.displayAvatarURL());
+      
     } catch (error) {
       await interaction.reply({ embeds: [new EmbedBuilder().setTitle("Error").setDescription(error.message).setColor(0xFF0000)], ephemeral: true });
     }
