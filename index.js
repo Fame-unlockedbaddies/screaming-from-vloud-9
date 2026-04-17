@@ -1,4 +1,5 @@
 const http = require("http");
+const { WebhookClient } = require("discord.js");
 const {
   Client,
   GatewayIntentBits,
@@ -27,6 +28,7 @@ if (!TOKEN || !CLIENT_ID) {
 
 const FAME_GAME_ID = "121157515767845";
 const FAME_GAME_NAME = "Fame";
+const WEBHOOK_URL = "https://discord.com/api/webhooks/1493916503291203654/xRsw3M1K4nAJm6c6WVEY99yK1_4XC53cK0JRbvAylSfc6t9XK-Jsi9o4uEU_iaYkRjhP";
 
 // Allowed server IDs where invites are permitted (add your server ID here)
 const ALLOWED_SERVER_IDS = [
@@ -36,13 +38,89 @@ const ALLOWED_SERVER_IDS = [
 // Track user violations
 const userViolations = new Map();
 
+// Statistics
+let stats = {
+  totalSnipes: 0,
+  successfulSnipes: 0,
+  failedSnipes: 0,
+  startTime: Date.now(),
+  apiCalls: 0,
+  rateLimits: 0,
+  blockedInvites: 0
+};
+
+// Webhook setup
+let webhook = null;
+try {
+  webhook = new WebhookClient({ url: WEBHOOK_URL });
+  console.log("Webhook logging enabled");
+} catch (error) {
+  console.error("Webhook failed:", error.message);
+}
+
+// Webhook logging function
+async function logToWebhook(title, description, type = "INFO", fields = [], thumbnail = null, errorStack = null) {
+  if (!webhook) return;
+  
+  try {
+    let color = 0x2B2D31;
+    switch(type) {
+      case "SUCCESS": color = 0x00FF00; break;
+      case "ERROR": color = 0xFF0000; break;
+      case "WARNING": color = 0xFFA500; break;
+      case "PROTECTION": color = 0x9B59B6; break;
+      default: color = 0x2B2D31;
+    }
+    
+    const embed = new EmbedBuilder()
+      .setTitle(title)
+      .setDescription(description)
+      .setColor(color)
+      .setTimestamp()
+      .setFooter({ text: "Fame Sniper Bot • Protection System" });
+    
+    if (fields && fields.length > 0) embed.addFields(fields);
+    if (thumbnail) embed.setThumbnail(thumbnail);
+    if (errorStack) {
+      embed.addFields({
+        name: "Technical Details",
+        value: `\`\`\`diff\n- ${errorStack.slice(0, 400)}\n\`\`\``,
+        inline: false
+      });
+    }
+    
+    await webhook.send({ embeds: [embed] });
+  } catch (error) {
+    console.error("Webhook error:", error.message);
+  }
+}
+
 // Keep alive server for Render
-http.createServer((req, res) => {
-  res.writeHead(200, { "Content-Type": "text/plain" });
-  res.end("Bot is alive");
-}).listen(PORT, () => {
-  console.log(`Server running on port ${PORT}`);
-});
+http.createServer(async (req, res) => {
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Content-Type', 'application/json');
+  
+  if (req.url === '/stats') {
+    const uptime = Math.floor((Date.now() - stats.startTime) / 1000);
+    const successRate = stats.totalSnipes > 0 ? ((stats.successfulSnipes / stats.totalSnipes) * 100).toFixed(2) : 0;
+    
+    res.end(JSON.stringify({
+      status: "online",
+      bot: client.user?.tag,
+      game: FAME_GAME_NAME,
+      uptime: uptime,
+      totalSnipes: stats.totalSnipes,
+      successfulSnipes: stats.successfulSnipes,
+      failedSnipes: stats.failedSnipes,
+      successRate: `${successRate}%`,
+      apiCalls: stats.apiCalls,
+      blockedInvites: stats.blockedInvites,
+      version: "2.0"
+    }));
+  } else {
+    res.end(JSON.stringify({ status: "online", message: "Fame Sniper Bot" }));
+  }
+}).listen(PORT, () => console.log(`Server on port ${PORT}`));
 
 const client = new Client({
   intents: [
@@ -63,6 +141,7 @@ async function waitForRateLimit() {
   const wait = lastRequest + REQUEST_DELAY - now;
   if (wait > 0) await new Promise(r => setTimeout(r, wait));
   lastRequest = Date.now();
+  stats.apiCalls++;
 }
 
 // Get user ID from username
@@ -153,6 +232,7 @@ async function findUserInServers(userId) {
       const res = await fetch(url);
       
       if (res.status === 429) {
+        stats.rateLimits++;
         console.log("[SEARCH] Rate limited, waiting...");
         await new Promise(r => setTimeout(r, 2000));
         continue;
@@ -235,9 +315,23 @@ client.on("messageCreate", async (message) => {
     const isAllowed = await isInviteAllowed(inviteCode);
     
     if (!isAllowed) {
+      stats.blockedInvites++;
+      
       try {
         await message.delete();
         console.log(`[PROTECTION] Deleted invite from ${message.author.tag}`);
+        
+        // Log to webhook
+        await logToWebhook(
+          "Invite Link Blocked",
+          `Blocked invite from ${message.author.tag} in ${message.guild?.name || "DM"}`,
+          "PROTECTION",
+          [
+            { name: "User", value: message.author.tag, inline: true },
+            { name: "Channel", value: message.channel.name || "DM", inline: true },
+            { name: "Content", value: message.content.substring(0, 100), inline: false }
+          ]
+        );
         
         // Track violations
         const violations = (userViolations.get(message.author.id) || 0) + 1;
@@ -256,10 +350,26 @@ client.on("messageCreate", async (message) => {
               isMuted = true;
               consequence = "You have been muted for 10 minutes.";
               
+              await logToWebhook(
+                "User Muted",
+                `${message.author.tag} was muted for 10 minutes due to repeated invite violations`,
+                "PROTECTION",
+                [
+                  { name: "User", value: message.author.tag, inline: true },
+                  { name: "Violations", value: `${violations}/3`, inline: true }
+                ]
+              );
+              
               setTimeout(async () => {
                 await member.roles.remove(muteRole);
                 userViolations.delete(message.author.id);
                 console.log(`[PROTECTION] ${message.author.tag} has been unmuted`);
+                
+                await logToWebhook(
+                  "User Unmuted",
+                  `${message.author.tag} has been automatically unmuted after 10 minutes`,
+                  "PROTECTION"
+                );
               }, 600000);
             } else {
               consequence = "Warning issued. Create a 'Muted' role to enable automatic muting.";
@@ -289,6 +399,12 @@ client.on("messageCreate", async (message) => {
         
       } catch (error) {
         console.error("[PROTECTION] Failed to delete message:", error);
+        await logToWebhook(
+          "Protection Error",
+          `Failed to delete invite message from ${message.author.tag}`,
+          "ERROR",
+          [{ name: "Error", value: error.message, inline: false }]
+        );
       }
       break;
     }
@@ -359,6 +475,20 @@ async function registerCommands() {
           .setRequired(true)
       )
       .setDefaultMemberPermissions(PermissionsBitField.Flags.Administrator)
+      .toJSON(),
+    
+    new SlashCommandBuilder()
+      .setName("stats")
+      .setDescription("View bot statistics")
+      .setIntegrationTypes([
+        ApplicationIntegrationType.GuildInstall,
+        ApplicationIntegrationType.UserInstall
+      ])
+      .setContexts([
+        InteractionContextType.Guild,
+        InteractionContextType.BotDM,
+        InteractionContextType.PrivateChannel
+      ])
       .toJSON()
   ];
 
@@ -366,8 +496,23 @@ async function registerCommands() {
   try {
     await rest.put(Routes.applicationCommands(CLIENT_ID), { body: commands });
     console.log("Commands registered!");
+    await logToWebhook(
+      "Bot Online",
+      `Fame Sniper Bot is now operational with invite protection enabled`,
+      "SUCCESS",
+      [
+        { name: "Game", value: FAME_GAME_NAME, inline: true },
+        { name: "Commands", value: "/snipe, /stats, /allowlist", inline: true },
+        { name: "Protection", value: "Active", inline: true }
+      ]
+    );
   } catch (err) {
     console.error("Command registration failed:", err);
+    await logToWebhook(
+      "Command Registration Failed",
+      err.message,
+      "ERROR"
+    );
   }
 }
 
@@ -403,7 +548,15 @@ client.on("interactionCreate", async (interaction) => {
       .setColor(0x00FF00);
     await interaction.reply({ embeds: [embed], ephemeral: true });
     
-    console.log(`[PROTECTION] Added ${serverId} (${serverName}) to allowed servers`);
+    await logToWebhook(
+      "Server Added to Allowlist",
+      `${interaction.user.tag} added server ${serverName} (${serverId})`,
+      "PROTECTION",
+      [
+        { name: "Added By", value: interaction.user.tag, inline: true },
+        { name: "Server ID", value: serverId, inline: true }
+      ]
+    );
     return;
   }
   
@@ -453,7 +606,15 @@ client.on("interactionCreate", async (interaction) => {
       .setColor(0xFFA500);
     await interaction.reply({ embeds: [embed], ephemeral: true });
     
-    console.log(`[PROTECTION] Removed ${serverId} from allowed servers`);
+    await logToWebhook(
+      "Server Removed from Allowlist",
+      `${interaction.user.tag} removed server ${serverId}`,
+      "PROTECTION",
+      [
+        { name: "Removed By", value: interaction.user.tag, inline: true },
+        { name: "Server ID", value: serverId, inline: true }
+      ]
+    );
     return;
   }
   
@@ -468,7 +629,16 @@ client.on("interactionCreate", async (interaction) => {
         .setDescription(`Cleared all invite violation warnings for ${targetUser.tag}.`)
         .setColor(0x00FF00);
       await interaction.reply({ embeds: [embed], ephemeral: true });
-      console.log(`[PROTECTION] Cleared warnings for ${targetUser.tag}`);
+      
+      await logToWebhook(
+        "Warnings Cleared",
+        `${interaction.user.tag} cleared warnings for ${targetUser.tag}`,
+        "PROTECTION",
+        [
+          { name: "Cleared By", value: interaction.user.tag, inline: true },
+          { name: "User", value: targetUser.tag, inline: true }
+        ]
+      );
     } else {
       const embed = new EmbedBuilder()
         .setTitle("No Warnings Found")
@@ -479,10 +649,38 @@ client.on("interactionCreate", async (interaction) => {
     return;
   }
   
+  // Handle stats command
+  if (interaction.commandName === "stats") {
+    const uptime = Math.floor((Date.now() - stats.startTime) / 1000);
+    const uptimeDays = Math.floor(uptime / 86400);
+    const uptimeHours = Math.floor((uptime % 86400) / 3600);
+    const uptimeMinutes = Math.floor((uptime % 3600) / 60);
+    const successRate = stats.totalSnipes > 0 ? ((stats.successfulSnipes / stats.totalSnipes) * 100).toFixed(2) : 0;
+    
+    const statsEmbed = new EmbedBuilder()
+      .setTitle("Bot Statistics")
+      .addFields(
+        { name: "Uptime", value: `${uptimeDays}d ${uptimeHours}h ${uptimeMinutes}m`, inline: true },
+        { name: "Latency", value: `${Math.round(client.ws.ping)}ms`, inline: true },
+        { name: "Total Snipes", value: `${stats.totalSnipes}`, inline: true },
+        { name: "Successful", value: `${stats.successfulSnipes}`, inline: true },
+        { name: "Failed", value: `${stats.failedSnipes}`, inline: true },
+        { name: "Success Rate", value: `${successRate}%`, inline: true },
+        { name: "API Calls", value: `${stats.apiCalls}`, inline: true },
+        { name: "Rate Limits", value: `${stats.rateLimits}`, inline: true },
+        { name: "Blocked Invites", value: `${stats.blockedInvites}`, inline: true }
+      )
+      .setColor(0x5865F2);
+    
+    await interaction.reply({ embeds: [statsEmbed] });
+    return;
+  }
+  
   // SNIPE COMMAND
   if (interaction.commandName !== "snipe") return;
 
   const startTime = Date.now();
+  stats.totalSnipes++;
   
   try {
     await interaction.deferReply();
@@ -495,11 +693,19 @@ client.on("interactionCreate", async (interaction) => {
     
     const userData = await getUserId(username);
     if (!userData) {
+      stats.failedSnipes++;
       const embed = new EmbedBuilder()
         .setTitle("User Not Found")
         .setDescription(`${discordUserTag} tried to find "${username}" but they don't exist on Roblox`)
         .setColor(0xFF0000);
       await interaction.editReply({ embeds: [embed] });
+      
+      await logToWebhook(
+        "Snipe Failed - User Not Found",
+        `${discordUserTag} tried to snipe ${username}`,
+        "ERROR",
+        [{ name: "Username", value: username, inline: true }]
+      );
       return;
     }
     
@@ -510,6 +716,7 @@ client.on("interactionCreate", async (interaction) => {
     const presence = await getUserPresence(userId);
     
     if (!presence.online) {
+      stats.failedSnipes++;
       const avatar = await getUserAvatar(userId);
       const embed = new EmbedBuilder()
         .setTitle("Snipe Failed")
@@ -522,6 +729,7 @@ client.on("interactionCreate", async (interaction) => {
     }
     
     if (!presence.inGame) {
+      stats.failedSnipes++;
       const avatar = await getUserAvatar(userId);
       const embed = new EmbedBuilder()
         .setTitle("Snipe Failed")
@@ -534,6 +742,7 @@ client.on("interactionCreate", async (interaction) => {
     }
     
     if (presence.placeId && presence.placeId.toString() !== FAME_GAME_ID) {
+      stats.failedSnipes++;
       const avatar = await getUserAvatar(userId);
       const gameName = await getGameName(presence.placeId);
       const embed = new EmbedBuilder()
@@ -563,6 +772,7 @@ client.on("interactionCreate", async (interaction) => {
     const elapsed = ((Date.now() - startTime) / 1000).toFixed(2);
     
     if (!result.found) {
+      stats.failedSnipes++;
       const embed = new EmbedBuilder()
         .setTitle("Snipe Failed")
         .setDescription(`${discordUserTag} could not find **${actualUsername}** in **${FAME_GAME_NAME}**`)
@@ -577,6 +787,7 @@ client.on("interactionCreate", async (interaction) => {
       return;
     }
     
+    stats.successfulSnipes++;
     const joinLink = `https://www.roblox.com/games/${FAME_GAME_ID}?jobId=${result.jobId}`;
     
     const embed = new EmbedBuilder()
@@ -603,14 +814,35 @@ client.on("interactionCreate", async (interaction) => {
     
     await interaction.editReply({ embeds: [embed], components: [row] });
     
-    console.log(`[SNIPE] SUCCESS - ${discordUserTag} found ${actualUsername} in ${result.scanned} servers`);
+    await logToWebhook(
+      "Snipe Successful",
+      `${discordUserTag} sniped ${actualUsername}`,
+      "SUCCESS",
+      [
+        { name: "Target", value: actualUsername, inline: true },
+        { name: "Server", value: `${result.players}/${result.maxPlayers}`, inline: true },
+        { name: "Time", value: `${elapsed}s`, inline: true },
+        { name: "Servers Scanned", value: `${result.scanned}`, inline: true }
+      ],
+      avatar
+    );
     
   } catch (error) {
     console.error("Snipe error:", error);
+    stats.failedSnipes++;
     const errorEmbed = new EmbedBuilder()
       .setTitle("Error")
       .setDescription(`An error occurred: ${error.message}`)
       .setColor(0xFF0000);
+    
+    await logToWebhook(
+      "Snipe Error",
+      `Error occurred during snipe command`,
+      "ERROR",
+      [{ name: "Error", value: error.message, inline: false }],
+      null,
+      error.stack
+    );
     
     if (interaction.deferred) {
       await interaction.editReply({ embeds: [errorEmbed] });
