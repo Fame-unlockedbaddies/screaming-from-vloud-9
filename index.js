@@ -77,7 +77,7 @@ if (WEBHOOK_URL) {
   }
 }
 
-// HTTP Server
+// HTTP Server for /stats
 http
   .createServer((req, res) => {
     res.setHeader("Access-Control-Allow-Origin", "*");
@@ -85,20 +85,22 @@ http
     if (req.url === "/stats") {
       const uptime = Math.floor((Date.now() - stats.startTime) / 1000);
       const successRate = stats.totalSnipes > 0 ? ((stats.successfulSnipes / stats.totalSnipes) * 100).toFixed(2) : "0.00";
-      res.end(JSON.stringify({
-        status: "online",
-        bot: client.user?.tag || "starting",
-        game: FAME_GAME_NAME,
-        uptime,
-        totalSnipes: stats.totalSnipes,
-        successfulSnipes: stats.successfulSnipes,
-        failedSnipes: stats.failedSnipes,
-        successRate: `${successRate}%`,
-        apiCalls: stats.apiCalls,
-        rateLimits: stats.rateLimits,
-        blockedInvites: stats.blockedInvites,
-        totalTimeouts: stats.totalTimeouts,
-      }));
+      res.end(
+        JSON.stringify({
+          status: "online",
+          bot: client.user?.tag || "starting",
+          game: FAME_GAME_NAME,
+          uptime,
+          totalSnipes: stats.totalSnipes,
+          successfulSnipes: stats.successfulSnipes,
+          failedSnipes: stats.failedSnipes,
+          successRate: `${successRate}%`,
+          apiCalls: stats.apiCalls,
+          rateLimits: stats.rateLimits,
+          blockedInvites: stats.blockedInvites,
+          totalTimeouts: stats.totalTimeouts,
+        })
+      );
       return;
     }
     res.end(JSON.stringify({ status: "online", message: `${FAME_GAME_NAME} Sniper Bot` }));
@@ -125,7 +127,11 @@ async function robloxFetch(url, options = {}) {
   const cookieHeader = ROBLOX_COOKIE ? { Cookie: `.ROBLOSECURITY=${ROBLOX_COOKIE}` } : {};
   const response = await fetch(url, {
     ...options,
-    headers: { "Content-Type": "application/json", ...cookieHeader, ...options.headers },
+    headers: {
+      "Content-Type": "application/json",
+      ...cookieHeader,
+      ...options.headers,
+    },
   });
 
   if (response.status === 429) {
@@ -133,7 +139,9 @@ async function robloxFetch(url, options = {}) {
     await sleep(2500);
     return robloxFetch(url, options);
   }
-  if (!response.ok) throw new Error(`Roblox API error ${response.status}`);
+  if (!response.ok) {
+    throw new Error(`Roblox API error ${response.status}`);
+  }
   return response.json();
 }
 
@@ -146,7 +154,12 @@ async function getRobloxUser(username) {
 }
 
 async function getUserAvatar(userId) {
-  const params = new URLSearchParams({ userIds: String(userId), size: "48x48", format: "Png", isCircular: "false" });
+  const params = new URLSearchParams({
+    userIds: String(userId),
+    size: "48x48",
+    format: "Png",
+    isCircular: "false",
+  });
   const data = await robloxFetch(`https://thumbnails.roblox.com/v1/users/avatar-headshot?${params}`);
   return data.data?.[0]?.imageUrl || null;
 }
@@ -173,7 +186,7 @@ async function getUserPresence(userId) {
 }
 
 async function getTokenAvatars(tokens) {
-  const requests = tokens.map(token => ({
+  const requests = tokens.map((token) => ({
     requestId: token,
     type: "AvatarHeadShot",
     targetId: 0,
@@ -219,44 +232,20 @@ async function findUserInServers(userId, username, maxPages = 8) {
       playersScanned += Math.max(userIds.length, tokens.length);
 
       if (userIds.includes(Number(userId)) || userIds.includes(String(userId))) {
-        return {
-          found: true,
-          jobId: server.id,
-          players: server.playing,
-          maxPlayers: server.maxPlayers,
-          scanned: serversScanned,
-          playersScanned,
-          method: "userId"
-        };
+        return { found: true, jobId: server.id, players: server.playing, maxPlayers: server.maxPlayers, scanned: serversScanned, playersScanned, method: "userId" };
       }
 
       if (tokens.length === 0) continue;
 
       const avatars = await getTokenAvatars(tokens);
-      const avatarMatch = avatars.find(a => a.imageUrl === targetAvatar);
+      const avatarMatch = avatars.find((a) => a.imageUrl === targetAvatar);
       if (avatarMatch) {
-        return {
-          found: true,
-          jobId: server.id,
-          players: server.playing,
-          maxPlayers: server.maxPlayers,
-          scanned: serversScanned,
-          playersScanned,
-          method: "avatar"
-        };
+        return { found: true, jobId: server.id, players: server.playing, maxPlayers: server.maxPlayers, scanned: serversScanned, playersScanned, method: "avatar" };
       }
 
-      const nameMatch = avatars.find(a => a.requestId && a.requestId.toLowerCase().includes(lowerName));
+      const nameMatch = avatars.find((a) => a.requestId && a.requestId.toLowerCase().includes(lowerName));
       if (nameMatch) {
-        return {
-          found: true,
-          jobId: server.id,
-          players: server.playing,
-          maxPlayers: server.maxPlayers,
-          scanned: serversScanned,
-          playersScanned,
-          method: "name"
-        };
+        return { found: true, jobId: server.id, players: server.playing, maxPlayers: server.maxPlayers, scanned: serversScanned, playersScanned, method: "name" };
       }
     }
 
@@ -268,7 +257,6 @@ async function findUserInServers(userId, username, maxPages = 8) {
 }
 
 // ==================== COMMANDS ====================
-
 function buildCommands() {
   const contexts = [InteractionContextType.Guild, InteractionContextType.BotDM, InteractionContextType.PrivateChannel];
   const types = [ApplicationIntegrationType.GuildInstall, ApplicationIntegrationType.UserInstall];
@@ -277,20 +265,17 @@ function buildCommands() {
     new SlashCommandBuilder()
       .setName("snipe")
       .setDescription(`Find a player in ${FAME_GAME_NAME} and get direct join link`)
-      .addStringOption(opt => opt.setName("username").setDescription("Roblox username").setRequired(true))
-      .addBooleanOption(opt => 
-        opt.setName("deepsearch")
-          .setDescription("Deep search (slower but more accurate)")
-          .setRequired(false)
+      .addStringOption((option) => option.setName("username").setDescription("Roblox username").setRequired(true))
+      .addBooleanOption((option) =>
+        option.setName("deepsearch").setDescription("Deep search (slower but more accurate)").setRequired(false)
       )
       .setIntegrationTypes(types)
       .setContexts(contexts)
       .toJSON(),
-    // Add your other commands here (stats, timeout, etc.) if you want
+    // Add your other commands (stats, timeout, etc.) here if needed
   ];
 }
 
-// Register commands (keep your original registerCommands function)
 async function registerCommands() {
   const commands = buildCommands();
   if (CLIENT_ID) {
@@ -327,24 +312,22 @@ client.on("interactionCreate", async (interaction) => {
       if (!userData) {
         stats.failedSnipes += 1;
         return interaction.editReply({
-          embeds: [new EmbedBuilder().setTitle("User Not Found").setDescription(`Could not find "${username}" on Roblox.`).setColor(0xff0000)]
+          embeds: [new EmbedBuilder().setTitle("User Not Found").setDescription(`Could not find "${username}" on Roblox.`).setColor(0xff0000)],
         });
       }
 
-      const [avatar, presence] = await Promise.all([
-        getUserAvatar(userData.id),
-        getUserPresence(userData.id)
-      ]);
+      const [avatar, presence] = await Promise.all([getUserAvatar(userData.id), getUserPresence(userData.id)]);
 
       const profileUrl = `https://www.roblox.com/users/${userData.id}/profile`;
 
       await interaction.editReply({
-        embeds: [new EmbedBuilder()
-          .setTitle("🔍 Searching...")
-          .setDescription(`Looking for **[${userData.name}](${profileUrl})**...`)
-          .setColor(0x5865f2)
-          .setThumbnail(avatar)
-        ]
+        embeds: [
+          new EmbedBuilder()
+            .setTitle("🔍 Searching...")
+            .setDescription(`Looking for **[${userData.name}](${profileUrl})** in **${FAME_GAME_NAME}**...`)
+            .setColor(0x5865f2)
+            .setThumbnail(avatar),
+        ],
       });
 
       const result = await findUserInServers(userData.id, userData.name, maxPages);
@@ -354,25 +337,26 @@ client.on("interactionCreate", async (interaction) => {
         stats.failedSnipes += 1;
         let desc = `Could not find **[${userData.name}](${profileUrl})** in any public servers.`;
         if (presence?.type === 2 && String(presence.rootPlaceId) === String(FAME_GAME_ID)) {
-          desc += "\n\n> They are likely in a **private/VIP server**.";
+          desc += "\n\n> They are likely in a **private or VIP server**.";
         }
 
         return interaction.editReply({
-          embeds: [new EmbedBuilder()
-            .setTitle("❌ Snipe Failed")
-            .setDescription(desc)
-            .addFields(
-              { name: "Mode", value: deepSearch ? "Deep Search" : "Fast Search", inline: true },
-              { name: "Servers Scanned", value: `${result.scanned}`, inline: true },
-              { name: "Time", value: `${elapsed}s`, inline: true }
-            )
-            .setColor(0xff0000)
-            .setThumbnail(avatar)
-          ]
+          embeds: [
+            new EmbedBuilder()
+              .setTitle("❌ Snipe Failed")
+              .setDescription(desc)
+              .addFields(
+                { name: "Mode", value: deepSearch ? "Deep Search" : "Fast Search", inline: true },
+                { name: "Servers Scanned", value: `${result.scanned}`, inline: true },
+                { name: "Time", value: `${elapsed}s`, inline: true }
+              )
+              .setColor(0xff0000)
+              .setThumbnail(avatar),
+          ],
         });
       }
 
-      // ==================== SUCCESS - DIRECT JOIN LINK ====================
+      // ====================== SUCCESS ======================
       stats.successfulSnipes += 1;
 
       const gamePage = `https://www.roblox.com/games/${FAME_GAME_ID}`;
@@ -382,23 +366,23 @@ client.on("interactionCreate", async (interaction) => {
         embeds: [
           new EmbedBuilder()
             .setTitle("✅ Player Found!")
-            .setDescription(`**[${userData.name}](${profileUrl})** is in **${FAME_GAME_NAME}**!`)
+            .setDescription(`**[${userData.name}](${profileUrl})** is currently in **${FAME_GAME_NAME}**`)
             .addFields(
-              { name: "Server Players", value: `${result.players}/${result.maxPlayers}`, inline: true },
+              { name: "Server", value: `${result.players}/${result.maxPlayers} players`, inline: true },
               { name: "Time Taken", value: `${elapsed}s`, inline: true },
               { name: "Search Mode", value: deepSearch ? "Deep Search" : "Fast Search", inline: true },
               { name: "Job ID", value: `\`${result.jobId}\``, inline: false },
-              { name: "Direct Join Link", value: `\`${directJoinLink}\`` }
+              { name: "Join Link", value: `\`${directJoinLink}\`` }   // Clean box under embed
             )
             .setColor(0x00ff00)
             .setThumbnail(avatar)
-            .setFooter({ text: "Click the button below to join their server directly" })
+            .setFooter({ text: "Click the button below to join their server immediately" }),
         ],
         components: [
           new ActionRowBuilder().addComponents(
             new ButtonBuilder()
-              .setLabel("Join Their Server")
-              .setURL(directJoinLink)           // This is the important part
+              .setLabel("🚀 Join Their Server Now")
+              .setURL(directJoinLink)
               .setStyle(ButtonStyle.Link)
           ),
           new ActionRowBuilder().addComponents(
@@ -406,22 +390,28 @@ client.on("interactionCreate", async (interaction) => {
               .setLabel("Open Game Page")
               .setURL(gamePage)
               .setStyle(ButtonStyle.Link)
-          )
-        ]
+          ),
+        ],
       });
-
     } catch (error) {
       stats.failedSnipes += 1;
       console.error("[SNIPE ERROR]", error);
+
+      // Fixed & more helpful error message
       await interaction.editReply({
-        embeds: [new EmbedBuilder().setTitle("Error").setDescription("Something went wrong while sniping.").setColor(0xff0000)]
+        embeds: [
+          new EmbedBuilder()
+            .setTitle("⚠️ Error")
+            .setDescription("Something went wrong while sniping.\nPlease try again in a few seconds.")
+            .setColor(0xffa500),
+        ],
       });
     }
   }
 });
 
-// Invite protection and other commands can stay as in your original code
-// (messageCreate, timeout, etc.)
+// Keep your invite protection (messageCreate) and other commands if you have them
+// You can paste them here from your original file
 
 process.on("unhandledRejection", console.error);
 process.on("uncaughtException", console.error);
