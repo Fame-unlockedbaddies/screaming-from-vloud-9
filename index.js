@@ -197,6 +197,60 @@ async function getTokenAvatars(tokens) {
   return results;
 }
 
+// ─── NEW: Get user presence (online/offline/in-game) ──────────────────────────
+async function getUserPresence(userId) {
+  try {
+    const data = await robloxFetch("https://presence.roblox.com/v1/presence/users", {
+      method: "POST",
+      body: JSON.stringify({ userIds: [userId] }),
+    });
+
+    const presence = data.userPresences?.[0];
+    if (!presence) return null;
+
+    // userPresenceType: 0 = Offline, 1 = Online (website), 2 = In-game, 3 = In Studio
+    return {
+      type: presence.userPresenceType,
+      gameId: presence.placeId || null,
+      rootPlaceId: presence.rootPlaceId || null,
+      gameInstanceId: presence.gameId || null, // this is the jobId / instanceId
+      lastOnline: presence.lastOnline || null,
+    };
+  } catch {
+    return null;
+  }
+}
+
+// ─── NEW: Get game info (name + icon) by placeId ──────────────────────────────
+async function getGameInfo(placeId) {
+  try {
+    // Get universe ID from place ID
+    const universeData = await robloxFetch(`https://apis.roblox.com/universes/v1/places/${placeId}/universe`);
+    const universeId = universeData?.universeId;
+    if (!universeId) return null;
+
+    // Get game details
+    const gameData = await robloxFetch(`https://games.roblox.com/v1/games?universeIds=${universeId}`);
+    const game = gameData?.data?.[0];
+    if (!game) return null;
+
+    // Get game icon
+    const iconData = await robloxFetch(
+      `https://thumbnails.roblox.com/v1/games/icons?universeIds=${universeId}&returnPolicy=PlaceHolder&size=512x512&format=Png&isCircular=false`
+    );
+    const iconUrl = iconData?.data?.[0]?.imageUrl || null;
+
+    return {
+      name: game.name,
+      universeId,
+      rootPlaceId: game.rootPlaceId,
+      iconUrl,
+    };
+  } catch {
+    return null;
+  }
+}
+
 async function findUserInServers(userId, maxPages = 25) {
   const targetAvatar = await getUserAvatar(userId, "48x48");
 
@@ -325,6 +379,17 @@ async function isInviteAllowed(inviteCode) {
 
 function formatUptime(seconds) {
   return `${Math.floor(seconds / 86400)}d ${Math.floor((seconds % 86400) / 3600)}h ${Math.floor((seconds % 3600) / 60)}m`;
+}
+
+// ─── NEW: Presence type → readable label ──────────────────────────────────────
+function presenceLabel(type) {
+  switch (type) {
+    case 0: return "🔴 Offline";
+    case 1: return "🟡 Online (Website)";
+    case 2: return "🟢 In-Game";
+    case 3: return "🟢 In Studio";
+    default: return "⚪ Unknown";
+  }
 }
 
 function buildCommands() {
@@ -564,29 +629,115 @@ client.on("interactionCreate", async (interaction) => {
         return;
       }
 
-      const avatar = await getUserAvatar(userData.id);
+      // ── Fetch avatar and presence in parallel ────────────────────────────────
+      const [avatar, presence] = await Promise.all([
+        getUserAvatar(userData.id),
+        getUserPresence(userData.id),
+      ]);
 
+      const profileUrl = `https://www.roblox.com/users/${userData.id}/profile`;
+      const statusLabel = presence ? presenceLabel(presence.type) : "⚪ Unknown";
+
+      // ── Show searching embed ─────────────────────────────────────────────────
       await interaction.editReply({
         embeds: [
           new EmbedBuilder()
             .setTitle("Searching...")
-            .setDescription(`Looking for **${userData.name}** in **${FAME_GAME_NAME}** public servers...`)
+            .setDescription(`Looking for **[${userData.name}](${profileUrl})** in **${FAME_GAME_NAME}** public servers...`)
+            .addFields({ name: "Status", value: statusLabel, inline: true })
             .setColor(0x5865f2)
             .setThumbnail(avatar),
         ],
       });
 
+      // ── If offline, don't scan ───────────────────────────────────────────────
+      if (presence && presence.type === 0) {
+        stats.failedSnipes += 1;
+        await interaction.editReply({
+          embeds: [
+            new EmbedBuilder()
+              .setTitle("Player is Offline")
+              .setDescription(`**[${userData.name}](${profileUrl})** is currently offline.`)
+              .addFields({
+                name: "Last Online",
+                value: presence.lastOnline ? `<t:${Math.floor(new Date(presence.lastOnline).getTime() / 1000)}:R>` : "Unknown",
+                inline: true,
+              })
+              .setColor(0x808080)
+              .setThumbnail(avatar),
+          ],
+        });
+        return;
+      }
+
+      // ── If in a DIFFERENT game (presence knows the placeId) ──────────────────
+      if (
+        presence &&
+        presence.type === 2 &&
+        presence.rootPlaceId &&
+        String(presence.rootPlaceId) !== String(FAME_GAME_ID) &&
+        presence.gameInstanceId
+      ) {
+        stats.successfulSnipes += 1;
+
+        const otherGameInfo = await getGameInfo(presence.rootPlaceId);
+        const otherGameName = otherGameInfo?.name || `Place ${presence.rootPlaceId}`;
+        const otherGameIcon = otherGameInfo?.iconUrl || null;
+        const otherGamePage = `https://www.roblox.com/games/${presence.rootPlaceId}`;
+        const otherDeepLink = `roblox://experiences/start?placeId=${presence.rootPlaceId}&gameInstanceId=${presence.gameInstanceId}`;
+        const elapsed = ((Date.now() - startTime) / 1000).toFixed(2);
+
+        const embed = new EmbedBuilder()
+          .setTitle("Player Found! (Different Game)")
+          .setDescription(
+            `**[${userData.name}](${profileUrl})** is not in **${FAME_GAME_NAME}** right now — they're in a different game.`
+          )
+          .addFields(
+            { name: "Status", value: statusLabel, inline: true },
+            { name: "Time", value: `${elapsed}s`, inline: true },
+            { name: "\u200b", value: "\u200b", inline: true },
+            { name: "Current Game", value: `[${otherGameName}](${otherGamePage})`, inline: true },
+            { name: "Job ID", value: `\`${presence.gameInstanceId}\``, inline: false },
+            { name: "Roblox Join Link", value: `\`${otherDeepLink}\``, inline: false }
+          )
+          .setColor(0xffa500)
+          .setThumbnail(avatar)
+          .setFooter({ text: "Copy the Roblox Join Link if the button only opens the game page." });
+
+        // Show the other game's icon as image if available
+        if (otherGameIcon) embed.setImage(otherGameIcon);
+
+        await interaction.editReply({
+          embeds: [embed],
+          components: [
+            new ActionRowBuilder().addComponents(
+              new ButtonBuilder().setLabel(`Open ${otherGameName}`).setURL(otherGamePage).setStyle(ButtonStyle.Link)
+            ),
+          ],
+        });
+        return;
+      }
+
+      // ── Standard snipe in FAME_GAME ──────────────────────────────────────────
       const result = await findUserInServers(userData.id, maxPages);
       const elapsed = ((Date.now() - startTime) / 1000).toFixed(2);
 
       if (!result.found) {
         stats.failedSnipes += 1;
+
+        // Build a useful description based on presence info
+        let notFoundDesc = result.reason || `Could not find **[${userData.name}](${profileUrl})** in the public servers scanned.`;
+        if (presence?.type === 2 && String(presence.rootPlaceId) === String(FAME_GAME_ID)) {
+          notFoundDesc += "\n\n> They may be in a private server or a VIP server.";
+        }
+
         await interaction.editReply({
           embeds: [
             new EmbedBuilder()
               .setTitle("Snipe Failed")
-              .setDescription(result.reason || `Could not find **${userData.name}** in the public servers scanned.`)
+              .setDescription(notFoundDesc)
               .addFields(
+                { name: "Status", value: statusLabel, inline: true },
                 { name: "Servers Scanned", value: `${result.scanned}`, inline: true },
                 { name: "Player Slots Scanned", value: `${result.playersScanned || 0}`, inline: true },
                 { name: "Pages Scanned", value: `${maxPages}`, inline: true }
@@ -607,8 +758,9 @@ client.on("interactionCreate", async (interaction) => {
         embeds: [
           new EmbedBuilder()
             .setTitle("Player Found!")
-            .setDescription(`Found **${userData.name}** in **${FAME_GAME_NAME}**.`)
+            .setDescription(`Found **[${userData.name}](${profileUrl})** in **${FAME_GAME_NAME}**.`)
             .addFields(
+              { name: "Status", value: statusLabel, inline: true },
               { name: "Server", value: `${result.players}/${result.maxPlayers} players`, inline: true },
               { name: "Time", value: `${elapsed}s`, inline: true },
               { name: "Servers Scanned", value: `${result.scanned}`, inline: true },
