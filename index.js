@@ -38,7 +38,9 @@ if (!TOKEN) {
 }
 
 if (!ROBLOX_COOKIE) {
-  console.warn("⚠️ ROBLOX_COOKIE is not set. Snipe accuracy will be limited.");
+  console.warn("⚠️ ROBLOX_COOKIE is not set. Snipe accuracy will be very limited.");
+} else {
+  console.log("✅ ROBLOX_COOKIE loaded - better presence & server data expected");
 }
 
 const client = new Client({
@@ -77,7 +79,7 @@ if (WEBHOOK_URL) {
   }
 }
 
-// HTTP Server for /stats
+// HTTP Server
 http
   .createServer((req, res) => {
     res.setHeader("Access-Control-Allow-Origin", "*");
@@ -127,20 +129,19 @@ async function robloxFetch(url, options = {}) {
   const cookieHeader = ROBLOX_COOKIE ? { Cookie: `.ROBLOSECURITY=${ROBLOX_COOKIE}` } : {};
   const response = await fetch(url, {
     ...options,
-    headers: {
-      "Content-Type": "application/json",
-      ...cookieHeader,
-      ...options.headers,
-    },
+    headers: { "Content-Type": "application/json", ...cookieHeader, ...options.headers },
   });
 
   if (response.status === 429) {
     stats.rateLimits += 1;
+    console.log("[RATE LIMIT] Waiting 2.5s...");
     await sleep(2500);
     return robloxFetch(url, options);
   }
+
   if (!response.ok) {
-    throw new Error(`Roblox API error ${response.status}`);
+    const text = await response.text().catch(() => "");
+    throw new Error(`Roblox API error ${response.status}${text ? `: ${text.slice(0, 200)}` : ""}`);
   }
   return response.json();
 }
@@ -154,12 +155,7 @@ async function getRobloxUser(username) {
 }
 
 async function getUserAvatar(userId) {
-  const params = new URLSearchParams({
-    userIds: String(userId),
-    size: "48x48",
-    format: "Png",
-    isCircular: "false",
-  });
+  const params = new URLSearchParams({ userIds: String(userId), size: "48x48", format: "Png", isCircular: "false" });
   const data = await robloxFetch(`https://thumbnails.roblox.com/v1/users/avatar-headshot?${params}`);
   return data.data?.[0]?.imageUrl || null;
 }
@@ -180,7 +176,8 @@ async function getUserPresence(userId) {
       gameInstanceId: p.gameId,
       lastOnline: p.lastOnline,
     };
-  } catch {
+  } catch (e) {
+    console.log("[Presence Error]", e.message);
     return null;
   }
 }
@@ -196,67 +193,74 @@ async function getTokenAvatars(tokens) {
   }));
 
   const results = [];
-  for (let i = 0; i < requests.length; i += 100) {
-    const chunk = requests.slice(i, i + 100);
-    const data = await robloxFetch("https://thumbnails.roblox.com/v1/batch", {
-      method: "POST",
-      body: JSON.stringify(chunk),
-    });
-    results.push(...(data.data || []));
+  for (let i = 0; i < requests.length; i += 50) {   // Smaller batch = fewer errors
+    const chunk = requests.slice(i, i + 50);
+    try {
+      const data = await robloxFetch("https://thumbnails.roblox.com/v1/batch", {
+        method: "POST",
+        body: JSON.stringify(chunk),
+      });
+      results.push(...(data.data || []));
+    } catch (e) {
+      console.log(`[Avatar Batch Error] ${e.message}`);
+    }
   }
   return results;
 }
 
 async function findUserInServers(userId, username, maxPages = 8) {
-  const targetAvatar = await getUserAvatar(userId);
-  if (!targetAvatar) return { found: false, scanned: 0, playersScanned: 0, reason: "No avatar" };
-
+  const targetAvatar = await getUserAvatar(userId).catch(() => null);
   let cursor = null;
   let serversScanned = 0;
   let playersScanned = 0;
   const lowerName = username.toLowerCase();
 
   for (let page = 0; page < maxPages; page++) {
-    const params = new URLSearchParams({ limit: "100", sortOrder: "Desc", excludeFullGames: "false" });
-    if (cursor) params.set("cursor", cursor);
+    try {
+      const params = new URLSearchParams({ limit: "100", sortOrder: "Desc", excludeFullGames: "false" });
+      if (cursor) params.set("cursor", cursor);
 
-    const data = await robloxFetch(`https://games.roblox.com/v1/games/${FAME_GAME_ID}/servers/Public?${params}`);
-    const servers = data.data || [];
-    if (servers.length === 0) break;
+      const data = await robloxFetch(`https://games.roblox.com/v1/games/${FAME_GAME_ID}/servers/Public?${params}`);
+      const servers = data.data || [];
+      if (servers.length === 0) break;
 
-    for (const server of servers) {
-      serversScanned++;
-      const userIds = server.playerIds || server.playerUserIds || [];
-      const tokens = server.playerTokens || [];
+      for (const server of servers) {
+        serversScanned++;
+        const userIds = server.playerIds || server.playerUserIds || [];
+        const tokens = server.playerTokens || [];
 
-      playersScanned += Math.max(userIds.length, tokens.length);
+        playersScanned += Math.max(userIds.length, tokens.length);
 
-      if (userIds.includes(Number(userId)) || userIds.includes(String(userId))) {
-        return { found: true, jobId: server.id, players: server.playing, maxPlayers: server.maxPlayers, scanned: serversScanned, playersScanned, method: "userId" };
+        if (userIds.includes(Number(userId)) || userIds.includes(String(userId))) {
+          return { found: true, jobId: server.id, players: server.playing, maxPlayers: server.maxPlayers, scanned: serversScanned, playersScanned, method: "userId" };
+        }
+
+        if (tokens.length === 0) continue;
+
+        const avatars = await getTokenAvatars(tokens);
+        const avatarMatch = avatars.find((a) => a.imageUrl === targetAvatar);
+        if (avatarMatch) {
+          return { found: true, jobId: server.id, players: server.playing, maxPlayers: server.maxPlayers, scanned: serversScanned, playersScanned, method: "avatar" };
+        }
+
+        const nameMatch = avatars.find((a) => a.requestId && a.requestId.toLowerCase().includes(lowerName));
+        if (nameMatch) {
+          return { found: true, jobId: server.id, players: server.playing, maxPlayers: server.maxPlayers, scanned: serversScanned, playersScanned, method: "name" };
+        }
       }
 
-      if (tokens.length === 0) continue;
-
-      const avatars = await getTokenAvatars(tokens);
-      const avatarMatch = avatars.find((a) => a.imageUrl === targetAvatar);
-      if (avatarMatch) {
-        return { found: true, jobId: server.id, players: server.playing, maxPlayers: server.maxPlayers, scanned: serversScanned, playersScanned, method: "avatar" };
-      }
-
-      const nameMatch = avatars.find((a) => a.requestId && a.requestId.toLowerCase().includes(lowerName));
-      if (nameMatch) {
-        return { found: true, jobId: server.id, players: server.playing, maxPlayers: server.maxPlayers, scanned: serversScanned, playersScanned, method: "name" };
-      }
+      cursor = data.nextPageCursor;
+      if (!cursor) break;
+    } catch (err) {
+      console.error(`[SCAN ERROR] Page ${page + 1}:`, err.message);
+      break;
     }
-
-    cursor = data.nextPageCursor;
-    if (!cursor) break;
   }
 
   return { found: false, scanned: serversScanned, playersScanned };
 }
 
-// ==================== COMMANDS ====================
+// Commands
 function buildCommands() {
   const contexts = [InteractionContextType.Guild, InteractionContextType.BotDM, InteractionContextType.PrivateChannel];
   const types = [ApplicationIntegrationType.GuildInstall, ApplicationIntegrationType.UserInstall];
@@ -265,14 +269,13 @@ function buildCommands() {
     new SlashCommandBuilder()
       .setName("snipe")
       .setDescription(`Find a player in ${FAME_GAME_NAME} and get direct join link`)
-      .addStringOption((option) => option.setName("username").setDescription("Roblox username").setRequired(true))
-      .addBooleanOption((option) =>
-        option.setName("deepsearch").setDescription("Deep search (slower but more accurate)").setRequired(false)
+      .addStringOption((opt) => opt.setName("username").setDescription("Roblox username").setRequired(true))
+      .addBooleanOption((opt) =>
+        opt.setName("deepsearch").setDescription("Deep search (slower but more accurate)").setRequired(false)
       )
       .setIntegrationTypes(types)
       .setContexts(contexts)
       .toJSON(),
-    // Add your other commands (stats, timeout, etc.) here if needed
   ];
 }
 
@@ -335,7 +338,7 @@ client.on("interactionCreate", async (interaction) => {
 
       if (!result.found) {
         stats.failedSnipes += 1;
-        let desc = `Could not find **[${userData.name}](${profileUrl})** in any public servers.`;
+        let desc = `Could not find **[${userData.name}](${profileUrl})** in any public servers after scanning.`;
         if (presence?.type === 2 && String(presence.rootPlaceId) === String(FAME_GAME_ID)) {
           desc += "\n\n> They are likely in a **private or VIP server**.";
         }
@@ -356,9 +359,8 @@ client.on("interactionCreate", async (interaction) => {
         });
       }
 
-      // ====================== SUCCESS ======================
+      // Success
       stats.successfulSnipes += 1;
-
       const gamePage = `https://www.roblox.com/games/${FAME_GAME_ID}`;
       const directJoinLink = `roblox://experiences/start?placeId=${FAME_GAME_ID}&gameInstanceId=${result.jobId}`;
 
@@ -366,17 +368,17 @@ client.on("interactionCreate", async (interaction) => {
         embeds: [
           new EmbedBuilder()
             .setTitle("✅ Player Found!")
-            .setDescription(`**[${userData.name}](${profileUrl})** is currently in **${FAME_GAME_NAME}**`)
+            .setDescription(`**[${userData.name}](${profileUrl})** is in **${FAME_GAME_NAME}**!`)
             .addFields(
               { name: "Server", value: `${result.players}/${result.maxPlayers} players`, inline: true },
               { name: "Time Taken", value: `${elapsed}s`, inline: true },
               { name: "Search Mode", value: deepSearch ? "Deep Search" : "Fast Search", inline: true },
               { name: "Job ID", value: `\`${result.jobId}\``, inline: false },
-              { name: "Join Link", value: `\`${directJoinLink}\`` }   // Clean box under embed
+              { name: "Direct Join Link", value: `\`${directJoinLink}\`` }
             )
             .setColor(0x00ff00)
             .setThumbnail(avatar)
-            .setFooter({ text: "Click the button below to join their server immediately" }),
+            .setFooter({ text: "Click the button to join their server immediately" }),
         ],
         components: [
           new ActionRowBuilder().addComponents(
@@ -397,21 +399,22 @@ client.on("interactionCreate", async (interaction) => {
       stats.failedSnipes += 1;
       console.error("[SNIPE ERROR]", error);
 
-      // Fixed & more helpful error message
       await interaction.editReply({
         embeds: [
           new EmbedBuilder()
-            .setTitle("⚠️ Error")
-            .setDescription("Something went wrong while sniping.\nPlease try again in a few seconds.")
-            .setColor(0xffa500),
+            .setTitle("⚠️ Sniping Error")
+            .setDescription(
+              "Something went wrong while scanning Roblox servers.\n" +
+              "This is often caused by rate limits or recent Roblox changes.\n\n" +
+              "Try again in 10-30 seconds."
+            )
+            .setColor(0xffa500)
+            .addFields({ name: "Tip", value: "Make sure ROBLOX_COOKIE is set and valid." }),
         ],
       });
     }
   }
 });
-
-// Keep your invite protection (messageCreate) and other commands if you have them
-// You can paste them here from your original file
 
 process.on("unhandledRejection", console.error);
 process.on("uncaughtException", console.error);
