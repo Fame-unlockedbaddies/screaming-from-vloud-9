@@ -125,11 +125,16 @@ async function robloxFetch(url, options = {}) {
   const cookieHeader = ROBLOX_COOKIE ? { Cookie: `.ROBLOSECURITY=${ROBLOX_COOKIE}` } : {};
   const response = await fetch(url, {
     ...options,
-    headers: { "Content-Type": "application/json", ...cookieHeader, ...options.headers },
+    headers: {
+      "Content-Type": "application/json",
+      ...cookieHeader,
+      ...options.headers,
+    },
   });
 
   if (response.status === 429) {
     stats.rateLimits += 1;
+    console.log("[RATE LIMIT] Waiting 2.5s...");
     await sleep(2500);
     return robloxFetch(url, options);
   }
@@ -176,7 +181,7 @@ async function getUserPresence(userId) {
 }
 
 async function getTokenAvatars(tokens) {
-  const requests = tokens.map(token => ({
+  const requests = tokens.map((token) => ({
     requestId: token,
     type: "AvatarHeadShot",
     targetId: 0,
@@ -186,19 +191,23 @@ async function getTokenAvatars(tokens) {
   }));
 
   const results = [];
-  for (let i = 0; i < requests.length; i += 100) {
-    const chunk = requests.slice(i, i + 100);
-    const data = await robloxFetch("https://thumbnails.roblox.com/v1/batch", {
-      method: "POST",
-      body: JSON.stringify(chunk),
-    });
-    results.push(...(data.data || []));
+  for (let i = 0; i < requests.length; i += 50) {   // Safer smaller batches
+    const chunk = requests.slice(i, i + 50);
+    try {
+      const data = await robloxFetch("https://thumbnails.roblox.com/v1/batch", {
+        method: "POST",
+        body: JSON.stringify(chunk),
+      });
+      results.push(...(data.data || []));
+    } catch (e) {
+      console.log(`[Avatar Batch Error] ${e.message} - skipping`);
+    }
   }
   return results;
 }
 
 async function findUserInServers(userId, username, maxPages = 8) {
-  const targetAvatar = await getUserAvatar(userId);
+  const targetAvatar = await getUserAvatar(userId).catch(() => null);
   if (!targetAvatar) {
     return { found: false, scanned: 0, playersScanned: 0, reason: "Could not get avatar." };
   }
@@ -234,12 +243,12 @@ async function findUserInServers(userId, username, maxPages = 8) {
       if (tokens.length === 0) continue;
 
       const avatars = await getTokenAvatars(tokens);
-      const avatarMatch = avatars.find(a => a.imageUrl === targetAvatar);
+      const avatarMatch = avatars.find((a) => a.imageUrl === targetAvatar);
       if (avatarMatch) {
         return { found: true, jobId: server.id, players: server.playing, maxPlayers: server.maxPlayers, scanned: serversScanned, playersScanned, method: "avatar" };
       }
 
-      const nameMatch = avatars.find(a => a.requestId && a.requestId.toLowerCase().includes(lowerName));
+      const nameMatch = avatars.find((a) => a.requestId && a.requestId.toLowerCase().includes(lowerName));
       if (nameMatch) {
         return { found: true, jobId: server.id, players: server.playing, maxPlayers: server.maxPlayers, scanned: serversScanned, playersScanned, method: "nameToken" };
       }
@@ -260,8 +269,8 @@ function buildCommands() {
     new SlashCommandBuilder()
       .setName("snipe")
       .setDescription(`Find a player in ${FAME_GAME_NAME}`)
-      .addStringOption(option => option.setName("username").setDescription("Roblox username").setRequired(true))
-      .addBooleanOption(option => 
+      .addStringOption((option) => option.setName("username").setDescription("Roblox username").setRequired(true))
+      .addBooleanOption((option) =>
         option.setName("deepsearch").setDescription("Enable deep search (slower but scans more servers)").setRequired(false)
       )
       .setIntegrationTypes(types)
@@ -317,7 +326,7 @@ client.on("interactionCreate", async (interaction) => {
 
       const profileUrl = `https://www.roblox.com/users/${userData.id}/profile`;
 
-      // === YOUR ORIGINAL SEARCHING EMBED (kept exactly as you like) ===
+      // Your original Searching embed
       await interaction.editReply({
         embeds: [
           new EmbedBuilder()
@@ -355,7 +364,7 @@ client.on("interactionCreate", async (interaction) => {
         });
       }
 
-      // ===================== SUCCESS =====================
+      // Success with Join Button
       stats.successfulSnipes += 1;
       const gamePage = `https://www.roblox.com/games/${FAME_GAME_ID}`;
       const directJoinLink = `roblox://experiences/start?placeId=${FAME_GAME_ID}&gameInstanceId=${result.jobId}`;
@@ -396,13 +405,13 @@ client.on("interactionCreate", async (interaction) => {
       stats.failedSnipes += 1;
       console.error("[SNIPE ERROR]", error);
 
-      // Improved error message as you requested
       await interaction.editReply({
         embeds: [
           new EmbedBuilder()
             .setTitle("⚠️ Sniping Error")
             .setDescription("Something went wrong while sniping.\nPlease try again in 10-30 seconds.")
             .setColor(0xffa500)
+            .addFields({ name: "Tip", value: "Make sure your ROBLOX_COOKIE is valid if you have one." })
         ]
       });
     }
