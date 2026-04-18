@@ -22,6 +22,7 @@ const PORT = process.env.PORT || 3000;
 const FAME_GAME_ID = process.env.FAME_GAME_ID || "121157515767845";
 const FAME_GAME_NAME = process.env.FAME_GAME_NAME || "Fame";
 const WEBHOOK_URL = process.env.WEBHOOK_URL || null;
+const ROBLOX_COOKIE = process.env.ROBLOX_COOKIE || null;
 const FOUNDER_ROLE_ID = process.env.FOUNDER_ROLE_ID || null;
 const LOG_CHANNEL_NAME = process.env.LOG_CHANNEL_NAME || "discord-logs";
 const DEFAULT_ALLOWED_SERVER_IDS = ["1428878035926388809"];
@@ -127,10 +128,13 @@ async function waitForRateLimit() {
 async function robloxFetch(url, options = {}) {
   await waitForRateLimit();
 
+  const cookieHeader = ROBLOX_COOKIE ? { Cookie: `.ROBLOSECURITY=${ROBLOX_COOKIE}` } : {};
+
   const response = await fetch(url, {
     ...options,
     headers: {
       "Content-Type": "application/json",
+      ...cookieHeader,
       ...options.headers,
     },
   });
@@ -200,9 +204,13 @@ async function getTokenAvatars(tokens) {
 // ─── NEW: Get user presence (online/offline/in-game) ──────────────────────────
 async function getUserPresence(userId) {
   try {
+    const headers = {};
+    if (ROBLOX_COOKIE) headers["Cookie"] = `.ROBLOSECURITY=${ROBLOX_COOKIE}`;
+
     const data = await robloxFetch("https://presence.roblox.com/v1/presence/users", {
       method: "POST",
       body: JSON.stringify({ userIds: [userId] }),
+      headers,
     });
 
     const presence = data.userPresences?.[0];
@@ -251,7 +259,75 @@ async function getGameInfo(placeId) {
   }
 }
 
-async function findUserInServers(userId, maxPages = 25) {
+// ─── Fetch player list for a specific server job via the public join API ─────
+async function getServerPlayers(jobId) {
+  try {
+    // This endpoint returns the usernames of players in a specific server instance
+    const data = await robloxFetch(
+      `https://games.roblox.com/v1/games/${FAME_GAME_ID}/servers/Public?limit=100`
+    );
+    // We can't get names per-server from this endpoint, so we use the
+    // authenticated server player list endpoint instead
+    const resp = await robloxFetch(
+      `https://games.roblox.com/v1/games/${FAME_GAME_ID}/servers/${jobId}`
+    ).catch(() => null);
+    return resp?.playerTokens || [];
+  } catch {
+    return [];
+  }
+}
+
+// ─── Check if a username appears in a server using the Friends API trick ──────
+// Roblox exposes player names in a server via the public "who is in this server"
+// endpoint used by the website. We hit the getSortedGamesList / getGameInstances
+// endpoint which returns playerNames for the authenticated user's perspective.
+async function findUserByNameInServers(userId, username, maxPages = 25) {
+  let cursor = null;
+  let serversScanned = 0;
+  let playersScanned = 0;
+  const lowerName = username.toLowerCase();
+
+  for (let page = 0; page < maxPages; page += 1) {
+    const params = new URLSearchParams({
+      limit: "100",
+      sortOrder: "Desc",
+      excludeFullGames: "false",
+    });
+    if (cursor) params.set("cursor", cursor);
+
+    const data = await robloxFetch(
+      `https://games.roblox.com/v1/games/${FAME_GAME_ID}/servers/Public?${params}`
+    );
+    const servers = data.data || [];
+    if (servers.length === 0) break;
+
+    for (const server of servers) {
+      serversScanned += 1;
+      // playerUserIds is populated when authenticated and the server exposes it
+      const userIds = server.playerIds || server.playerUserIds || [];
+      playersScanned += userIds.length;
+
+      if (userIds.includes(Number(userId)) || userIds.includes(String(userId))) {
+        return {
+          found: true,
+          jobId: server.id,
+          players: server.playing,
+          maxPlayers: server.maxPlayers,
+          scanned: serversScanned,
+          playersScanned,
+          method: "userId",
+        };
+      }
+    }
+
+    cursor = data.nextPageCursor;
+    if (!cursor) break;
+  }
+
+  return { found: false, scanned: serversScanned, playersScanned };
+}
+
+async function findUserInServers(userId, username, maxPages = 25) {
   const targetAvatar = await getUserAvatar(userId, "48x48");
 
   if (!targetAvatar) {
@@ -266,6 +342,7 @@ async function findUserInServers(userId, maxPages = 25) {
   let cursor = null;
   let serversScanned = 0;
   let playersScanned = 0;
+  const lowerName = username.toLowerCase();
 
   for (let page = 0; page < maxPages; page += 1) {
     const params = new URLSearchParams({
@@ -286,14 +363,38 @@ async function findUserInServers(userId, maxPages = 25) {
     for (const server of servers) {
       serversScanned += 1;
       const tokens = server.playerTokens || [];
-      playersScanned += tokens.length;
+
+      // ── Method 1: match by userId if the API returns playerIds ──────────────
+      const userIds = server.playerIds || server.playerUserIds || [];
+      if (userIds.length > 0) {
+        playersScanned += userIds.length;
+        if (userIds.includes(Number(userId)) || userIds.includes(String(userId))) {
+          return {
+            found: true,
+            jobId: server.id,
+            players: server.playing,
+            maxPlayers: server.maxPlayers,
+            scanned: serversScanned,
+            playersScanned,
+            method: "userId",
+          };
+        }
+        // Still fall through to avatar check if tokens available
+      }
 
       if (tokens.length === 0) continue;
 
-      const avatars = await getTokenAvatars(tokens);
-      const match = avatars.find((avatar) => avatar.imageUrl === targetAvatar);
+      playersScanned += tokens.length;
 
-      if (match) {
+      // ── Method 2: match by avatar token image URL ────────────────────────────
+      const avatars = await getTokenAvatars(tokens);
+
+      // Also check if any token requestId matches the username (Roblox sometimes
+      // encodes the username in the token requestId field)
+      const nameMatch = avatars.find(
+        (a) => a.requestId && a.requestId.toLowerCase().includes(lowerName)
+      );
+      if (nameMatch) {
         return {
           found: true,
           jobId: server.id,
@@ -301,6 +402,20 @@ async function findUserInServers(userId, maxPages = 25) {
           maxPlayers: server.maxPlayers,
           scanned: serversScanned,
           playersScanned,
+          method: "nameToken",
+        };
+      }
+
+      const avatarMatch = avatars.find((avatar) => avatar.imageUrl === targetAvatar);
+      if (avatarMatch) {
+        return {
+          found: true,
+          jobId: server.id,
+          players: server.playing,
+          maxPlayers: server.maxPlayers,
+          scanned: serversScanned,
+          playersScanned,
+          method: "avatar",
         };
       }
     }
@@ -648,11 +763,77 @@ client.on("interactionCreate", async (interaction) => {
         ],
       });
 
+      // ── If we have a cookie, presence data is reliable ───────────────────────
+      if (ROBLOX_COOKIE && presence) {
+        // Offline — no point scanning
+        if (presence.type === 0) {
+          stats.failedSnipes += 1;
+          await interaction.editReply({
+            embeds: [
+              new EmbedBuilder()
+                .setTitle("Player is Offline")
+                .setDescription(`**[${userData.name}](${profileUrl})** is currently offline.`)
+                .addFields({
+                  name: "Last Online",
+                  value: presence.lastOnline
+                    ? `<t:${Math.floor(new Date(presence.lastOnline).getTime() / 1000)}:R>`
+                    : "Unknown",
+                  inline: true,
+                })
+                .setColor(0x808080)
+                .setThumbnail(avatar),
+            ],
+          });
+          return;
+        }
+
+        // In a different game — skip Fame scan, show that game's info
+        if (
+          presence.type === 2 &&
+          presence.rootPlaceId &&
+          String(presence.rootPlaceId) !== String(FAME_GAME_ID) &&
+          presence.gameInstanceId
+        ) {
+          stats.successfulSnipes += 1;
+
+          const otherGameInfo = await getGameInfo(presence.rootPlaceId);
+          const otherGameName = otherGameInfo?.name || `Place ${presence.rootPlaceId}`;
+          const otherGameIcon = otherGameInfo?.iconUrl || null;
+          const otherGamePage = `https://www.roblox.com/games/${presence.rootPlaceId}`;
+          const otherDeepLink = `roblox://experiences/start?placeId=${presence.rootPlaceId}&gameInstanceId=${presence.gameInstanceId}`;
+          const elapsed = ((Date.now() - startTime) / 1000).toFixed(2);
+
+          const embed = new EmbedBuilder()
+            .setTitle("Player Found! (Different Game)")
+            .setDescription(`**[${userData.name}](${profileUrl})** is currently in a different game.`)
+            .addFields(
+              { name: "Current Game", value: `[${otherGameName}](${otherGamePage})`, inline: true },
+              { name: "Time", value: `${elapsed}s`, inline: true },
+              { name: "Job ID", value: `\`${presence.gameInstanceId}\``, inline: false },
+              { name: "Roblox Join Link", value: `\`${otherDeepLink}\``, inline: false }
+            )
+            .setColor(0xffa500)
+            .setThumbnail(avatar)
+            .setFooter({ text: "Copy the Roblox Join Link if the button only opens the game page." });
+
+          if (otherGameIcon) embed.setImage(otherGameIcon);
+
+          await interaction.editReply({
+            embeds: [embed],
+            components: [
+              new ActionRowBuilder().addComponents(
+                new ButtonBuilder().setLabel(`Open ${otherGameName}`).setURL(otherGamePage).setStyle(ButtonStyle.Link)
+              ),
+            ],
+          });
+          return;
+        }
+      }
+
       // ── Check if presence API gave us a reliable in-game location ────────────
-      // The Roblox presence API requires auth for accurate data, so we only
-      // trust it when it explicitly says in-game (type=2) AND gives us a jobId.
-      // We never block the scan based on presence — we always scan regardless.
+      // No cookie — only trust presence if it explicitly says in-game with a jobId
       const presenceInDifferentGame =
+        !ROBLOX_COOKIE &&
         presence &&
         presence.type === 2 &&
         presence.rootPlaceId &&
@@ -671,9 +852,7 @@ client.on("interactionCreate", async (interaction) => {
 
         const embed = new EmbedBuilder()
           .setTitle("Player Found! (Different Game)")
-          .setDescription(
-            `**[${userData.name}](${profileUrl})** is currently in a different game.`
-          )
+          .setDescription(`**[${userData.name}](${profileUrl})** is currently in a different game.`)
           .addFields(
             { name: "Current Game", value: `[${otherGameName}](${otherGamePage})`, inline: true },
             { name: "Time", value: `${elapsed}s`, inline: true },
@@ -698,7 +877,7 @@ client.on("interactionCreate", async (interaction) => {
       }
 
       // ── Standard snipe in FAME_GAME ──────────────────────────────────────────
-      const result = await findUserInServers(userData.id, maxPages);
+      const result = await findUserInServers(userData.id, userData.name, maxPages);
       const elapsed = ((Date.now() - startTime) / 1000).toFixed(2);
 
       if (!result.found) {
