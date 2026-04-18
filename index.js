@@ -69,7 +69,7 @@ if (WEBHOOK_URL) {
   }
 }
 
-// HTTP Server for /stats
+// HTTP Server
 http
   .createServer((req, res) => {
     res.setHeader("Access-Control-Allow-Origin", "*");
@@ -77,18 +77,16 @@ http
     if (req.url === "/stats") {
       const uptime = Math.floor((Date.now() - stats.startTime) / 1000);
       const successRate = stats.totalSnipes > 0 ? ((stats.successfulSnipes / stats.totalSnipes) * 100).toFixed(2) : "0.00";
-      res.end(
-        JSON.stringify({
-          status: "online",
-          bot: client.user?.tag || "starting",
-          game: FAME_GAME_NAME,
-          uptime,
-          totalSnipes: stats.totalSnipes,
-          successfulSnipes: stats.successfulSnipes,
-          failedSnipes: stats.failedSnipes,
-          successRate: `${successRate}%`,
-        })
-      );
+      res.end(JSON.stringify({
+        status: "online",
+        bot: client.user?.tag || "starting",
+        game: FAME_GAME_NAME,
+        uptime,
+        totalSnipes: stats.totalSnipes,
+        successfulSnipes: stats.successfulSnipes,
+        failedSnipes: stats.failedSnipes,
+        successRate: `${successRate}%`,
+      }));
       return;
     }
     res.end(JSON.stringify({ status: "online", message: `${FAME_GAME_NAME} Sniper Bot` }));
@@ -124,11 +122,9 @@ async function robloxFetch(url, options = {}) {
 
   if (response.status === 429) {
     stats.rateLimits += 1;
-    console.log("[RATE LIMIT] Waiting 2.5s...");
     await sleep(2500);
     return robloxFetch(url, options);
   }
-
   if (!response.ok) {
     const text = await response.text().catch(() => "");
     throw new Error(`Roblox API error ${response.status}${text ? `: ${text}` : ""}`);
@@ -198,9 +194,7 @@ async function getTokenAvatars(tokens) {
 
 async function findUserInServers(userId, username, maxPages = 8) {
   const targetAvatar = await getUserAvatar(userId).catch(() => null);
-  if (!targetAvatar) {
-    return { found: false, scanned: 0, playersScanned: 0 };
-  }
+  if (!targetAvatar) return { found: false, scanned: 0, playersScanned: 0 };
 
   let cursor = null;
   let serversScanned = 0;
@@ -293,11 +287,9 @@ client.on("interactionCreate", async (interaction) => {
   if (!interaction.isChatInputCommand()) return;
 
   if (interaction.commandName === "snipe") {
-    const startTime = Date.now();           // Fixed: define startTime early
+    const startTime = Date.now();
     stats.totalSnipes += 1;
-
-    // Fix for "Unknown interaction" - defer immediately
-    await interaction.deferReply().catch(() => {});
+    await interaction.deferReply();
 
     try {
       const username = interaction.options.getString("username", true).trim();
@@ -336,7 +328,7 @@ client.on("interactionCreate", async (interaction) => {
 
       if (!result.found) {
         stats.failedSnipes += 1;
-        let desc = `Could not find **[${userData.name}](${profileUrl})** in any public servers.`;
+        let desc = `Could not find **[${userData.name}](${profileUrl})** in public servers.`;
         if (presence?.type === 2 && String(presence.rootPlaceId) === String(FAME_GAME_ID)) {
           desc += "\n\n> They are likely in a **private or VIP server**.";
         }
@@ -357,7 +349,7 @@ client.on("interactionCreate", async (interaction) => {
         });
       }
 
-      // Success - with direct join button
+      // Success - This is the layout you liked
       stats.successfulSnipes += 1;
       const gamePage = `https://www.roblox.com/games/${FAME_GAME_ID}`;
       const directJoinLink = `roblox://experiences/start?placeId=${FAME_GAME_ID}&gameInstanceId=${result.jobId}`;
@@ -368,11 +360,11 @@ client.on("interactionCreate", async (interaction) => {
             .setTitle("✅ Player Found!")
             .setDescription(`Found **[${userData.name}](${profileUrl})** in **${FAME_GAME_NAME}**`)
             .addFields(
-              { name: "Server", value: `${result.players}/${result.maxPlayers} players`, inline: true },
-              { name: "Time Taken", value: `${elapsed}s`, inline: true },
+              { name: "Server", value: `${result.players}/${result.maxPlayers}`, inline: true },
+              { name: "Time", value: `${elapsed}s`, inline: true },
               { name: "Mode", value: deepSearch ? "Deep Search" : "Fast Search", inline: true },
               { name: "Job ID", value: `\`${result.jobId}\``, inline: false },
-              { name: "Direct Join Link", value: `\`${directJoinLink}\`` }
+              { name: "Join Link", value: `\`${directJoinLink}\`` }
             )
             .setColor(0x00ff00)
             .setThumbnail(avatar)
