@@ -79,7 +79,7 @@ if (WEBHOOK_URL) {
   }
 }
 
-// ==================== HTTP SERVER ====================
+// HTTP Server
 http
   .createServer((req, res) => {
     res.setHeader("Access-Control-Allow-Origin", "*");
@@ -129,7 +129,11 @@ async function robloxFetch(url, options = {}) {
   const cookieHeader = ROBLOX_COOKIE ? { Cookie: `.ROBLOSECURITY=${ROBLOX_COOKIE}` } : {};
   const response = await fetch(url, {
     ...options,
-    headers: { "Content-Type": "application/json", ...cookieHeader, ...options.headers },
+    headers: {
+      "Content-Type": "application/json",
+      ...cookieHeader,
+      ...options.headers,
+    },
   });
 
   if (response.status === 429) {
@@ -146,7 +150,6 @@ async function robloxFetch(url, options = {}) {
   return response.json();
 }
 
-// Helper Functions
 async function getRobloxUser(username) {
   const data = await robloxFetch("https://users.roblox.com/v1/usernames/users", {
     method: "POST",
@@ -193,7 +196,7 @@ async function getTokenAvatars(tokens) {
   }));
 
   const results = [];
-  for (let i = 0; i < requests.length; i += 50) {   // Smaller batches = more stable
+  for (let i = 0; i < requests.length; i += 50) {   // Smaller batch = more stable
     const chunk = requests.slice(i, i + 50);
     try {
       const data = await robloxFetch("https://thumbnails.roblox.com/v1/batch", {
@@ -202,7 +205,7 @@ async function getTokenAvatars(tokens) {
       });
       results.push(...(data.data || []));
     } catch (e) {
-      console.log(`[Avatar Error] ${e.message}`);
+      console.log(`[Avatar Batch Error] ${e.message}`);
     }
   }
   return results;
@@ -267,15 +270,15 @@ function buildCommands() {
   return [
     new SlashCommandBuilder()
       .setName("snipe")
-      .setDescription(`Find a player in ${FAME_GAME_NAME} and get direct join link`)
+      .setDescription(`Find a player in ${FAME_GAME_NAME}`)
       .addStringOption((option) => option.setName("username").setDescription("Roblox username").setRequired(true))
       .addBooleanOption((option) =>
-        option.setName("deepsearch").setDescription("Deep search (slower but more accurate)").setRequired(false)
+        option.setName("deepsearch").setDescription("Enable deep search (slower but scans more servers)").setRequired(false)
       )
       .setIntegrationTypes(types)
       .setContexts(contexts)
       .toJSON(),
-    // Add other commands (stats, timeout, etc.) here if you need them
+    // Add your other commands (stats, timeout, etc.) here if needed
   ];
 }
 
@@ -319,15 +322,19 @@ client.on("interactionCreate", async (interaction) => {
         });
       }
 
-      const [avatar, presence] = await Promise.all([getUserAvatar(userData.id), getUserPresence(userData.id)]);
+      const [avatar, presence] = await Promise.all([
+        getUserAvatar(userData.id),
+        getUserPresence(userData.id),
+      ]);
 
       const profileUrl = `https://www.roblox.com/users/${userData.id}/profile`;
 
+      // === KEEPING YOUR SEARCHING EMBED ===
       await interaction.editReply({
         embeds: [
           new EmbedBuilder()
             .setTitle("🔍 Searching...")
-            .setDescription(`Looking for **[${userData.name}](${profileUrl})** in **${FAME_GAME_NAME}**...`)
+            .setDescription(`Looking for **[${userData.name}](${profileUrl})** in **${FAME_GAME_NAME}** public servers...`)
             .setColor(0x5865f2)
             .setThumbnail(avatar)
             .addFields({ name: "Mode", value: deepSearch ? "Deep Search (25 pages)" : "Fast Search (8 pages)", inline: true }),
@@ -360,7 +367,7 @@ client.on("interactionCreate", async (interaction) => {
         });
       }
 
-      // ===================== SUCCESS =====================
+      // ===================== SUCCESS - WITH JOIN BUTTON =====================
       stats.successfulSnipes += 1;
       const gamePage = `https://www.roblox.com/games/${FAME_GAME_ID}`;
       const directJoinLink = `roblox://experiences/start?placeId=${FAME_GAME_ID}&gameInstanceId=${result.jobId}`;
@@ -369,7 +376,7 @@ client.on("interactionCreate", async (interaction) => {
         embeds: [
           new EmbedBuilder()
             .setTitle("✅ Player Found!")
-            .setDescription(`**[${userData.name}](${profileUrl})** is in **${FAME_GAME_NAME}**`)
+            .setDescription(`Found **[${userData.name}](${profileUrl})** in **${FAME_GAME_NAME}**`)
             .addFields(
               { name: "Server", value: `${result.players}/${result.maxPlayers} players`, inline: true },
               { name: "Time Taken", value: `${elapsed}s`, inline: true },
@@ -406,14 +413,14 @@ client.on("interactionCreate", async (interaction) => {
             .setTitle("⚠️ Sniping Error")
             .setDescription("Something went wrong while sniping.\nPlease try again in 10-30 seconds.")
             .setColor(0xffa500)
-            .addFields({ name: "Tip", value: "Make sure your ROBLOX_COOKIE is valid." }),
+            .addFields({ name: "Tip", value: "Make sure your ROBLOX_COOKIE is valid if you have one." }),
         ],
       });
     }
   }
 });
 
-// Add your invite protection (messageCreate) and other commands here if needed
+// Add your other commands (stats, timeout, invite protection, etc.) here if needed
 
 process.on("unhandledRejection", console.error);
 process.on("uncaughtException", console.error);
