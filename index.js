@@ -23,8 +23,6 @@ const FAME_GAME_ID = process.env.FAME_GAME_ID || "121157515767845";
 const FAME_GAME_NAME = process.env.FAME_GAME_NAME || "Fame";
 const WEBHOOK_URL = process.env.WEBHOOK_URL || null;
 const ROBLOX_COOKIE = process.env.ROBLOX_COOKIE || null;
-const FOUNDER_ROLE_ID = process.env.FOUNDER_ROLE_ID || null;
-const LOG_CHANNEL_NAME = process.env.LOG_CHANNEL_NAME || "discord-logs";
 
 const DEFAULT_ALLOWED_SERVER_IDS = ["1428878035926388809"];
 const ALLOWED_SERVER_IDS = (process.env.ALLOWED_SERVER_IDS || DEFAULT_ALLOWED_SERVER_IDS.join(","))
@@ -39,8 +37,6 @@ if (!TOKEN) {
 
 if (!ROBLOX_COOKIE) {
   console.warn("⚠️ ROBLOX_COOKIE is not set. Snipe accuracy will be limited.");
-} else {
-  console.log("✅ ROBLOX_COOKIE loaded");
 }
 
 const client = new Client({
@@ -54,8 +50,6 @@ const client = new Client({
   partials: [Partials.Channel],
 });
 
-const userViolations = new Map();
-
 const stats = {
   totalSnipes: 0,
   successfulSnipes: 0,
@@ -63,10 +57,6 @@ const stats = {
   startTime: Date.now(),
   apiCalls: 0,
   rateLimits: 0,
-  blockedInvites: 0,
-  totalTimeouts: 0,
-  autoTimeouts: 0,
-  manualTimeouts: 0,
 };
 
 let webhook = null;
@@ -79,7 +69,7 @@ if (WEBHOOK_URL) {
   }
 }
 
-// ==================== HTTP SERVER ====================
+// HTTP Server for /stats
 http
   .createServer((req, res) => {
     res.setHeader("Access-Control-Allow-Origin", "*");
@@ -97,10 +87,6 @@ http
           successfulSnipes: stats.successfulSnipes,
           failedSnipes: stats.failedSnipes,
           successRate: `${successRate}%`,
-          apiCalls: stats.apiCalls,
-          rateLimits: stats.rateLimits,
-          blockedInvites: stats.blockedInvites,
-          totalTimeouts: stats.totalTimeouts,
         })
       );
       return;
@@ -129,7 +115,11 @@ async function robloxFetch(url, options = {}) {
   const cookieHeader = ROBLOX_COOKIE ? { Cookie: `.ROBLOSECURITY=${ROBLOX_COOKIE}` } : {};
   const response = await fetch(url, {
     ...options,
-    headers: { "Content-Type": "application/json", ...cookieHeader, ...options.headers },
+    headers: {
+      "Content-Type": "application/json",
+      ...cookieHeader,
+      ...options.headers,
+    },
   });
 
   if (response.status === 429) {
@@ -146,7 +136,6 @@ async function robloxFetch(url, options = {}) {
   return response.json();
 }
 
-// Helper Functions
 async function getRobloxUser(username) {
   const data = await robloxFetch("https://users.roblox.com/v1/usernames/users", {
     method: "POST",
@@ -175,7 +164,6 @@ async function getUserPresence(userId) {
       type: p.userPresenceType,
       rootPlaceId: p.rootPlaceId,
       gameInstanceId: p.gameId,
-      lastOnline: p.lastOnline,
     };
   } catch {
     return null;
@@ -193,7 +181,7 @@ async function getTokenAvatars(tokens) {
   }));
 
   const results = [];
-  for (let i = 0; i < requests.length; i += 50) {   // Smaller batches = more stable
+  for (let i = 0; i < requests.length; i += 50) {
     const chunk = requests.slice(i, i + 50);
     try {
       const data = await robloxFetch("https://thumbnails.roblox.com/v1/batch", {
@@ -202,7 +190,7 @@ async function getTokenAvatars(tokens) {
       });
       results.push(...(data.data || []));
     } catch (e) {
-      console.log(`[Avatar Error] ${e.message}`);
+      console.log(`[Avatar Batch Error] ${e.message}`);
     }
   }
   return results;
@@ -210,6 +198,10 @@ async function getTokenAvatars(tokens) {
 
 async function findUserInServers(userId, username, maxPages = 8) {
   const targetAvatar = await getUserAvatar(userId).catch(() => null);
+  if (!targetAvatar) {
+    return { found: false, scanned: 0, playersScanned: 0 };
+  }
+
   let cursor = null;
   let serversScanned = 0;
   let playersScanned = 0;
@@ -232,7 +224,7 @@ async function findUserInServers(userId, username, maxPages = 8) {
         playersScanned += Math.max(userIds.length, tokens.length);
 
         if (userIds.includes(Number(userId)) || userIds.includes(String(userId))) {
-          return { found: true, jobId: server.id, players: server.playing, maxPlayers: server.maxPlayers, scanned: serversScanned, playersScanned, method: "userId" };
+          return { found: true, jobId: server.id, players: server.playing, maxPlayers: server.maxPlayers, scanned: serversScanned, playersScanned };
         }
 
         if (tokens.length === 0) continue;
@@ -267,15 +259,14 @@ function buildCommands() {
   return [
     new SlashCommandBuilder()
       .setName("snipe")
-      .setDescription(`Find a player in ${FAME_GAME_NAME} and get direct join link`)
+      .setDescription(`Find a player in ${FAME_GAME_NAME}`)
       .addStringOption((option) => option.setName("username").setDescription("Roblox username").setRequired(true))
       .addBooleanOption((option) =>
-        option.setName("deepsearch").setDescription("Deep search (slower but more accurate)").setRequired(false)
+        option.setName("deepsearch").setDescription("Enable deep search (slower but scans more servers)").setRequired(false)
       )
       .setIntegrationTypes(types)
       .setContexts(contexts)
       .toJSON(),
-    // Add other commands (stats, timeout, etc.) here if you need them
   ];
 }
 
@@ -302,9 +293,11 @@ client.on("interactionCreate", async (interaction) => {
   if (!interaction.isChatInputCommand()) return;
 
   if (interaction.commandName === "snipe") {
-    const startTime = Date.now();
+    const startTime = Date.now();           // Fixed: define startTime early
     stats.totalSnipes += 1;
-    await interaction.deferReply();
+
+    // Fix for "Unknown interaction" - defer immediately
+    await interaction.deferReply().catch(() => {});
 
     try {
       const username = interaction.options.getString("username", true).trim();
@@ -319,15 +312,19 @@ client.on("interactionCreate", async (interaction) => {
         });
       }
 
-      const [avatar, presence] = await Promise.all([getUserAvatar(userData.id), getUserPresence(userData.id)]);
+      const [avatar, presence] = await Promise.all([
+        getUserAvatar(userData.id),
+        getUserPresence(userData.id),
+      ]);
 
       const profileUrl = `https://www.roblox.com/users/${userData.id}/profile`;
 
+      // Your preferred Searching embed
       await interaction.editReply({
         embeds: [
           new EmbedBuilder()
             .setTitle("🔍 Searching...")
-            .setDescription(`Looking for **[${userData.name}](${profileUrl})** in **${FAME_GAME_NAME}**...`)
+            .setDescription(`Looking for **[${userData.name}](${profileUrl})** in **${FAME_GAME_NAME}** public servers...`)
             .setColor(0x5865f2)
             .setThumbnail(avatar)
             .addFields({ name: "Mode", value: deepSearch ? "Deep Search (25 pages)" : "Fast Search (8 pages)", inline: true }),
@@ -360,7 +357,7 @@ client.on("interactionCreate", async (interaction) => {
         });
       }
 
-      // ===================== SUCCESS =====================
+      // Success - with direct join button
       stats.successfulSnipes += 1;
       const gamePage = `https://www.roblox.com/games/${FAME_GAME_ID}`;
       const directJoinLink = `roblox://experiences/start?placeId=${FAME_GAME_ID}&gameInstanceId=${result.jobId}`;
@@ -369,7 +366,7 @@ client.on("interactionCreate", async (interaction) => {
         embeds: [
           new EmbedBuilder()
             .setTitle("✅ Player Found!")
-            .setDescription(`**[${userData.name}](${profileUrl})** is in **${FAME_GAME_NAME}**`)
+            .setDescription(`Found **[${userData.name}](${profileUrl})** in **${FAME_GAME_NAME}**`)
             .addFields(
               { name: "Server", value: `${result.players}/${result.maxPlayers} players`, inline: true },
               { name: "Time Taken", value: `${elapsed}s`, inline: true },
@@ -405,15 +402,12 @@ client.on("interactionCreate", async (interaction) => {
           new EmbedBuilder()
             .setTitle("⚠️ Sniping Error")
             .setDescription("Something went wrong while sniping.\nPlease try again in 10-30 seconds.")
-            .setColor(0xffa500)
-            .addFields({ name: "Tip", value: "Make sure your ROBLOX_COOKIE is valid." }),
+            .setColor(0xffa500),
         ],
-      });
+      }).catch(() => {});
     }
   }
 });
-
-// Add your invite protection (messageCreate) and other commands here if needed
 
 process.on("unhandledRejection", console.error);
 process.on("uncaughtException", console.error);
