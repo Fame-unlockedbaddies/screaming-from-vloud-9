@@ -636,7 +636,6 @@ client.on("interactionCreate", async (interaction) => {
       ]);
 
       const profileUrl = `https://www.roblox.com/users/${userData.id}/profile`;
-      const statusLabel = presence ? presenceLabel(presence.type) : "⚪ Unknown";
 
       // ── Show searching embed ─────────────────────────────────────────────────
       await interaction.editReply({
@@ -644,40 +643,23 @@ client.on("interactionCreate", async (interaction) => {
           new EmbedBuilder()
             .setTitle("Searching...")
             .setDescription(`Looking for **[${userData.name}](${profileUrl})** in **${FAME_GAME_NAME}** public servers...`)
-            .addFields({ name: "Status", value: statusLabel, inline: true })
             .setColor(0x5865f2)
             .setThumbnail(avatar),
         ],
       });
 
-      // ── If offline, don't scan ───────────────────────────────────────────────
-      if (presence && presence.type === 0) {
-        stats.failedSnipes += 1;
-        await interaction.editReply({
-          embeds: [
-            new EmbedBuilder()
-              .setTitle("Player is Offline")
-              .setDescription(`**[${userData.name}](${profileUrl})** is currently offline.`)
-              .addFields({
-                name: "Last Online",
-                value: presence.lastOnline ? `<t:${Math.floor(new Date(presence.lastOnline).getTime() / 1000)}:R>` : "Unknown",
-                inline: true,
-              })
-              .setColor(0x808080)
-              .setThumbnail(avatar),
-          ],
-        });
-        return;
-      }
-
-      // ── If in a DIFFERENT game (presence knows the placeId) ──────────────────
-      if (
+      // ── Check if presence API gave us a reliable in-game location ────────────
+      // The Roblox presence API requires auth for accurate data, so we only
+      // trust it when it explicitly says in-game (type=2) AND gives us a jobId.
+      // We never block the scan based on presence — we always scan regardless.
+      const presenceInDifferentGame =
         presence &&
         presence.type === 2 &&
         presence.rootPlaceId &&
         String(presence.rootPlaceId) !== String(FAME_GAME_ID) &&
-        presence.gameInstanceId
-      ) {
+        presence.gameInstanceId;
+
+      if (presenceInDifferentGame) {
         stats.successfulSnipes += 1;
 
         const otherGameInfo = await getGameInfo(presence.rootPlaceId);
@@ -690,13 +672,11 @@ client.on("interactionCreate", async (interaction) => {
         const embed = new EmbedBuilder()
           .setTitle("Player Found! (Different Game)")
           .setDescription(
-            `**[${userData.name}](${profileUrl})** is not in **${FAME_GAME_NAME}** right now — they're in a different game.`
+            `**[${userData.name}](${profileUrl})** is currently in a different game.`
           )
           .addFields(
-            { name: "Status", value: statusLabel, inline: true },
-            { name: "Time", value: `${elapsed}s`, inline: true },
-            { name: "\u200b", value: "\u200b", inline: true },
             { name: "Current Game", value: `[${otherGameName}](${otherGamePage})`, inline: true },
+            { name: "Time", value: `${elapsed}s`, inline: true },
             { name: "Job ID", value: `\`${presence.gameInstanceId}\``, inline: false },
             { name: "Roblox Join Link", value: `\`${otherDeepLink}\``, inline: false }
           )
@@ -704,7 +684,6 @@ client.on("interactionCreate", async (interaction) => {
           .setThumbnail(avatar)
           .setFooter({ text: "Copy the Roblox Join Link if the button only opens the game page." });
 
-        // Show the other game's icon as image if available
         if (otherGameIcon) embed.setImage(otherGameIcon);
 
         await interaction.editReply({
@@ -737,7 +716,6 @@ client.on("interactionCreate", async (interaction) => {
               .setTitle("Snipe Failed")
               .setDescription(notFoundDesc)
               .addFields(
-                { name: "Status", value: statusLabel, inline: true },
                 { name: "Servers Scanned", value: `${result.scanned}`, inline: true },
                 { name: "Player Slots Scanned", value: `${result.playersScanned || 0}`, inline: true },
                 { name: "Pages Scanned", value: `${maxPages}`, inline: true }
@@ -760,7 +738,6 @@ client.on("interactionCreate", async (interaction) => {
             .setTitle("Player Found!")
             .setDescription(`Found **[${userData.name}](${profileUrl})** in **${FAME_GAME_NAME}**.`)
             .addFields(
-              { name: "Status", value: statusLabel, inline: true },
               { name: "Server", value: `${result.players}/${result.maxPlayers} players`, inline: true },
               { name: "Time", value: `${elapsed}s`, inline: true },
               { name: "Servers Scanned", value: `${result.scanned}`, inline: true },
