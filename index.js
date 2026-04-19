@@ -26,21 +26,18 @@ const client = new Client({
   partials: [Partials.Channel],
 });
 
-// ==================== ALLOWED LINKS ====================
+// ==================== LINK FILTER ====================
 
-// TikTok (full + short vm.tiktok.com links)
+// Only TikTok links are strictly allowed (including short vm.tiktok.com links)
 const tiktokRegex = /https?:\/\/(?:www\.|m\.|vm\.)?tiktok\.com\/(?:@[\w.-]+\/video\/\d+|[\w-]+|Z[a-zA-Z0-9]+)/i;
 
-// Any GIF from Discord + popular GIF hosts
-const gifRegex = /https?:\/\/(?:cdn\.discordapp\.com|media\.discordapp\.net|tenor\.com|c\.tenor\.com|giphy\.com|imgur\.com).*?(\.gif|gif\/|\/gif)/i;
-
-// Dangerous / blocked patterns
+// Dangerous patterns (still blocked)
 const dangerousPatterns = [
-  /discord\.(gg|com|app)\/(invite\/)?[a-zA-Z0-9-]+/i,
-  /grabify\.link|iplogger\.org|ipgrabber|blasze\.com|ps3cfw\.com|trackip|myip\.is|ip-tracker|cliip\.net|linklog|redir\.me/i,
+  /discord\.(gg|com|app)\/(invite\/)?[a-zA-Z0-9-]+/i,           // Discord invites
+  /grabify\.link|iplogger\.org|ipgrabber|blasze\.com|trackip|myip\.is|ip-tracker|cliip\.net/i, // IP grabbers
   /roblox\.(com\.[a-z]{2,}|gg|app|site|xyz|fun|net|org|login|verify|gift|free|robux)/i,
-  /rblx\.|rblox\.|robloxx?\.|robloxapp|free-robux|robux\.gift|getrobux/i,
-  /cookie-logger|cookielogger|beamer|beam\.link|stealer|grabber|token-logger/i,
+  /rblx\.|rblox\.|robloxx?\.|free-robux|robux\.gift|getrobux/i, // Fake Roblox
+  /cookie-logger|cookielogger|stealer|grabber|token-logger|beam\.link/i,
 ];
 
 client.on("messageCreate", async (message) => {
@@ -48,7 +45,7 @@ client.on("messageCreate", async (message) => {
 
   const content = message.content;
 
-  // Find all URLs in the message
+  // Extract all URLs
   const urlRegex = /(https?:\/\/[^\s]+)/gi;
   const urls = content.match(urlRegex) || [];
 
@@ -58,17 +55,21 @@ client.on("messageCreate", async (message) => {
   for (const url of urls) {
     const lowerUrl = url.toLowerCase();
 
-    // Allow TikTok links
+    // === ALLOW TIKTOK ===
     if (tiktokRegex.test(url)) {
       continue;
     }
 
-    // Allow any Discord GIF or common GIF hosts
-    if (gifRegex.test(url) || lowerUrl.endsWith('.gif')) {
-      continue;
+    // === IGNORE ALL GIFS (do not block them) ===
+    if (lowerUrl.endsWith('.gif') || 
+        lowerUrl.includes('tenor.com') || 
+        lowerUrl.includes('giphy.com') || 
+        lowerUrl.includes('cdn.discordapp.com') || 
+        lowerUrl.includes('media.discordapp.net')) {
+      continue;   // Skip GIFs completely - do not treat as bad link
     }
 
-    // Check for dangerous/malicious patterns
+    // Check dangerous patterns
     for (const pattern of dangerousPatterns) {
       if (pattern.test(lowerUrl)) {
         isBadLink = true;
@@ -79,26 +80,26 @@ client.on("messageCreate", async (message) => {
 
     if (isBadLink) break;
 
-    // Block everything else that contains a link
+    // Block any other non-TikTok, non-GIF link
     if (lowerUrl.includes("http")) {
       isBadLink = true;
-      reason = "Only TikTok links and GIFs (Discord, Tenor, Giphy, Imgur, .gif) are allowed.";
+      reason = "Only TikTok links are allowed. GIFs are permitted but nothing else.";
       break;
     }
   }
 
   if (isBadLink) {
     try {
-      // Delete message instantly
+      // Delete the bad message instantly
       await message.delete().catch(() => {});
 
-      // Timeout user for 10 minutes
+      // Timeout the user for 10 minutes
       const member = await message.guild.members.fetch(message.author.id).catch(() => null);
       if (member) {
         await member.timeout(10 * 60 * 1000, `Posted unsafe link: ${reason}`).catch(() => {});
       }
 
-      // Warning embed
+      // Warning message
       const warningEmbed = new EmbedBuilder()
         .setTitle("🚫 Unsafe Link Blocked")
         .setDescription(`${message.author}, your message was removed.`)
@@ -111,10 +112,10 @@ client.on("messageCreate", async (message) => {
 
       const warningMsg = await message.channel.send({ embeds: [warningEmbed] });
 
-      // Auto-delete warning after 10 seconds
+      // Auto-delete the warning after 10 seconds
       setTimeout(() => warningMsg.delete().catch(() => {}), 10000);
 
-      console.log(`[LINK BLOCKED] ${message.author.tag} - ${reason} | Link: ${urls[0]}`);
+      console.log(`[LINK BLOCKED] ${message.author.tag} - ${reason}`);
     } catch (err) {
       console.error("[LINK BLOCKER ERROR]", err);
     }
@@ -122,13 +123,13 @@ client.on("messageCreate", async (message) => {
 });
 
 // ==================== ROLEALL COMMAND ====================
-// Paste your full existing roleall code here (unchanged)
+// Paste your full roleall code here (it remains unchanged)
 
 client.on("interactionCreate", async (interaction) => {
   if (!interaction.isChatInputCommand()) return;
 
   if (interaction.commandName === "roleall") {
-    // Your roleall logic goes here...
+    // Your existing roleall logic goes here...
   }
 });
 
@@ -145,7 +146,7 @@ client.login(TOKEN);
 http.createServer((req, res) => {
   res.setHeader("Access-Control-Allow-Origin", "*");
   res.setHeader("Content-Type", "application/json");
-  res.end(JSON.stringify({ status: "online", message: `${FAME_GAME_NAME} Bot - TikTok + Discord GIFs Only` }));
+  res.end(JSON.stringify({ status: "online", message: `${FAME_GAME_NAME} Bot - TikTok + GIFs Allowed` }));
 }).listen(PORT);
 
-console.log(`${FAME_GAME_NAME} Bot online! Allowed: TikTok + any GIF (Discord CDN, Tenor, Giphy, Imgur, .gif files)`);
+console.log(`${FAME_GAME_NAME} Bot is online! Only TikTok links are blocked if malicious. All GIFs are now allowed.`);
