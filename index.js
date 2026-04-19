@@ -4,7 +4,6 @@ const {
   Client,
   GatewayIntentBits,
   Partials,
-  WebhookClient,
 } = require("discord.js");
 
 const TOKEN = process.env.TOKEN || process.env.DISCORD_TOKEN;
@@ -27,24 +26,20 @@ const client = new Client({
   partials: [Partials.Channel],
 });
 
-// ==================== IMPROVED TIKTOK DETECTION ====================
+// ==================== ALLOWED LINKS ====================
 
-// Allowed TikTok patterns (including vm.tiktok.com short links like ZNRq2quMg)
+// TikTok (including short vm.tiktok.com links)
 const tiktokRegex = /https?:\/\/(?:www\.|m\.|vm\.)?tiktok\.com\/(?:@[\w.-]+\/video\/\d+|[\w-]+|Z[a-zA-Z0-9]+)/i;
 
-// Dangerous / blocked patterns
+// GIF links (Tenor, Giphy, direct .gif, Imgur)
+const gifRegex = /https?:\/\/(?:www\.)?(?:tenor\.com|c\.tenor\.com|giphy\.com|imgur\.com).*?(?:\.gif|gif\/)/i;
+
+// Dangerous / blocked patterns (cookie stealers, fake Roblox, IP grabbers, Discord invites, etc.)
 const dangerousPatterns = [
-  // Discord invites
   /discord\.(gg|com|app)\/(invite\/)?[a-zA-Z0-9-]+/i,
-
-  // IP Grabbers & Loggers
   /grabify\.link|iplogger\.org|ipgrabber|blasze\.com|ps3cfw\.com|trackip|myip\.is|ip-tracker|cliip\.net|linklog|redir\.me/i,
-
-  // Fake Roblox / Cookie Stealer domains
   /roblox\.(com\.[a-z]{2,}|gg|app|site|xyz|fun|net|org|login|verify|gift|free|robux)/i,
   /rblx\.|rblox\.|robloxx?\.|robloxapp|free-robux|robux\.gift|getrobux/i,
-
-  // Other stealers / phishing
   /cookie-logger|cookielogger|beamer|beam\.link|stealer|grabber|token-logger/i,
 ];
 
@@ -53,7 +48,7 @@ client.on("messageCreate", async (message) => {
 
   const content = message.content;
 
-  // Find all URLs in the message
+  // Find all URLs
   const urlRegex = /(https?:\/\/[^\s]+)/gi;
   const urls = content.match(urlRegex) || [];
 
@@ -63,12 +58,17 @@ client.on("messageCreate", async (message) => {
   for (const url of urls) {
     const lowerUrl = url.toLowerCase();
 
-    // Check if it's a valid TikTok link (including vm.tiktok.com short format)
+    // Allow TikTok links
     if (tiktokRegex.test(url)) {
-      continue; // TikTok is allowed → skip
+      continue;
     }
 
-    // Check for dangerous patterns
+    // Allow GIF links
+    if (gifRegex.test(url) || lowerUrl.endsWith('.gif')) {
+      continue;
+    }
+
+    // Check dangerous patterns
     for (const pattern of dangerousPatterns) {
       if (pattern.test(lowerUrl)) {
         isBadLink = true;
@@ -79,26 +79,23 @@ client.on("messageCreate", async (message) => {
 
     if (isBadLink) break;
 
-    // If it's any other link that's not TikTok → block it
+    // Block any other link
     if (lowerUrl.includes("http")) {
       isBadLink = true;
-      reason = "Only TikTok links are allowed in this server.";
+      reason = "Only TikTok and GIF links (Tenor, Giphy, .gif) are allowed in this server.";
       break;
     }
   }
 
   if (isBadLink) {
     try {
-      // Delete the message instantly
       await message.delete().catch(() => {});
 
-      // Timeout the user for 10 minutes
       const member = await message.guild.members.fetch(message.author.id).catch(() => null);
       if (member) {
         await member.timeout(10 * 60 * 1000, `Posted unsafe link: ${reason}`).catch(() => {});
       }
 
-      // Warning message
       const warningEmbed = new EmbedBuilder()
         .setTitle("🚫 Unsafe Link Blocked")
         .setDescription(`${message.author}, your message was removed.`)
@@ -111,7 +108,6 @@ client.on("messageCreate", async (message) => {
 
       const warningMsg = await message.channel.send({ embeds: [warningEmbed] });
 
-      // Auto-delete warning after 10 seconds
       setTimeout(() => warningMsg.delete().catch(() => {}), 10000);
 
       console.log(`[LINK BLOCKED] ${message.author.tag} - ${reason} | Link: ${urls[0]}`);
@@ -122,14 +118,13 @@ client.on("messageCreate", async (message) => {
 });
 
 // ==================== ROLEALL COMMAND ====================
-// (Paste your full roleall code here - it was unchanged)
+// Paste your full roleall code here (it remains unchanged)
 
 client.on("interactionCreate", async (interaction) => {
   if (!interaction.isChatInputCommand()) return;
 
   if (interaction.commandName === "roleall") {
-    // Your existing roleall code goes here...
-    // (I kept it out for brevity - copy from previous version)
+    // Your existing roleall logic goes here...
   }
 });
 
@@ -146,7 +141,7 @@ client.login(TOKEN);
 http.createServer((req, res) => {
   res.setHeader("Access-Control-Allow-Origin", "*");
   res.setHeader("Content-Type", "application/json");
-  res.end(JSON.stringify({ status: "online", message: `${FAME_GAME_NAME} Bot - TikTok Only Mode` }));
+  res.end(JSON.stringify({ status: "online", message: `${FAME_GAME_NAME} Bot - TikTok + GIF Only` }));
 }).listen(PORT);
 
-console.log(`${FAME_GAME_NAME} Bot is online! Only TikTok links (including vm.tiktok.com short links) are allowed.`);
+console.log(`${FAME_GAME_NAME} Bot online! Allowed: TikTok links + GIFs (Tenor, Giphy, .gif, Imgur). Malicious links still blocked.`);
