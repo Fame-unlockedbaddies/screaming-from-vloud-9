@@ -22,7 +22,6 @@ const PORT = process.env.PORT || 3000;
 const FAME_GAME_ID = process.env.FAME_GAME_ID || "121157515767845";
 const FAME_GAME_NAME = process.env.FAME_GAME_NAME || "Fame";
 const WEBHOOK_URL = process.env.WEBHOOK_URL || null;
-const ROBLOX_COOKIE = process.env.ROBLOX_COOKIE || null;
 const FOUNDER_ROLE_ID = "1482560426972549232";
 
 if (!TOKEN) {
@@ -35,7 +34,7 @@ const client = new Client({
     GatewayIntentBits.Guilds,
     GatewayIntentBits.DirectMessages,
     GatewayIntentBits.GuildMessages,
-    GatewayIntentBits.MessageContent,
+    GatewayIntentBits.MessageContent,   // Required for detecting links
     GatewayIntentBits.GuildModeration,
   ],
   partials: [Partials.Channel],
@@ -57,23 +56,63 @@ if (WEBHOOK_URL) {
   } catch (e) {}
 }
 
-// HTTP Server (kept simple)
-http.createServer((req, res) => {
-  res.setHeader("Access-Control-Allow-Origin", "*");
-  res.setHeader("Content-Type", "application/json");
-  res.end(JSON.stringify({ status: "online", message: `${FAME_GAME_NAME} Sniper Bot` }));
-}).listen(PORT);
+// ==================== DISCORD LINK BLOCKER ====================
+const discordLinkRegex = /discord\.(gg|com|app)\/(invite\/)?[a-zA-Z0-9-]+/gi;
+
+client.on("messageCreate", async (message) => {
+  if (message.author.bot || !message.guild) return;
+
+  // Check if message contains Discord invite link
+  if (discordLinkRegex.test(message.content)) {
+    try {
+      // Delete the message instantly
+      await message.delete().catch(() => {});
+
+      // Timeout the user for 10 minutes (600 seconds)
+      const member = await message.guild.members.fetch(message.author.id);
+      
+      await member.timeout(10 * 60 * 1000, "Posted Discord invite link").catch(err => {
+        console.log(`Failed to timeout user ${message.author.tag}:`, err.message);
+      });
+
+      // Send warning embed
+      const warningEmbed = new EmbedBuilder()
+        .setTitle("🚫 Discord Links Are Not Allowed")
+        .setDescription(`${message.author}, you are not allowed to send Discord invite links in this server.`)
+        .addFields(
+          { name: "Action Taken", value: "Message deleted + 10 minute timeout", inline: false }
+        )
+        .setColor(0xff0000)
+        .setTimestamp();
+
+      const warningMsg = await message.channel.send({ embeds: [warningEmbed] });
+
+      // Auto-delete warning after 10 seconds
+      setTimeout(() => {
+        warningMsg.delete().catch(() => {});
+      }, 10000);
+
+      console.log(`[LINK BLOCKED] ${message.author.tag} was timed out for posting a Discord link.`);
+    } catch (error) {
+      console.error("[LINK BLOCKER ERROR]", error);
+    }
+  }
+});
 
 // ==================== ROLEALL COMMAND ====================
 client.on("interactionCreate", async (interaction) => {
   if (!interaction.isChatInputCommand()) return;
 
   if (interaction.commandName === "roleall") {
-    // Check if user has Founder role
     const member = await interaction.guild.members.fetch(interaction.user.id).catch(() => null);
+
     if (!member || !member.roles.cache.has(FOUNDER_ROLE_ID)) {
       return interaction.reply({
-        embeds: [new EmbedBuilder().setTitle("Access Denied").setDescription("Only the Founder can use this command.").setColor(0xff0000)],
+        embeds: [new EmbedBuilder()
+          .setTitle("Access Denied")
+          .setDescription("Only the Founder can use this command.")
+          .setColor(0xff0000)
+        ],
         ephemeral: true
       });
     }
@@ -81,7 +120,6 @@ client.on("interactionCreate", async (interaction) => {
     const role = interaction.options.getRole("role", true);
     const includeBots = interaction.options.getBoolean("bots", true);
 
-    // Initial message
     await interaction.reply({
       embeds: [
         new EmbedBuilder()
@@ -97,19 +135,16 @@ client.on("interactionCreate", async (interaction) => {
       let skipped = 0;
 
       for (const m of members.values()) {
-        // Skip bots if user chose false
         if (m.user.bot && !includeBots) {
           skipped++;
           continue;
         }
 
-        // Only add role if they don't have it
         if (!m.roles.cache.has(role.id)) {
           try {
             await m.roles.add(role.id);
             assigned++;
 
-            // Live update with username mention
             const progressEmbed = new EmbedBuilder()
               .setTitle("📋 Assigning Roles...")
               .setDescription(`**Assigned to:** ${m.user} (${m.user.tag})`)
@@ -121,20 +156,16 @@ client.on("interactionCreate", async (interaction) => {
               .setTimestamp();
 
             await interaction.editReply({ embeds: [progressEmbed] }).catch(() => {});
-            
-            // Small delay to prevent rate limits
             await sleep(400);
-
           } catch (err) {
             skipped++;
             console.log(`Failed to give role to ${m.user.tag}`);
           }
         } else {
-          skipped++; // Already had the role
+          skipped++;
         }
       }
 
-      // Final message
       await interaction.editReply({
         embeds: [
           new EmbedBuilder()
@@ -148,7 +179,6 @@ client.on("interactionCreate", async (interaction) => {
             .setColor(0x00ff00)
         ]
       });
-
     } catch (error) {
       console.error("[ROLEALL ERROR]", error);
       await interaction.editReply({
@@ -156,10 +186,6 @@ client.on("interactionCreate", async (interaction) => {
       });
     }
   }
-
-  // Your snipe command goes here (keep your working snipe code)
-  // If you want me to include the full snipe part, let me know.
-
 });
 
 function sleep(ms) {
@@ -170,3 +196,12 @@ process.on("unhandledRejection", console.error);
 process.on("uncaughtException", console.error);
 
 client.login(TOKEN);
+
+// HTTP Server
+http.createServer((req, res) => {
+  res.setHeader("Access-Control-Allow-Origin", "*");
+  res.setHeader("Content-Type", "application/json");
+  res.end(JSON.stringify({ status: "online", message: `${FAME_GAME_NAME} Sniper Bot` }));
+}).listen(PORT);
+
+console.log(`${FAME_GAME_NAME} Bot is now online! Discord link blocker is active.`);
