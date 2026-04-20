@@ -69,7 +69,7 @@ client.on("messageCreate", async (message) => {
     for (const pattern of dangerousPatterns) {
       if (pattern.test(lowerUrl)) {
         shouldBlock = true;
-        reason = "Malicious link (Cookie Stealer, IP Grabber, or Fake Roblox)";
+        reason = "Malicious link detected";
         break;
       }
     }
@@ -77,7 +77,7 @@ client.on("messageCreate", async (message) => {
 
     if (lowerUrl.startsWith('http')) {
       shouldBlock = true;
-      reason = "Only TikTok links and GIFs are allowed in this server.";
+      reason = "Only TikTok links and GIFs are allowed.";
       break;
     }
   }
@@ -85,18 +85,17 @@ client.on("messageCreate", async (message) => {
   if (shouldBlock) {
     try {
       await message.delete().catch(() => {});
-
       const member = await message.guild.members.fetch(message.author.id).catch(() => null);
       if (member) {
-        await member.timeout(10 * 60 * 1000, `Posted blocked link: ${reason}`).catch(() => {});
+        await member.timeout(10 * 60 * 1000, reason).catch(() => {});
       }
 
       const warningEmbed = new EmbedBuilder()
-        .setTitle("🚫 Unsafe Link Blocked")
-        .setDescription(`${message.author}, your message has been removed.`)
+        .setTitle("🚫 Link Blocked")
+        .setDescription(`${message.author}, your message was removed.`)
         .addFields(
           { name: "Reason", value: reason },
-          { name: "Allowed Links", value: "TikTok links and **any GIFs**" }
+          { name: "Allowed", value: "TikTok links and **any GIFs**" }
         )
         .setColor(0xff0000)
         .setTimestamp();
@@ -104,7 +103,7 @@ client.on("messageCreate", async (message) => {
       const warningMsg = await message.channel.send({ embeds: [warningEmbed] });
       setTimeout(() => warningMsg.delete().catch(() => {}), 10000);
     } catch (err) {
-      console.error("[LINK BLOCKER ERROR]", err);
+      console.error("[LINK ERROR]", err);
     }
   }
 });
@@ -112,51 +111,57 @@ client.on("messageCreate", async (message) => {
 // ==================== SLASH COMMANDS ====================
 
 client.once("ready", async () => {
-  console.log(`${FAME_GAME_NAME} Bot is online!`);
-  console.log(`→ TikTok links allowed`);
-  console.log(`→ ALL GIF links allowed`);
-  console.log(`→ Other links blocked + 10 min timeout`);
+  console.log(`${FAME_GAME_NAME} Bot is fully online!`);
 
   const commands = [
     new SlashCommandBuilder()
       .setName("copyrole")
-      .setDescription("Copy role colors or emoji/icon")
+      .setDescription("Advanced role information copier")
       .setDefaultMemberPermissions(PermissionFlagsBits.ManageRoles)
-      .addSubcommand(sub =>
-        sub
-          .setName("hex")
-          .setDescription("Copy the hex color(s) of a role (supports gradients)")
-          .addRoleOption(option => option.setName("role").setDescription("The role").setRequired(true))
+      .addSubcommand(sub => 
+        sub.setName("hex").setDescription("Copy hex colors with preview (supports gradients)")
+          .addRoleOption(o => o.setName("role").setDescription("Role").setRequired(true))
       )
-      .addSubcommand(sub =>
-        sub
-          .setName("emoji")
-          .setDescription("Copy the emoji or download custom icon of a role")
-          .addRoleOption(option => option.setName("role").setDescription("The role").setRequired(true))
+      .addSubcommand(sub => 
+        sub.setName("emoji").setDescription("Copy emoji or view custom icon")
+          .addRoleOption(o => o.setName("role").setDescription("Role").setRequired(true))
+      )
+      .addSubcommand(sub => 
+        sub.setName("all").setDescription("Copy everything: colors + emoji/icon")
+          .addRoleOption(o => o.setName("role").setDescription("Role").setRequired(true))
+      )
+      .addSubcommand(sub => 
+        sub.setName("info").setDescription("Full detailed role information")
+          .addRoleOption(o => o.setName("role").setDescription("Role").setRequired(true))
       )
   ];
 
   await client.application.commands.set(commands);
-  console.log("Slash commands registered successfully.");
+  console.log("Advanced /copyrole commands registered.");
 });
 
 client.on("interactionCreate", async (interaction) => {
-  if (!interaction.isChatInputCommand()) return;
-  if (interaction.commandName !== "copyrole") return;
+  if (!interaction.isChatInputCommand() || interaction.commandName !== "copyrole") return;
 
   const sub = interaction.options.getSubcommand();
   const role = interaction.options.getRole("role");
 
-  // ====================== /copyrole hex ======================
+  const baseEmbed = new EmbedBuilder()
+    .setAuthor({ name: role.name, iconURL: role.iconURL() || null })
+    .setColor(role.color || 0x2f3136)
+    .setTimestamp();
+
+  // ====================== HEX ======================
   if (sub === "hex") {
     let colorText = "";
+    let previewColor = role.color || 0x2f3136;
 
-    // Gradient roles support
-    if (role.colors && (role.colors.primaryColor || role.colors.secondaryColor || role.colors.tertiaryColor)) {
+    if (role.colors) {
       const c = role.colors;
       if (c.primaryColor) {
         const p = `#${c.primaryColor.toString(16).padStart(6, '0').toUpperCase()}`;
         colorText += `**Primary:** \`${p}\`\n`;
+        previewColor = c.primaryColor;
       }
       if (c.secondaryColor) {
         const s = `#${c.secondaryColor.toString(16).padStart(6, '0').toUpperCase()}`;
@@ -166,87 +171,116 @@ client.on("interactionCreate", async (interaction) => {
         const t = `#${c.tertiaryColor.toString(16).padStart(6, '0').toUpperCase()}`;
         colorText += `**Tertiary:** \`${t}\`\n`;
       }
-    } 
-    else if (role.color) {
+    } else if (role.color) {
       const hex = `#${role.color.toString(16).padStart(6, '0').toUpperCase()}`;
-      colorText = `**Color:** \`${hex}\``;
-    } 
-    else {
-      colorText = "This role has no color set.";
+      colorText = `**Solid Color:** \`${hex}\``;
+    } else {
+      colorText = "No color set.";
     }
 
-    const embed = new EmbedBuilder()
-      .setTitle(`🎨 Role Colors — ${role.name}`)
+    const embed = baseEmbed
+      .setTitle("🎨 Role Colors")
       .setDescription(colorText)
-      .setColor(role.color || 0x2f3136)
-      .addFields({ name: "Role ID", value: `\`${role.id}\`` })
-      .setTimestamp();
+      .setThumbnail(`https://singlecolorimage.com/get/${previewColor.toString(16).padStart(6, '0')}/400x400`)
+      .addFields({ name: "Role ID", value: `\`${role.id}\`` });
 
     return interaction.reply({ embeds: [embed] });
   }
 
-  // ====================== /copyrole emoji ======================
+  // ====================== EMOJI ======================
   else if (sub === "emoji") {
-    const unicodeEmoji = role.unicodeEmoji;
-    const hasCustomIcon = !!role.icon;
+    const unicode = role.unicodeEmoji;
+    const hasIcon = !!role.icon;
 
-    if (!unicodeEmoji && !hasCustomIcon) {
-      return interaction.reply({
-        content: `❌ **${role.name}** has neither an emoji nor a custom icon.`,
-        ephemeral: true
-      });
+    if (!unicode && !hasIcon) {
+      return interaction.reply({ content: `❌ **${role.name}** has no emoji or icon.`, ephemeral: true });
     }
 
-    let replyContent = "";
-    let embedDesc = "";
-    const components = [];
+    let desc = "";
+    let content = "";
 
-    if (unicodeEmoji) {
-      replyContent = `**Emoji for ${role.name}:** ${unicodeEmoji}`;
-      embedDesc = `**Unicode Emoji:** ${unicodeEmoji}\n\n→ Highlight the emoji above and copy it (Ctrl + C)`;
+    if (unicode) {
+      content = `**Emoji:** ${unicode}`;
+      desc = `**Unicode Emoji:** ${unicode}\n\nHighlight above and copy (Ctrl+C)`;
     }
 
-    if (hasCustomIcon) {
-      const iconURL = role.iconURL({ extension: 'png', size: 512 });
-
-      if (embedDesc) embedDesc += "\n\n";
-      embedDesc += `**Custom Role Icon:**\n[View Full Size](${iconURL})`;
-
-      const downloadBtn = new ButtonBuilder()
-        .setLabel("⬇️ Download Icon Image")
-        .setStyle(ButtonStyle.Link)
-        .setURL(iconURL);
-
-      components.push(new ActionRowBuilder().addComponents(downloadBtn));
+    if (hasIcon) {
+      if (desc) desc += "\n\n";
+      desc += "**Custom Icon:** Right-click the role in member list or server settings → Copy Image to save.";
     }
 
-    const embed = new EmbedBuilder()
-      .setTitle(`📋 Role Emoji / Icon — ${role.name}`)
-      .setDescription(embedDesc || "No additional information.")
-      .setColor(role.color || 0x2f3136)
-      .setTimestamp();
+    const embed = baseEmbed.setTitle("📋 Role Emoji / Icon").setDescription(desc);
+    return interaction.reply({ content: content || null, embeds: [embed] });
+  }
 
-    return interaction.reply({
-      content: replyContent || null,
-      embeds: [embed],
-      components: components
-    });
+  // ====================== ALL ======================
+  else if (sub === "all") {
+    let colorText = "No color";
+    let previewColor = role.color || 0x2f3136;
+
+    if (role.colors) {
+      const c = role.colors;
+      colorText = "";
+      if (c.primaryColor) {
+        colorText += `Primary: \`#${c.primaryColor.toString(16).padStart(6, '0').toUpperCase()}\`\n`;
+        previewColor = c.primaryColor;
+      }
+      if (c.secondaryColor) colorText += `Secondary: \`#${c.secondaryColor.toString(16).padStart(6, '0').toUpperCase()}\`\n`;
+      if (c.tertiaryColor) colorText += `Tertiary: \`#${c.tertiaryColor.toString(16).padStart(6, '0').toUpperCase()}\`\n`;
+    } else if (role.color) {
+      colorText = `Solid: \`#${role.color.toString(16).padStart(6, '0').toUpperCase()}\``;
+    }
+
+    let emojiText = "None";
+    if (role.unicodeEmoji) emojiText = role.unicodeEmoji;
+    else if (role.icon) emojiText = "Custom Icon (see below)";
+
+    const embed = baseEmbed
+      .setTitle(`📋 Full Role Info — ${role.name}`)
+      .setDescription(`**Colors:**\n${colorText}\n\n**Emoji/Icon:** ${emojiText}`)
+      .setThumbnail(`https://singlecolorimage.com/get/${previewColor.toString(16).padStart(6, '0')}/400x400`);
+
+    if (role.icon) {
+      embed.addFields({ name: "Custom Icon", value: "Right-click role → Copy Image to download" });
+    }
+
+    return interaction.reply({ embeds: [embed] });
+  }
+
+  // ====================== INFO ======================
+  else if (sub === "info") {
+    const memberCount = role.members.size;
+    const permCount = role.permissions.toArray().length;
+
+    const embed = baseEmbed
+      .setTitle(`ℹ️ Detailed Role Info — ${role.name}`)
+      .addFields(
+        { name: "Role ID", value: `\`${role.id}\``, inline: true },
+        { name: "Position", value: `${role.position}`, inline: true },
+        { name: "Color", value: role.color ? `#${role.color.toString(16).padStart(6, '0').toUpperCase()}` : "None", inline: true },
+        { name: "Members", value: `${memberCount}`, inline: true },
+        { name: "Hoisted", value: role.hoist ? "Yes" : "No", inline: true },
+        { name: "Mentionable", value: role.mentionable ? "Yes" : "No", inline: true },
+        { name: "Permissions", value: `${permCount} permissions`, inline: true }
+      );
+
+    if (role.unicodeEmoji) embed.addFields({ name: "Emoji", value: role.unicodeEmoji, inline: true });
+    if (role.icon) embed.addFields({ name: "Custom Icon", value: "Available — right-click to save" });
+
+    return interaction.reply({ embeds: [embed] });
   }
 });
 
-// ==================== ERROR HANDLING & HTTP SERVER ====================
-process.on("unhandledRejection", console.error);
-process.on("uncaughtException", console.error);
+// ==================== ERROR HANDLING & UPTIME ====================
+process.on("unhandledRejection", (err) => console.error("Unhandled Rejection:", err));
+process.on("uncaughtException", (err) => console.error("Uncaught Exception:", err));
 
 client.login(TOKEN);
 
 http.createServer((req, res) => {
   res.setHeader("Access-Control-Allow-Origin", "*");
   res.setHeader("Content-Type", "application/json");
-  res.end(JSON.stringify({ 
-    status: "online", 
-    message: `${FAME_GAME_NAME} Bot - TikTok + GIFs Allowed` 
-  }));
+  res.end(JSON.stringify({ status: "online", bot: `${FAME_GAME_NAME} Advanced Role Copier` }));
 }).listen(PORT);
 
-console.log(`${FAME_GAME_NAME} Bot started successfully!`);
+console.log(`${FAME_GAME_NAME} Advanced Bot started!`);
