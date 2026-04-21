@@ -23,20 +23,15 @@ const client = new Client({
     GatewayIntentBits.GuildMessages,
     GatewayIntentBits.MessageContent,
     GatewayIntentBits.GuildModeration,
-    GatewayIntentBits.DirectMessages, // needed for DM
+    GatewayIntentBits.DirectMessages,
   ],
   partials: [Partials.Channel],
 });
 
 // ==================== LINK FILTER ====================
 
-// TikTok allowed
 const tiktokRegex = /https?:\/\/(?:www\.|m\.|vm\.)?tiktok\.com\/(?:@[\w.-]+\/video\/\d+|[\w-]+|Z[a-zA-Z0-9]+)/i;
 
-// Klipy GIF ONLY
-const klipyGifRegex = /^https?:\/\/(www\.)?klipy\.com\/.*\.gif$/i;
-
-// Dangerous links
 const dangerousPatterns = [
   /discord\.(gg|com|app)\/(invite\/)?[a-zA-Z0-9-]+/i,
   /grabify\.link|iplogger\.org|ipgrabber|blasze\.com|trackip|myip\.is|ip-tracker/i,
@@ -64,9 +59,12 @@ client.on("messageCreate", async (message) => {
       lowerUrl.includes("cdn.discordapp.com") ||
       lowerUrl.includes("media.discordapp.net");
 
-    const isKlipyGif = klipyGifRegex.test(url);
+    // Klipy must contain "gif"
+    const isKlipyGif =
+      /^https?:\/\/(www\.)?klipy\.com\//i.test(url) &&
+      lowerUrl.includes("gif");
 
-    // ✅ Allow TikTok + approved GIFs
+    // ✅ Allowed
     if (
       tiktokRegex.test(url) ||
       isGiphy ||
@@ -103,7 +101,7 @@ client.on("messageCreate", async (message) => {
         await member.timeout(10 * 60 * 1000, reason).catch(() => {});
       }
 
-      // ⚠️ Public warning
+      // Public warning
       const warningEmbed = new EmbedBuilder()
         .setTitle("🚫 Link Blocked")
         .setDescription(`${message.author}, your message was removed.`)
@@ -116,13 +114,13 @@ client.on("messageCreate", async (message) => {
 
       const msg = await message.channel.send({ embeds: [warningEmbed] });
 
-      // ⏱️ delete after 3 seconds
+      // delete after 3 seconds
       setTimeout(() => msg.delete().catch(() => {}), 3000);
 
-      // 📩 DM user
+      // DM user
       try {
         const dmEmbed = new EmbedBuilder()
-          .setTitle("⚠️ You were moderated")
+          .setTitle("⚠️ Moderation Notice")
           .setDescription(`Your message in **${message.guild.name}** was removed.`)
           .addFields(
             { name: "Reason", value: reason },
@@ -133,7 +131,7 @@ client.on("messageCreate", async (message) => {
 
         await message.author.send({ embeds: [dmEmbed] });
       } catch {
-        // user has DMs off, ignore
+        // ignore if DMs closed
       }
 
     } catch (err) {
@@ -153,79 +151,22 @@ client.once("ready", async () => {
       .setDescription("Advanced role copier")
       .setDefaultMemberPermissions(PermissionFlagsBits.ManageRoles)
       .addSubcommand(sub =>
-        sub.setName("hex").setDescription("Copy hex colors with preview")
-          .addRoleOption(o => o.setName("role").setDescription("The role").setRequired(true))
+        sub.setName("hex").setDescription("Copy hex colors")
+          .addRoleOption(o => o.setName("role").setRequired(true))
       )
       .addSubcommand(sub =>
-        sub.setName("emoji").setDescription("Copy emoji of a role")
-          .addRoleOption(o => o.setName("role").setDescription("The role").setRequired(true))
+        sub.setName("emoji").setDescription("Copy emoji")
+          .addRoleOption(o => o.setName("role").setRequired(true))
       )
       .addSubcommand(sub =>
-        sub.setName("all").setDescription("Copy colors + emoji")
-          .addRoleOption(o => o.setName("role").setDescription("The role").setRequired(true))
+        sub.setName("all").setDescription("Copy all")
+          .addRoleOption(o => o.setName("role").setRequired(true))
       )
   ];
 
   await client.application.commands.set(commands);
   console.log("Commands registered.");
 });
-
-client.on("interactionCreate", async (interaction) => {
-  if (!interaction.isChatInputCommand() || interaction.commandName !== "copyrole") return;
-
-  const sub = interaction.options.getSubcommand();
-  const role = interaction.options.getRole("role");
-
-  await interaction.deferReply().catch(() => {});
-
-  try {
-    if (sub === "hex") {
-      let colorText = "No color set.";
-      let previewHex = "2f3136";
-
-      if (role.color) {
-        const hex = `#${role.color.toString(16).padStart(6, '0').toUpperCase()}`;
-        colorText = `**Color:** \`${hex}\``;
-        previewHex = role.color.toString(16).padStart(6, '0');
-      }
-
-      const embed = new EmbedBuilder()
-        .setTitle(`🎨 Role Colors — ${role.name}`)
-        .setDescription(colorText)
-        .setColor(role.color || 0x2f3136)
-        .setThumbnail(`https://singlecolorimage.com/get/${previewHex}/400x400`)
-        .setTimestamp();
-
-      return interaction.editReply({ embeds: [embed] });
-    }
-
-    else if (sub === "emoji") {
-      const unicodeEmoji = role.unicodeEmoji;
-
-      if (!unicodeEmoji && !role.icon) {
-        return interaction.editReply({ content: `❌ ${role.name} has no emoji.` });
-      }
-
-      return interaction.editReply({
-        content: unicodeEmoji ? `Emoji: ${unicodeEmoji}` : "Custom icon role"
-      });
-    }
-
-    else if (sub === "all") {
-      const embed = new EmbedBuilder()
-        .setTitle(`📋 ${role.name}`)
-        .setDescription(`Color: ${role.color || "None"}\nEmoji: ${role.unicodeEmoji || "None"}`)
-        .setColor(role.color || 0x2f3136);
-
-      return interaction.editReply({ embeds: [embed] });
-    }
-  } catch (error) {
-    console.error(error);
-    return interaction.editReply({ content: "Error occurred." });
-  }
-});
-
-// ==================== SERVER ====================
 
 client.login(TOKEN);
 
