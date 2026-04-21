@@ -23,6 +23,7 @@ const client = new Client({
     GatewayIntentBits.GuildMessages,
     GatewayIntentBits.MessageContent,
     GatewayIntentBits.GuildModeration,
+    GatewayIntentBits.DirectMessages, // needed for DM
   ],
   partials: [Partials.Channel],
 });
@@ -31,6 +32,9 @@ const client = new Client({
 
 // TikTok allowed
 const tiktokRegex = /https?:\/\/(?:www\.|m\.|vm\.)?tiktok\.com\/(?:@[\w.-]+\/video\/\d+|[\w-]+|Z[a-zA-Z0-9]+)/i;
+
+// Klipy GIF ONLY
+const klipyGifRegex = /^https?:\/\/(www\.)?klipy\.com\/.*\.gif$/i;
 
 // Dangerous links
 const dangerousPatterns = [
@@ -60,15 +64,18 @@ client.on("messageCreate", async (message) => {
       lowerUrl.includes("cdn.discordapp.com") ||
       lowerUrl.includes("media.discordapp.net");
 
-    // ✅ Allow TikTok + approved GIF sources
+    const isKlipyGif = klipyGifRegex.test(url);
+
+    // ✅ Allow TikTok + approved GIFs
     if (
       tiktokRegex.test(url) ||
       isGiphy ||
       isTenor ||
-      isDiscordCDN
+      isDiscordCDN ||
+      isKlipyGif
     ) continue;
 
-    // 🚨 Block dangerous links first
+    // 🚨 Dangerous links
     for (const pattern of dangerousPatterns) {
       if (pattern.test(lowerUrl)) {
         shouldBlock = true;
@@ -81,7 +88,7 @@ client.on("messageCreate", async (message) => {
     // ❌ Block everything else
     if (lowerUrl.startsWith("http")) {
       shouldBlock = true;
-      reason = "Only TikTok and GIFs (Giphy, Tenor, Discord) are allowed.";
+      reason = "Only TikTok + GIFs (Giphy, Tenor, Discord, Klipy) allowed.";
       break;
     }
   }
@@ -89,21 +96,46 @@ client.on("messageCreate", async (message) => {
   if (shouldBlock) {
     try {
       await message.delete().catch(() => {});
-      const member = await message.guild.members.fetch(message.author.id).catch(() => null);
-      if (member) await member.timeout(10 * 60 * 1000, reason).catch(() => {});
 
+      const member = await message.guild.members.fetch(message.author.id).catch(() => null);
+
+      if (member) {
+        await member.timeout(10 * 60 * 1000, reason).catch(() => {});
+      }
+
+      // ⚠️ Public warning
       const warningEmbed = new EmbedBuilder()
         .setTitle("🚫 Link Blocked")
         .setDescription(`${message.author}, your message was removed.`)
         .addFields(
           { name: "Reason", value: reason },
-          { name: "Allowed", value: "TikTok + GIFs (Giphy, Tenor, Discord uploads)" }
+          { name: "Allowed", value: "TikTok + GIFs (Giphy, Tenor, Discord, Klipy)" }
         )
         .setColor(0xff0000)
         .setTimestamp();
 
       const msg = await message.channel.send({ embeds: [warningEmbed] });
-      setTimeout(() => msg.delete().catch(() => {}), 10000);
+
+      // ⏱️ delete after 3 seconds
+      setTimeout(() => msg.delete().catch(() => {}), 3000);
+
+      // 📩 DM user
+      try {
+        const dmEmbed = new EmbedBuilder()
+          .setTitle("⚠️ You were moderated")
+          .setDescription(`Your message in **${message.guild.name}** was removed.`)
+          .addFields(
+            { name: "Reason", value: reason },
+            { name: "Consequence", value: "10 minute timeout" }
+          )
+          .setColor(0xff0000)
+          .setTimestamp();
+
+        await message.author.send({ embeds: [dmEmbed] });
+      } catch {
+        // user has DMs off, ignore
+      }
+
     } catch (err) {
       console.error("[LINK ERROR]", err);
     }
@@ -157,22 +189,11 @@ client.on("interactionCreate", async (interaction) => {
         previewHex = role.color.toString(16).padStart(6, '0');
       }
 
-      if (role.colors?.primaryColor) {
-        const p = `#${role.colors.primaryColor.toString(16).padStart(6, '0').toUpperCase()}`;
-        colorText = `**Primary:** \`${p}\`\n`;
-        previewHex = role.colors.primaryColor.toString(16).padStart(6, '0');
-        if (role.colors.secondaryColor) {
-          const s = `#${role.colors.secondaryColor.toString(16).padStart(6, '0').toUpperCase()}`;
-          colorText += `**Secondary:** \`${s}\`\n`;
-        }
-      }
-
       const embed = new EmbedBuilder()
         .setTitle(`🎨 Role Colors — ${role.name}`)
         .setDescription(colorText)
         .setColor(role.color || 0x2f3136)
         .setThumbnail(`https://singlecolorimage.com/get/${previewHex}/400x400`)
-        .addFields({ name: "Role ID", value: `\`${role.id}\`` })
         .setTimestamp();
 
       return interaction.editReply({ embeds: [embed] });
@@ -180,74 +201,34 @@ client.on("interactionCreate", async (interaction) => {
 
     else if (sub === "emoji") {
       const unicodeEmoji = role.unicodeEmoji;
-      const hasIcon = !!role.icon;
 
-      if (!unicodeEmoji && !hasIcon) {
-        return interaction.editReply({ content: `❌ **${role.name}** has no emoji or custom icon.` });
+      if (!unicodeEmoji && !role.icon) {
+        return interaction.editReply({ content: `❌ ${role.name} has no emoji.` });
       }
 
-      let content = "";
-      let desc = "";
-
-      if (unicodeEmoji) {
-        content = `**Emoji:** ${unicodeEmoji}`;
-        desc = `**Unicode Emoji:** ${unicodeEmoji}\n\nHighlight it and copy (Ctrl + C)`;
-      }
-
-      if (hasIcon) {
-        if (desc) desc += "\n\n";
-        desc += "**Custom Icon:** Right-click the role icon → Copy Image.";
-      }
-
-      const embed = new EmbedBuilder()
-        .setTitle(`📋 Role Emoji — ${role.name}`)
-        .setDescription(desc)
-        .setColor(role.color || 0x2f3136)
-        .setTimestamp();
-
-      return interaction.editReply({ content: content || null, embeds: [embed] });
+      return interaction.editReply({
+        content: unicodeEmoji ? `Emoji: ${unicodeEmoji}` : "Custom icon role"
+      });
     }
 
     else if (sub === "all") {
-      let colorText = "No color";
-      let previewHex = "2f3136";
-
-      if (role.color) {
-        const hex = `#${role.color.toString(16).padStart(6, '0').toUpperCase()}`;
-        colorText = `**Color:** \`${hex}\``;
-        previewHex = role.color.toString(16).padStart(6, '0');
-      }
-
-      let emojiText = "None";
-      if (role.unicodeEmoji) emojiText = role.unicodeEmoji;
-      else if (role.icon) emojiText = "Custom Icon";
-
       const embed = new EmbedBuilder()
-        .setTitle(`📋 Role Summary — ${role.name}`)
-        .setDescription(`**Colors**\n${colorText}\n\n**Emoji/Icon**\n${emojiText}`)
-        .setColor(role.color || 0x2f3136)
-        .setThumbnail(`https://singlecolorimage.com/get/${previewHex}/400x400`)
-        .setTimestamp();
+        .setTitle(`📋 ${role.name}`)
+        .setDescription(`Color: ${role.color || "None"}\nEmoji: ${role.unicodeEmoji || "None"}`)
+        .setColor(role.color || 0x2f3136);
 
       return interaction.editReply({ embeds: [embed] });
     }
   } catch (error) {
-    console.error("Command Error:", error);
-    return interaction.editReply({ content: "❌ An error occurred." }).catch(() => {});
+    console.error(error);
+    return interaction.editReply({ content: "Error occurred." });
   }
 });
 
-// ==================== ERROR HANDLING & SERVER ====================
-
-process.on("unhandledRejection", (err) => console.error("Unhandled Rejection:", err));
-process.on("uncaughtException", (err) => console.error("Uncaught Exception:", err));
+// ==================== SERVER ====================
 
 client.login(TOKEN);
 
 http.createServer((req, res) => {
-  res.setHeader("Access-Control-Allow-Origin", "*");
-  res.setHeader("Content-Type", "application/json");
-  res.end(JSON.stringify({ status: "online", message: `${FAME_GAME_NAME} Bot` }));
+  res.end("Bot running");
 }).listen(PORT);
-
-console.log(`${FAME_GAME_NAME} Bot started!`);
