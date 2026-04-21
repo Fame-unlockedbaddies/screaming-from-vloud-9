@@ -52,19 +52,16 @@ client.on("messageCreate", async (message) => {
   for (const url of urls) {
     const lowerUrl = url.toLowerCase();
 
-    // Allowed GIF sources
     const isGiphy = lowerUrl.includes("giphy.com");
     const isTenor = lowerUrl.includes("tenor.com");
     const isDiscordCDN =
       lowerUrl.includes("cdn.discordapp.com") ||
       lowerUrl.includes("media.discordapp.net");
 
-    // Klipy must contain "gif"
     const isKlipyGif =
       /^https?:\/\/(www\.)?klipy\.com\//i.test(url) &&
       lowerUrl.includes("gif");
 
-    // ✅ Allowed
     if (
       tiktokRegex.test(url) ||
       isGiphy ||
@@ -73,7 +70,6 @@ client.on("messageCreate", async (message) => {
       isKlipyGif
     ) continue;
 
-    // 🚨 Dangerous links
     for (const pattern of dangerousPatterns) {
       if (pattern.test(lowerUrl)) {
         shouldBlock = true;
@@ -83,7 +79,6 @@ client.on("messageCreate", async (message) => {
     }
     if (shouldBlock) break;
 
-    // ❌ Block everything else
     if (lowerUrl.startsWith("http")) {
       shouldBlock = true;
       reason = "Only TikTok + GIFs (Giphy, Tenor, Discord, Klipy) allowed.";
@@ -94,14 +89,12 @@ client.on("messageCreate", async (message) => {
   if (shouldBlock) {
     try {
       await message.delete().catch(() => {});
-
       const member = await message.guild.members.fetch(message.author.id).catch(() => null);
 
       if (member) {
         await member.timeout(10 * 60 * 1000, reason).catch(() => {});
       }
 
-      // Public warning
       const warningEmbed = new EmbedBuilder()
         .setTitle("🚫 Link Blocked")
         .setDescription(`${message.author}, your message was removed.`)
@@ -113,8 +106,6 @@ client.on("messageCreate", async (message) => {
         .setTimestamp();
 
       const msg = await message.channel.send({ embeds: [warningEmbed] });
-
-      // delete after 3 seconds
       setTimeout(() => msg.delete().catch(() => {}), 3000);
 
       // DM user
@@ -130,10 +121,7 @@ client.on("messageCreate", async (message) => {
           .setTimestamp();
 
         await message.author.send({ embeds: [dmEmbed] });
-      } catch {
-        // ignore if DMs closed
-      }
-
+      } catch {}
     } catch (err) {
       console.error("[LINK ERROR]", err);
     }
@@ -150,17 +138,35 @@ client.once("ready", async () => {
       .setName("copyrole")
       .setDescription("Advanced role copier")
       .setDefaultMemberPermissions(PermissionFlagsBits.ManageRoles)
+
       .addSubcommand(sub =>
-        sub.setName("hex").setDescription("Copy hex colors")
-          .addRoleOption(o => o.setName("role").setRequired(true))
+        sub.setName("hex")
+          .setDescription("Copy hex colors")
+          .addRoleOption(o =>
+            o.setName("role")
+              .setDescription("The role to copy")
+              .setRequired(true)
+          )
       )
+
       .addSubcommand(sub =>
-        sub.setName("emoji").setDescription("Copy emoji")
-          .addRoleOption(o => o.setName("role").setRequired(true))
+        sub.setName("emoji")
+          .setDescription("Copy emoji")
+          .addRoleOption(o =>
+            o.setName("role")
+              .setDescription("The role to copy")
+              .setRequired(true)
+          )
       )
+
       .addSubcommand(sub =>
-        sub.setName("all").setDescription("Copy all")
-          .addRoleOption(o => o.setName("role").setRequired(true))
+        sub.setName("all")
+          .setDescription("Copy all role info")
+          .addRoleOption(o =>
+            o.setName("role")
+              .setDescription("The role to copy")
+              .setRequired(true)
+          )
       )
   ];
 
@@ -169,6 +175,8 @@ client.once("ready", async () => {
 });
 
 client.login(TOKEN);
+
+// ==================== SERVER ====================
 
 http.createServer((req, res) => {
   res.end("Bot running");
