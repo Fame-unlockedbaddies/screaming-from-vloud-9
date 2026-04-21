@@ -28,8 +28,11 @@ const client = new Client({
 });
 
 // ==================== LINK FILTER ====================
+
+// TikTok allowed
 const tiktokRegex = /https?:\/\/(?:www\.|m\.|vm\.)?tiktok\.com\/(?:@[\w.-]+\/video\/\d+|[\w-]+|Z[a-zA-Z0-9]+)/i;
 
+// Dangerous links
 const dangerousPatterns = [
   /discord\.(gg|com|app)\/(invite\/)?[a-zA-Z0-9-]+/i,
   /grabify\.link|iplogger\.org|ipgrabber|blasze\.com|trackip|myip\.is|ip-tracker/i,
@@ -50,17 +53,22 @@ client.on("messageCreate", async (message) => {
   for (const url of urls) {
     const lowerUrl = url.toLowerCase();
 
-    if (tiktokRegex.test(url)) continue;
+    // Allowed GIF sources
+    const isGiphy = lowerUrl.includes("giphy.com");
+    const isTenor = lowerUrl.includes("tenor.com");
+    const isDiscordCDN =
+      lowerUrl.includes("cdn.discordapp.com") ||
+      lowerUrl.includes("media.discordapp.net");
 
+    // ✅ Allow TikTok + approved GIF sources
     if (
-      lowerUrl.endsWith('.gif') ||
-      lowerUrl.includes('tenor.com') ||
-      lowerUrl.includes('giphy.com') ||
-      lowerUrl.includes('cdn.discordapp.com') ||
-      lowerUrl.includes('media.discordapp.net') ||
-      lowerUrl.includes('imgur.com')
+      tiktokRegex.test(url) ||
+      isGiphy ||
+      isTenor ||
+      isDiscordCDN
     ) continue;
 
+    // 🚨 Block dangerous links first
     for (const pattern of dangerousPatterns) {
       if (pattern.test(lowerUrl)) {
         shouldBlock = true;
@@ -70,9 +78,10 @@ client.on("messageCreate", async (message) => {
     }
     if (shouldBlock) break;
 
-    if (lowerUrl.startsWith('http')) {
+    // ❌ Block everything else
+    if (lowerUrl.startsWith("http")) {
       shouldBlock = true;
-      reason = "Only TikTok links and GIFs are allowed.";
+      reason = "Only TikTok and GIFs (Giphy, Tenor, Discord) are allowed.";
       break;
     }
   }
@@ -88,7 +97,7 @@ client.on("messageCreate", async (message) => {
         .setDescription(`${message.author}, your message was removed.`)
         .addFields(
           { name: "Reason", value: reason },
-          { name: "Allowed", value: "TikTok links and **any GIFs**" }
+          { name: "Allowed", value: "TikTok + GIFs (Giphy, Tenor, Discord uploads)" }
         )
         .setColor(0xff0000)
         .setTimestamp();
@@ -135,7 +144,6 @@ client.on("interactionCreate", async (interaction) => {
   const sub = interaction.options.getSubcommand();
   const role = interaction.options.getRole("role");
 
-  // Defer reply immediately to prevent timeout
   await interaction.deferReply().catch(() => {});
 
   try {
@@ -149,7 +157,6 @@ client.on("interactionCreate", async (interaction) => {
         previewHex = role.color.toString(16).padStart(6, '0');
       }
 
-      // Basic gradient support if available
       if (role.colors?.primaryColor) {
         const p = `#${role.colors.primaryColor.toString(16).padStart(6, '0').toUpperCase()}`;
         colorText = `**Primary:** \`${p}\`\n`;
@@ -189,7 +196,7 @@ client.on("interactionCreate", async (interaction) => {
 
       if (hasIcon) {
         if (desc) desc += "\n\n";
-        desc += "**Custom Icon:** Right-click the role icon in the member list or server settings → Copy Image.";
+        desc += "**Custom Icon:** Right-click the role icon → Copy Image.";
       }
 
       const embed = new EmbedBuilder()
@@ -202,7 +209,6 @@ client.on("interactionCreate", async (interaction) => {
     }
 
     else if (sub === "all") {
-      // Combine hex + emoji
       let colorText = "No color";
       let previewHex = "2f3136";
 
@@ -214,7 +220,7 @@ client.on("interactionCreate", async (interaction) => {
 
       let emojiText = "None";
       if (role.unicodeEmoji) emojiText = role.unicodeEmoji;
-      else if (role.icon) emojiText = "Custom Icon (right-click to save)";
+      else if (role.icon) emojiText = "Custom Icon";
 
       const embed = new EmbedBuilder()
         .setTitle(`📋 Role Summary — ${role.name}`)
@@ -227,11 +233,12 @@ client.on("interactionCreate", async (interaction) => {
     }
   } catch (error) {
     console.error("Command Error:", error);
-    return interaction.editReply({ content: "❌ An error occurred while processing the command." }).catch(() => {});
+    return interaction.editReply({ content: "❌ An error occurred." }).catch(() => {});
   }
 });
 
 // ==================== ERROR HANDLING & SERVER ====================
+
 process.on("unhandledRejection", (err) => console.error("Unhandled Rejection:", err));
 process.on("uncaughtException", (err) => console.error("Uncaught Exception:", err));
 
