@@ -15,7 +15,7 @@ const TOKEN = process.env.TOKEN || process.env.DISCORD_TOKEN;
 const PORT = process.env.PORT || 3000;
 
 const FOUNDER_ID = "1482560426972549232";
-const ANNOUNCE_CHANNEL_ID = "YOUR_CHANNEL_ID_HERE";
+const ANNOUNCE_CHANNEL_ID = "1448798824415101030";
 
 if (!TOKEN) {
   console.error("Missing TOKEN");
@@ -57,24 +57,29 @@ client.once("ready", async () => {
       const mentions = [...acceptedUsers].map(id => `<@${id}>`).join("\n");
 
       const embed = new EmbedBuilder()
-        .setTitle("⚠️ Fame System Update")
+        .setTitle("⚠️ Membership Reset Required")
         .setDescription(
-          "**Your membership has ended.**\n\n" +
-          "The bot has been upgraded.\n\n" +
-          "To become an exclusive member again, use:\n" +
-          "`/fame upcoming`"
+          "**Your Fame membership has ended.**\n\n" +
+          "The bot was **updated or restarted**.\n\n" +
+          "To continue receiving:\n" +
+          "• Leaks\n" +
+          "• Upcoming updates\n" +
+          "• Items & systems\n\n" +
+          "**You must accept the TOS again.**\n\n" +
+          "👉 Run `/fame upcoming` to become an exclusive member again."
         )
         .addFields({
-          name: "Users Affected",
+          name: "Affected Users",
           value: mentions || "None",
         })
         .setColor(0xff0000)
+        .setFooter({ text: "Fame System Reset Notice" })
         .setTimestamp();
 
       await channel.send({ embeds: [embed] });
 
-    } catch {
-      console.log("Failed to send reset message");
+    } catch (err) {
+      console.log("Failed to send reset message", err);
     }
 
     // CLEAR USERS AFTER ANNOUNCEMENT
@@ -211,7 +216,6 @@ client.on("interactionCreate", async (interaction) => {
         ]
       });
 
-      // DM USER
       try {
         await interaction.user.send({
           embeds: [
@@ -220,8 +224,7 @@ client.on("interactionCreate", async (interaction) => {
               .setDescription(
                 "You will receive:\n" +
                 "• Votes\n• Leaks\n• Upcoming systems\n\n" +
-                "Please do not block this bot.\n\n" +
-                "If the bot updates, run `/fame upcoming` again."
+                "If the bot updates or restarts, you must run `/fame upcoming` again."
               )
               .setColor(0xff69b4)
           ]
