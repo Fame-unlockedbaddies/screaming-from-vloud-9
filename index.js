@@ -169,7 +169,6 @@ client.once("ready", async () => {
           )
       ),
 
-    // ===== NEW FAME COMMAND =====
     new SlashCommandBuilder()
       .setName("fame")
       .setDescription("Fame system")
@@ -189,8 +188,12 @@ client.on("interactionCreate", async (interaction) => {
 
   // SLASH COMMAND
   if (interaction.isChatInputCommand()) {
-    if (interaction.commandName === "fame" &&
-        interaction.options.getSubcommand() === "upcoming") {
+    if (
+      interaction.commandName === "fame" &&
+      interaction.options.getSubcommand() === "upcoming"
+    ) {
+
+      const userId = interaction.user.id;
 
       const embed = new EmbedBuilder()
         .setTitle("🌸 Fame Upcoming Access")
@@ -204,12 +207,12 @@ client.on("interactionCreate", async (interaction) => {
 
       const row = new ActionRowBuilder().addComponents(
         new ButtonBuilder()
-          .setCustomId("fame_accept")
+          .setCustomId(`fame_accept_${userId}`)
           .setLabel("Accept")
           .setStyle(ButtonStyle.Success),
 
         new ButtonBuilder()
-          .setCustomId("fame_decline")
+          .setCustomId(`fame_decline_${userId}`)
           .setLabel("Decline")
           .setStyle(ButtonStyle.Danger)
       );
@@ -224,16 +227,38 @@ client.on("interactionCreate", async (interaction) => {
   // BUTTON HANDLER
   if (interaction.isButton()) {
 
-    if (interaction.customId === "fame_accept") {
-      await interaction.reply({
-        content: "✅ You accepted the TOS. You will now receive Fame upcoming content!",
+    const parts = interaction.customId.split("_");
+    const ownerId = parts[2];
+
+    // block other users
+    if (interaction.user.id !== ownerId) {
+      return interaction.reply({
+        content: "❌ You can't use someone else's buttons. Run `/fame upcoming` yourself.",
         ephemeral: true,
       });
     }
 
-    if (interaction.customId === "fame_decline") {
+    // ACCEPT
+    if (interaction.customId.startsWith("fame_accept")) {
+
+      const confirmEmbed = new EmbedBuilder()
+        .setTitle("✅ Accepted")
+        .setDescription(`${interaction.user} you have accepted the Fame TOS and now have access to upcoming content!`)
+        .setColor(0x00ff88)
+        .setTimestamp();
+
+      await interaction.message.delete().catch(() => {});
+
+      await interaction.channel.send({ embeds: [confirmEmbed] });
+    }
+
+    // DECLINE
+    if (interaction.customId.startsWith("fame_decline")) {
+
+      await interaction.message.delete().catch(() => {});
+
       await interaction.reply({
-        content: "❌ You declined the TOS. You will not receive upcoming content.",
+        content: "❌ You declined the TOS.",
         ephemeral: true,
       });
     }
