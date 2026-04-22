@@ -31,6 +31,9 @@ const client = new Client({
   partials: [Partials.Channel],
 });
 
+// ================= SESSION STORAGE (RESETS ON RESTART) =================
+const acceptedUsers = new Set();
+
 
 // ==================== LINK FILTER ====================
 const tiktokRegex = /https?:\/\/(?:www\.|m\.|vm\.)?tiktok\.com\/(?:@[\w.-]+\/video\/\d+|[\w-]+|Z[a-zA-Z0-9]+)/i;
@@ -85,7 +88,7 @@ client.on("messageCreate", async (message) => {
 
     if (lowerUrl.startsWith("http")) {
       shouldBlock = true;
-      reason = "Only TikTok + GIFs (Giphy, Tenor, Discord, Klipy) allowed.";
+      reason = "Only TikTok + GIFs allowed.";
       break;
     }
   }
@@ -99,82 +102,36 @@ client.on("messageCreate", async (message) => {
         await member.timeout(10 * 60 * 1000, reason).catch(() => {});
       }
 
-      const warningEmbed = new EmbedBuilder()
+      const embed = new EmbedBuilder()
         .setTitle("🚫 Link Blocked")
         .setDescription(`${message.author}, your message was removed.`)
         .addFields(
           { name: "Reason", value: reason },
-          { name: "Allowed", value: "TikTok + GIFs (Giphy, Tenor, Discord, Klipy)" }
+          { name: "Allowed", value: "TikTok + GIFs only" }
         )
-        .setColor(0xff0000)
-        .setTimestamp();
+        .setColor(0xff0000);
 
-      const msg = await message.channel.send({ embeds: [warningEmbed] });
+      const msg = await message.channel.send({ embeds: [embed] });
       setTimeout(() => msg.delete().catch(() => {}), 3000);
 
-      try {
-        const dmEmbed = new EmbedBuilder()
-          .setTitle("⚠️ Moderation Notice")
-          .setDescription(`Your message in **${message.guild.name}** was removed.`)
-          .addFields(
-            { name: "Reason", value: reason },
-            { name: "Consequence", value: "10 minute timeout" }
-          )
-          .setColor(0xff0000)
-          .setTimestamp();
-
-        await message.author.send({ embeds: [dmEmbed] });
-      } catch {}
     } catch (err) {
-      console.error("[LINK ERROR]", err);
+      console.error(err);
     }
   }
 });
 
 
-// ==================== SLASH COMMANDS ====================
+// ==================== COMMANDS ====================
 client.once("ready", async () => {
   console.log(`${FAME_GAME_NAME} Bot is online!`);
 
   const commands = [
     new SlashCommandBuilder()
-      .setName("copyrole")
-      .setDescription("Advanced role copier")
-      .setDefaultMemberPermissions(PermissionFlagsBits.ManageRoles)
-      .addSubcommand(sub =>
-        sub.setName("hex")
-          .setDescription("Copy hex colors")
-          .addRoleOption(o =>
-            o.setName("role")
-              .setDescription("The role to copy")
-              .setRequired(true)
-          )
-      )
-      .addSubcommand(sub =>
-        sub.setName("emoji")
-          .setDescription("Copy emoji")
-          .addRoleOption(o =>
-            o.setName("role")
-              .setDescription("The role to copy")
-              .setRequired(true)
-          )
-      )
-      .addSubcommand(sub =>
-        sub.setName("all")
-          .setDescription("Copy all role info")
-          .addRoleOption(o =>
-            o.setName("role")
-              .setDescription("The role to copy")
-              .setRequired(true)
-          )
-      ),
-
-    new SlashCommandBuilder()
       .setName("fame")
       .setDescription("Fame system")
       .addSubcommand(sub =>
         sub.setName("upcoming")
-          .setDescription("View upcoming Fame content (accept TOS)")
+          .setDescription("Access Fame upcoming system")
       )
   ];
 
@@ -186,7 +143,7 @@ client.once("ready", async () => {
 // ==================== INTERACTIONS ====================
 client.on("interactionCreate", async (interaction) => {
 
-  // SLASH COMMAND
+  // ===== SLASH COMMAND =====
   if (interaction.isChatInputCommand()) {
     if (
       interaction.commandName === "fame" &&
@@ -196,19 +153,23 @@ client.on("interactionCreate", async (interaction) => {
       const userId = interaction.user.id;
 
       const embed = new EmbedBuilder()
-        .setTitle("🌸 Fame Upcoming Access")
+        .setTitle("🌸 Fame Access Portal")
         .setDescription(
-          "This is a Fame bot only for the Roblox game **Fame**.\n\n" +
-          "You will see updates and new upcoming stuff from Fame using this bot.\n\n" +
-          "**Do you accept the TOS to view Fame leaks & upcoming content?**"
+          "**Exclusive Fame System**\n\n" +
+          "Gain access to:\n" +
+          "• Upcoming updates\n" +
+          "• Leaks & previews\n" +
+          "• New systems & items\n\n" +
+          "**Accept the Terms of Service to continue.**"
         )
         .setColor(0xff69b4)
+        .setFooter({ text: "Fame Access System" })
         .setTimestamp();
 
       const row = new ActionRowBuilder().addComponents(
         new ButtonBuilder()
           .setCustomId(`fame_accept_${userId}`)
-          .setLabel("Accept")
+          .setLabel("Accept TOS")
           .setStyle(ButtonStyle.Success),
 
         new ButtonBuilder()
@@ -224,43 +185,57 @@ client.on("interactionCreate", async (interaction) => {
     }
   }
 
-  // BUTTON HANDLER
+  // ===== BUTTONS =====
   if (interaction.isButton()) {
 
-    const parts = interaction.customId.split("_");
-    const ownerId = parts[2];
+    const ownerId = interaction.customId.split("_")[2];
 
-    // block other users
     if (interaction.user.id !== ownerId) {
       return interaction.reply({
-        content: "❌ You can't use someone else's buttons. Run `/fame upcoming` yourself.",
+        content: "❌ Run `/fame upcoming` yourself.",
         ephemeral: true,
       });
     }
 
-    // ACCEPT
+    // ===== ACCEPT =====
     if (interaction.customId.startsWith("fame_accept")) {
 
-      const confirmEmbed = new EmbedBuilder()
-        .setTitle("✅ Accepted")
-        .setDescription(`${interaction.user} you have accepted the Fame TOS and now have access to upcoming content!`)
-        .setColor(0x00ff88)
-        .setTimestamp();
+      acceptedUsers.add(interaction.user.id);
 
       await interaction.message.delete().catch(() => {});
+
+      const confirmEmbed = new EmbedBuilder()
+        .setTitle("✅ Access Granted")
+        .setDescription(`${interaction.user} has accepted the TOS.`)
+        .setColor(0x00ff88);
 
       await interaction.channel.send({ embeds: [confirmEmbed] });
+
+      // ===== DM =====
+      try {
+        const dmEmbed = new EmbedBuilder()
+          .setTitle("✨ Welcome to Fame")
+          .setDescription(
+            `Hello ${interaction.user},\n\n` +
+            "**You now have exclusive access.**\n\n" +
+            "You will receive:\n" +
+            "• Leaks\n" +
+            "• Upcoming events\n" +
+            "• Items & systems\n\n" +
+            "Stay ready."
+          )
+          .setColor(0xff69b4)
+          .setFooter({ text: "Fame System" })
+          .setTimestamp();
+
+        await interaction.user.send({ embeds: [dmEmbed] });
+      } catch {}
+
     }
 
-    // DECLINE
+    // ===== DECLINE =====
     if (interaction.customId.startsWith("fame_decline")) {
-
       await interaction.message.delete().catch(() => {});
-
-      await interaction.reply({
-        content: "❌ You declined the TOS.",
-        ephemeral: true,
-      });
     }
   }
 });
