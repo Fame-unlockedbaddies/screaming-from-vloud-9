@@ -1,12 +1,11 @@
-
 const http = require("http");
+const fs = require("fs");
 const {
   EmbedBuilder,
   Client,
   GatewayIntentBits,
   Partials,
   SlashCommandBuilder,
-  PermissionFlagsBits,
   ActionRowBuilder,
   ButtonBuilder,
   ButtonStyle,
@@ -14,138 +13,109 @@ const {
 
 const TOKEN = process.env.TOKEN || process.env.DISCORD_TOKEN;
 const PORT = process.env.PORT || 3000;
-const FAME_GAME_NAME = process.env.FAME_GAME_NAME || "Fame";
+
+const FOUNDER_ID = "1482560426972549232";
+const ANNOUNCE_CHANNEL_ID = "YOUR_CHANNEL_ID_HERE";
 
 if (!TOKEN) {
-  console.error("Missing TOKEN environment variable");
+  console.error("Missing TOKEN");
   process.exit(1);
 }
 
 const client = new Client({
   intents: [
     GatewayIntentBits.Guilds,
-    GatewayIntentBits.GuildMessages,
-    GatewayIntentBits.MessageContent,
-    GatewayIntentBits.GuildModeration,
     GatewayIntentBits.DirectMessages,
   ],
   partials: [Partials.Channel],
 });
 
-// ================= SESSION STORAGE (RESETS ON RESTART) =================
-const acceptedUsers = new Set();
+// ===== STORAGE =====
+const FILE = "./users.json";
+
+function loadUsers() {
+  if (!fs.existsSync(FILE)) return [];
+  return JSON.parse(fs.readFileSync(FILE));
+}
+
+function saveUsers(users) {
+  fs.writeFileSync(FILE, JSON.stringify(users, null, 2));
+}
+
+let acceptedUsers = new Set(loadUsers());
 
 
-// ==================== LINK FILTER ====================
-const tiktokRegex = /https?:\/\/(?:www\.|m\.|vm\.)?tiktok\.com\/(?:@[\w.-]+\/video\/\d+|[\w-]+|Z[a-zA-Z0-9]+)/i;
+// ================= READY =================
+client.once("ready", async () => {
+  console.log("Bot online");
 
-const dangerousPatterns = [
-  /discord\.(gg|com|app)\/(invite\/)?[a-zA-Z0-9-]+/i,
-  /grabify\.link|iplogger\.org|ipgrabber|blasze\.com|trackip|myip\.is|ip-tracker/i,
-  /roblox\.(com\.[a-z]{2,}|gg|app|site|xyz|fun|net|org|login|verify|gift|free|robux)/i,
-  /rblx\.|rblox\.|robloxx?\.|free-robux|robux\.gift|getrobux/i,
-  /cookie-logger|cookielogger|stealer|grabber|token-logger|beam\.link/i,
-];
-
-client.on("messageCreate", async (message) => {
-  if (message.author.bot || !message.guild) return;
-
-  const urlRegex = /(https?:\/\/[^\s]+)/gi;
-  const urls = message.content.match(urlRegex) || [];
-
-  let shouldBlock = false;
-  let reason = "";
-
-  for (const url of urls) {
-    const lowerUrl = url.toLowerCase();
-
-    const isGiphy = lowerUrl.includes("giphy.com");
-    const isTenor = lowerUrl.includes("tenor.com");
-    const isDiscordCDN =
-      lowerUrl.includes("cdn.discordapp.com") ||
-      lowerUrl.includes("media.discordapp.net");
-
-    const isKlipyGif =
-      /^https?:\/\/(www\.)?klipy\.com\//i.test(url) &&
-      lowerUrl.includes("gif");
-
-    if (
-      tiktokRegex.test(url) ||
-      isGiphy ||
-      isTenor ||
-      isDiscordCDN ||
-      isKlipyGif
-    ) continue;
-
-    for (const pattern of dangerousPatterns) {
-      if (pattern.test(lowerUrl)) {
-        shouldBlock = true;
-        reason = "Malicious link detected";
-        break;
-      }
-    }
-
-    if (shouldBlock) break;
-
-    if (lowerUrl.startsWith("http")) {
-      shouldBlock = true;
-      reason = "Only TikTok + GIFs allowed.";
-      break;
-    }
-  }
-
-  if (shouldBlock) {
+  // ===== RESET ANNOUNCEMENT =====
+  if (acceptedUsers.size > 0) {
     try {
-      await message.delete().catch(() => {});
-      const member = await message.guild.members.fetch(message.author.id).catch(() => null);
+      const channel = await client.channels.fetch(ANNOUNCE_CHANNEL_ID);
 
-      if (member) {
-        await member.timeout(10 * 60 * 1000, reason).catch(() => {});
-      }
+      const mentions = [...acceptedUsers].map(id => `<@${id}>`).join("\n");
 
       const embed = new EmbedBuilder()
-        .setTitle("🚫 Link Blocked")
-        .setDescription(`${message.author}, your message was removed.`)
-        .addFields(
-          { name: "Reason", value: reason },
-          { name: "Allowed", value: "TikTok + GIFs only" }
+        .setTitle("⚠️ Fame System Update")
+        .setDescription(
+          "**Your membership has ended.**\n\n" +
+          "The bot has been upgraded.\n\n" +
+          "To become an exclusive member again, use:\n" +
+          "`/fame upcoming`"
         )
-        .setColor(0xff0000);
+        .addFields({
+          name: "Users Affected",
+          value: mentions || "None",
+        })
+        .setColor(0xff0000)
+        .setTimestamp();
 
-      const msg = await message.channel.send({ embeds: [embed] });
-      setTimeout(() => msg.delete().catch(() => {}), 3000);
+      await channel.send({ embeds: [embed] });
 
-    } catch (err) {
-      console.error(err);
+    } catch {
+      console.log("Failed to send reset message");
     }
+
+    // CLEAR USERS AFTER ANNOUNCEMENT
+    acceptedUsers.clear();
+    saveUsers([]);
   }
-});
 
-
-// ==================== COMMANDS ====================
-client.once("ready", async () => {
-  console.log(`${FAME_GAME_NAME} Bot is online!`);
-
+  // ===== COMMANDS =====
   const commands = [
     new SlashCommandBuilder()
       .setName("fame")
       .setDescription("Fame system")
       .addSubcommand(sub =>
         sub.setName("upcoming")
-          .setDescription("Access Fame upcoming system")
+          .setDescription("Accept TOS")
+      ),
+
+    new SlashCommandBuilder()
+      .setName("send")
+      .setDescription("Send to exclusive users")
+      .addStringOption(o =>
+        o.setName("message")
+          .setDescription("Message")
+          .setRequired(true)
+      )
+      .addAttachmentOption(o =>
+        o.setName("image")
+          .setDescription("Optional image")
       )
   ];
 
   await client.application.commands.set(commands);
-  console.log("Commands registered.");
 });
 
 
-// ==================== INTERACTIONS ====================
+// ================= INTERACTIONS =================
 client.on("interactionCreate", async (interaction) => {
 
-  // ===== SLASH COMMAND =====
   if (interaction.isChatInputCommand()) {
+
+    // ===== /fame upcoming =====
     if (
       interaction.commandName === "fame" &&
       interaction.options.getSubcommand() === "upcoming"
@@ -154,34 +124,60 @@ client.on("interactionCreate", async (interaction) => {
       const userId = interaction.user.id;
 
       const embed = new EmbedBuilder()
-        .setTitle("🌸 Fame Access Portal")
-        .setDescription(
-          "**Exclusive Fame System**\n\n" +
-          "Gain access to:\n" +
-          "• Upcoming updates\n" +
-          "• Leaks & previews\n" +
-          "• New systems & items\n\n" +
-          "**Accept the Terms of Service to continue.**"
-        )
-        .setColor(0xff69b4)
-        .setFooter({ text: "Fame Access System" })
-        .setTimestamp();
+        .setTitle("🌸 Fame Access")
+        .setDescription("Accept TOS to become an exclusive member.")
+        .setColor(0xff69b4);
 
       const row = new ActionRowBuilder().addComponents(
         new ButtonBuilder()
-          .setCustomId(`fame_accept_${userId}`)
-          .setLabel("Accept TOS")
+          .setCustomId(`accept_${userId}`)
+          .setLabel("Accept")
           .setStyle(ButtonStyle.Success),
 
         new ButtonBuilder()
-          .setCustomId(`fame_decline_${userId}`)
+          .setCustomId(`decline_${userId}`)
           .setLabel("Decline")
           .setStyle(ButtonStyle.Danger)
       );
 
-      await interaction.reply({
-        embeds: [embed],
-        components: [row],
+      return interaction.reply({ embeds: [embed], components: [row] });
+    }
+
+    // ===== /send =====
+    if (interaction.commandName === "send") {
+
+      if (interaction.user.id !== FOUNDER_ID) {
+        return interaction.reply({
+          content: "❌ Only the founder can use this.",
+          ephemeral: true,
+        });
+      }
+
+      const text = interaction.options.getString("message");
+      const image = interaction.options.getAttachment("image");
+
+      let sent = 0;
+
+      for (const userId of acceptedUsers) {
+        try {
+          const user = await client.users.fetch(userId);
+
+          const embed = new EmbedBuilder()
+            .setTitle("📢 Fame Update")
+            .setDescription(text)
+            .setColor(0xff69b4)
+            .setTimestamp();
+
+          if (image) embed.setImage(image.url);
+
+          await user.send({ embeds: [embed] });
+          sent++;
+        } catch {}
+      }
+
+      return interaction.reply({
+        content: `✅ Sent to ${sent} users.`,
+        ephemeral: true,
       });
     }
   }
@@ -189,53 +185,52 @@ client.on("interactionCreate", async (interaction) => {
   // ===== BUTTONS =====
   if (interaction.isButton()) {
 
-    const ownerId = interaction.customId.split("_")[2];
+    const ownerId = interaction.customId.split("_")[1];
 
     if (interaction.user.id !== ownerId) {
       return interaction.reply({
-        content: "❌ Run `/fame upcoming` yourself.",
+        content: "❌ Run the command yourself.",
         ephemeral: true,
       });
     }
 
-    // ===== ACCEPT =====
-    if (interaction.customId.startsWith("fame_accept")) {
+    // ACCEPT
+    if (interaction.customId.startsWith("accept")) {
 
       acceptedUsers.add(interaction.user.id);
+      saveUsers([...acceptedUsers]);
 
       await interaction.message.delete().catch(() => {});
 
-      const confirmEmbed = new EmbedBuilder()
-        .setTitle("✅ Access Granted")
-        .setDescription(`${interaction.user} has accepted the TOS.`)
-        .setColor(0x00ff88);
+      await interaction.channel.send({
+        embeds: [
+          new EmbedBuilder()
+            .setTitle("✅ Accepted")
+            .setDescription(`${interaction.user} is now an exclusive member.`)
+            .setColor(0x00ff88)
+        ]
+      });
 
-      await interaction.channel.send({ embeds: [confirmEmbed] });
-
-      // ===== DM =====
+      // DM USER
       try {
-        const dmEmbed = new EmbedBuilder()
-          .setTitle("✨ Welcome to Fame")
-          .setDescription(
-            `Hello ${interaction.user},\n\n` +
-            "**You now have exclusive access.**\n\n" +
-            "You will receive:\n" +
-            "• Leaks\n" +
-            "• Upcoming events\n" +
-            "• Items & systems\n\n" +
-            "Stay ready."
-          )
-          .setColor(0xff69b4)
-          .setFooter({ text: "Fame System" })
-          .setTimestamp();
-
-        await interaction.user.send({ embeds: [dmEmbed] });
+        await interaction.user.send({
+          embeds: [
+            new EmbedBuilder()
+              .setTitle("✨ Welcome to Fame")
+              .setDescription(
+                "You will receive:\n" +
+                "• Votes\n• Leaks\n• Upcoming systems\n\n" +
+                "Please do not block this bot.\n\n" +
+                "If the bot updates, run `/fame upcoming` again."
+              )
+              .setColor(0xff69b4)
+          ]
+        });
       } catch {}
-
     }
 
-    // ===== DECLINE =====
-    if (interaction.customId.startsWith("fame_decline")) {
+    // DECLINE
+    if (interaction.customId.startsWith("decline")) {
       await interaction.message.delete().catch(() => {});
     }
   }
@@ -245,7 +240,7 @@ client.on("interactionCreate", async (interaction) => {
 client.login(TOKEN);
 
 
-// ==================== SERVER ====================
+// ================= SERVER =================
 http.createServer((req, res) => {
   res.end("Bot running");
 }).listen(PORT);
