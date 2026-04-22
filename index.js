@@ -14,7 +14,7 @@ const {
 const TOKEN = process.env.TOKEN || process.env.DISCORD_TOKEN;
 const PORT = process.env.PORT || 3000;
 
-const FOUNDER_ID = "1482560426972549232";
+const FOUNDER_ROLE_ID = "1482560426972549232";
 const ANNOUNCE_CHANNEL_ID = "1448798824415101030";
 
 if (!TOKEN) {
@@ -25,6 +25,7 @@ if (!TOKEN) {
 const client = new Client({
   intents: [
     GatewayIntentBits.Guilds,
+    GatewayIntentBits.GuildMembers, // REQUIRED for role checks
     GatewayIntentBits.DirectMessages,
   ],
   partials: [Partials.Channel],
@@ -61,7 +62,12 @@ client.once("ready", async () => {
         .setDescription(
           "**Your Fame membership has ended.**\n\n" +
           "The bot was **updated or restarted**.\n\n" +
-          "**Run `/fame upcoming` to regain access.**"
+          "To continue receiving:\n" +
+          "• Leaks\n" +
+          "• Upcoming updates\n" +
+          "• Items & systems\n\n" +
+          "**You must accept the TOS again.**\n\n" +
+          "👉 Run `/fame upcoming` to regain access."
         )
         .addFields({
           name: "Affected Users",
@@ -73,7 +79,7 @@ client.once("ready", async () => {
       await channel.send({ embeds: [embed] });
 
     } catch (err) {
-      console.log("Failed reset message", err);
+      console.log("Reset message failed", err);
     }
 
     acceptedUsers.clear();
@@ -103,10 +109,9 @@ client.once("ready", async () => {
           .setDescription("Optional image")
       ),
 
-    // ===== NEW COMMAND =====
     new SlashCommandBuilder()
       .setName("channelidfinder")
-      .setDescription("Get a channel ID (Founder only)")
+      .setDescription("Get a channel ID (Founder role only)")
       .addChannelOption(o =>
         o.setName("channel")
           .setDescription("Select a channel")
@@ -126,9 +131,11 @@ client.on("interactionCreate", async (interaction) => {
     // ===== CHANNEL ID FINDER =====
     if (interaction.commandName === "channelidfinder") {
 
-      if (interaction.user.id !== FOUNDER_ID) {
+      const member = interaction.member;
+
+      if (!member.roles.cache.has(FOUNDER_ROLE_ID)) {
         return interaction.reply({
-          content: "❌ Only the founder can use this command.",
+          content: "❌ Only users with the Founder role can use this.",
           ephemeral: true,
         });
       }
@@ -172,9 +179,11 @@ client.on("interactionCreate", async (interaction) => {
     // ===== /send =====
     if (interaction.commandName === "send") {
 
-      if (interaction.user.id !== FOUNDER_ID) {
+      const member = interaction.member;
+
+      if (!member.roles.cache.has(FOUNDER_ROLE_ID)) {
         return interaction.reply({
-          content: "❌ Only the founder can use this.",
+          content: "❌ Only the Founder role can use this.",
           ephemeral: true,
         });
       }
@@ -191,7 +200,8 @@ client.on("interactionCreate", async (interaction) => {
           const embed = new EmbedBuilder()
             .setTitle("📢 Fame Update")
             .setDescription(text)
-            .setColor(0xff69b4);
+            .setColor(0xff69b4)
+            .setTimestamp();
 
           if (image) embed.setImage(image.url);
 
@@ -219,7 +229,9 @@ client.on("interactionCreate", async (interaction) => {
       });
     }
 
+    // ACCEPT
     if (interaction.customId.startsWith("accept")) {
+
       acceptedUsers.add(interaction.user.id);
       saveUsers([...acceptedUsers]);
 
@@ -233,8 +245,24 @@ client.on("interactionCreate", async (interaction) => {
             .setColor(0x00ff88)
         ]
       });
+
+      try {
+        await interaction.user.send({
+          embeds: [
+            new EmbedBuilder()
+              .setTitle("✨ Welcome to Fame")
+              .setDescription(
+                "You will receive:\n" +
+                "• Votes\n• Leaks\n• Upcoming systems\n\n" +
+                "If the bot updates or restarts, you must run `/fame upcoming` again."
+              )
+              .setColor(0xff69b4)
+          ]
+        });
+      } catch {}
     }
 
+    // DECLINE
     if (interaction.customId.startsWith("decline")) {
       await interaction.message.delete().catch(() => {});
     }
@@ -244,6 +272,8 @@ client.on("interactionCreate", async (interaction) => {
 
 client.login(TOKEN);
 
+
+// ================= SERVER =================
 http.createServer((req, res) => {
   res.end("Bot running");
 }).listen(PORT);
