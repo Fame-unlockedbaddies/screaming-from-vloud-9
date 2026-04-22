@@ -61,28 +61,21 @@ client.once("ready", async () => {
         .setDescription(
           "**Your Fame membership has ended.**\n\n" +
           "The bot was **updated or restarted**.\n\n" +
-          "To continue receiving:\n" +
-          "• Leaks\n" +
-          "• Upcoming updates\n" +
-          "• Items & systems\n\n" +
-          "**You must accept the TOS again.**\n\n" +
-          "👉 Run `/fame upcoming` to become an exclusive member again."
+          "**Run `/fame upcoming` to regain access.**"
         )
         .addFields({
           name: "Affected Users",
           value: mentions || "None",
         })
         .setColor(0xff0000)
-        .setFooter({ text: "Fame System Reset Notice" })
         .setTimestamp();
 
       await channel.send({ embeds: [embed] });
 
     } catch (err) {
-      console.log("Failed to send reset message", err);
+      console.log("Failed reset message", err);
     }
 
-    // CLEAR USERS AFTER ANNOUNCEMENT
     acceptedUsers.clear();
     saveUsers([]);
   }
@@ -108,6 +101,16 @@ client.once("ready", async () => {
       .addAttachmentOption(o =>
         o.setName("image")
           .setDescription("Optional image")
+      ),
+
+    // ===== NEW COMMAND =====
+    new SlashCommandBuilder()
+      .setName("channelidfinder")
+      .setDescription("Get a channel ID (Founder only)")
+      .addChannelOption(o =>
+        o.setName("channel")
+          .setDescription("Select a channel")
+          .setRequired(true)
       )
   ];
 
@@ -119,6 +122,24 @@ client.once("ready", async () => {
 client.on("interactionCreate", async (interaction) => {
 
   if (interaction.isChatInputCommand()) {
+
+    // ===== CHANNEL ID FINDER =====
+    if (interaction.commandName === "channelidfinder") {
+
+      if (interaction.user.id !== FOUNDER_ID) {
+        return interaction.reply({
+          content: "❌ Only the founder can use this command.",
+          ephemeral: true,
+        });
+      }
+
+      const channel = interaction.options.getChannel("channel");
+
+      return interaction.reply({
+        content: `📌 Channel: ${channel}\n🆔 ID: \`${channel.id}\``,
+        ephemeral: true,
+      });
+    }
 
     // ===== /fame upcoming =====
     if (
@@ -170,8 +191,7 @@ client.on("interactionCreate", async (interaction) => {
           const embed = new EmbedBuilder()
             .setTitle("📢 Fame Update")
             .setDescription(text)
-            .setColor(0xff69b4)
-            .setTimestamp();
+            .setColor(0xff69b4);
 
           if (image) embed.setImage(image.url);
 
@@ -199,9 +219,7 @@ client.on("interactionCreate", async (interaction) => {
       });
     }
 
-    // ACCEPT
     if (interaction.customId.startsWith("accept")) {
-
       acceptedUsers.add(interaction.user.id);
       saveUsers([...acceptedUsers]);
 
@@ -215,24 +233,8 @@ client.on("interactionCreate", async (interaction) => {
             .setColor(0x00ff88)
         ]
       });
-
-      try {
-        await interaction.user.send({
-          embeds: [
-            new EmbedBuilder()
-              .setTitle("✨ Welcome to Fame")
-              .setDescription(
-                "You will receive:\n" +
-                "• Votes\n• Leaks\n• Upcoming systems\n\n" +
-                "If the bot updates or restarts, you must run `/fame upcoming` again."
-              )
-              .setColor(0xff69b4)
-          ]
-        });
-      } catch {}
     }
 
-    // DECLINE
     if (interaction.customId.startsWith("decline")) {
       await interaction.message.delete().catch(() => {});
     }
@@ -242,8 +244,6 @@ client.on("interactionCreate", async (interaction) => {
 
 client.login(TOKEN);
 
-
-// ================= SERVER =================
 http.createServer((req, res) => {
   res.end("Bot running");
 }).listen(PORT);
