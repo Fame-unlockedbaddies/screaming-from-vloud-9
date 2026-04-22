@@ -6,6 +6,9 @@ const {
   Partials,
   SlashCommandBuilder,
   PermissionFlagsBits,
+  ActionRowBuilder,
+  ButtonBuilder,
+  ButtonStyle,
 } = require("discord.js");
 
 const TOKEN = process.env.TOKEN || process.env.DISCORD_TOKEN;
@@ -28,8 +31,8 @@ const client = new Client({
   partials: [Partials.Channel],
 });
 
-// ==================== LINK FILTER ====================
 
+// ==================== LINK FILTER ====================
 const tiktokRegex = /https?:\/\/(?:www\.|m\.|vm\.)?tiktok\.com\/(?:@[\w.-]+\/video\/\d+|[\w-]+|Z[a-zA-Z0-9]+)/i;
 
 const dangerousPatterns = [
@@ -77,6 +80,7 @@ client.on("messageCreate", async (message) => {
         break;
       }
     }
+
     if (shouldBlock) break;
 
     if (lowerUrl.startsWith("http")) {
@@ -108,7 +112,6 @@ client.on("messageCreate", async (message) => {
       const msg = await message.channel.send({ embeds: [warningEmbed] });
       setTimeout(() => msg.delete().catch(() => {}), 3000);
 
-      // DM user
       try {
         const dmEmbed = new EmbedBuilder()
           .setTitle("⚠️ Moderation Notice")
@@ -128,8 +131,8 @@ client.on("messageCreate", async (message) => {
   }
 });
 
-// ==================== SLASH COMMANDS ====================
 
+// ==================== SLASH COMMANDS ====================
 client.once("ready", async () => {
   console.log(`${FAME_GAME_NAME} Bot is online!`);
 
@@ -138,7 +141,6 @@ client.once("ready", async () => {
       .setName("copyrole")
       .setDescription("Advanced role copier")
       .setDefaultMemberPermissions(PermissionFlagsBits.ManageRoles)
-
       .addSubcommand(sub =>
         sub.setName("hex")
           .setDescription("Copy hex colors")
@@ -148,7 +150,6 @@ client.once("ready", async () => {
               .setRequired(true)
           )
       )
-
       .addSubcommand(sub =>
         sub.setName("emoji")
           .setDescription("Copy emoji")
@@ -158,7 +159,6 @@ client.once("ready", async () => {
               .setRequired(true)
           )
       )
-
       .addSubcommand(sub =>
         sub.setName("all")
           .setDescription("Copy all role info")
@@ -167,6 +167,15 @@ client.once("ready", async () => {
               .setDescription("The role to copy")
               .setRequired(true)
           )
+      ),
+
+    // ===== NEW FAME COMMAND =====
+    new SlashCommandBuilder()
+      .setName("fame")
+      .setDescription("Fame system")
+      .addSubcommand(sub =>
+        sub.setName("upcoming")
+          .setDescription("View upcoming Fame content (accept TOS)")
       )
   ];
 
@@ -174,10 +183,68 @@ client.once("ready", async () => {
   console.log("Commands registered.");
 });
 
+
+// ==================== INTERACTIONS ====================
+client.on("interactionCreate", async (interaction) => {
+
+  // SLASH COMMAND
+  if (interaction.isChatInputCommand()) {
+    if (interaction.commandName === "fame" &&
+        interaction.options.getSubcommand() === "upcoming") {
+
+      const embed = new EmbedBuilder()
+        .setTitle("🌸 Fame Upcoming Access")
+        .setDescription(
+          "This is a Fame bot only for the Roblox game **Fame**.\n\n" +
+          "You will see updates and new upcoming stuff from Fame using this bot.\n\n" +
+          "**Do you accept the TOS to view Fame leaks & upcoming content?**"
+        )
+        .setColor(0xff69b4)
+        .setTimestamp();
+
+      const row = new ActionRowBuilder().addComponents(
+        new ButtonBuilder()
+          .setCustomId("fame_accept")
+          .setLabel("Accept")
+          .setStyle(ButtonStyle.Success),
+
+        new ButtonBuilder()
+          .setCustomId("fame_decline")
+          .setLabel("Decline")
+          .setStyle(ButtonStyle.Danger)
+      );
+
+      await interaction.reply({
+        embeds: [embed],
+        components: [row],
+      });
+    }
+  }
+
+  // BUTTON HANDLER
+  if (interaction.isButton()) {
+
+    if (interaction.customId === "fame_accept") {
+      await interaction.reply({
+        content: "✅ You accepted the TOS. You will now receive Fame upcoming content!",
+        ephemeral: true,
+      });
+    }
+
+    if (interaction.customId === "fame_decline") {
+      await interaction.reply({
+        content: "❌ You declined the TOS. You will not receive upcoming content.",
+        ephemeral: true,
+      });
+    }
+  }
+});
+
+
 client.login(TOKEN);
 
-// ==================== SERVER ====================
 
+// ==================== SERVER ====================
 http.createServer((req, res) => {
   res.end("Bot running");
 }).listen(PORT);
