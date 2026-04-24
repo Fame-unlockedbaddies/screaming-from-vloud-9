@@ -18,7 +18,7 @@ const FOUNDER_ROLE_ID = "1482560426972549232";
 const ANNOUNCE_CHANNEL_ID = "1448798824415101030";
 const WELCOME_CHANNEL_ID = "1487287724674384032";
 
-// 🎯 NEW ROLE SYSTEM IDs
+// 🎯 ROLE SYSTEM
 const MESSAGE_ROLE_ID = "1497255894096941076";
 const UPGRADE_ROLE_ID = "1448796463491584060";
 
@@ -31,8 +31,8 @@ const client = new Client({
   intents: [
     GatewayIntentBits.Guilds,
     GatewayIntentBits.GuildMembers,
-    GatewayIntentBits.GuildMessages, // ✅ needed
-    GatewayIntentBits.MessageContent, // ✅ needed
+    GatewayIntentBits.GuildMessages,
+    GatewayIntentBits.MessageContent,
     GatewayIntentBits.DirectMessages,
   ],
   partials: [Partials.Channel],
@@ -52,7 +52,7 @@ function saveUsers(users) {
 
 let acceptedUsers = new Set(loadUsers());
 
-// 🧠 MESSAGE COUNTS
+// 🧠 MESSAGE COUNTS (per user)
 const messageCounts = new Map();
 
 // ================= READY =================
@@ -115,17 +115,18 @@ client.once("ready", async () => {
   await client.application.commands.set(commands);
 });
 
-// ================= MESSAGE TRACKING =================
+// ================= MESSAGE SYSTEM =================
 client.on("messageCreate", async (message) => {
   if (!message.guild || message.author.bot) return;
 
   const userId = message.author.id;
   const member = message.member;
 
+  // Count messages per user
   const count = (messageCounts.get(userId) || 0) + 1;
   messageCounts.set(userId, count);
 
-  // ❌ If user has upgrade role → remove message role
+  // Remove role if user has upgrade role
   if (member.roles.cache.has(UPGRADE_ROLE_ID)) {
     if (member.roles.cache.has(MESSAGE_ROLE_ID)) {
       await member.roles.remove(MESSAGE_ROLE_ID).catch(() => {});
@@ -133,13 +134,13 @@ client.on("messageCreate", async (message) => {
     return;
   }
 
-  // 🎉 At 10 messages
-  if (count === 10) {
+  // 🎉 Give role after 10+ messages (for EVERY user)
+  if (count >= 10 && !member.roles.cache.has(MESSAGE_ROLE_ID)) {
+
     await member.roles.add(MESSAGE_ROLE_ID).catch(() => {});
 
     try {
       const channel = await client.channels.fetch(ANNOUNCE_CHANNEL_ID);
-
       const role = message.guild.roles.cache.get(MESSAGE_ROLE_ID);
 
       const embed = new EmbedBuilder()
@@ -160,7 +161,6 @@ client.on("messageCreate", async (message) => {
 
 // ================= AUTO REMOVE ON UPGRADE =================
 client.on("guildMemberUpdate", async (oldMember, newMember) => {
-
   if (
     !oldMember.roles.cache.has(UPGRADE_ROLE_ID) &&
     newMember.roles.cache.has(UPGRADE_ROLE_ID)
