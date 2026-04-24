@@ -50,7 +50,7 @@ let acceptedUsers = new Set(loadUsers());
 client.once("ready", async () => {
   console.log("Bot online");
 
-  // ===== RESET ANNOUNCEMENT =====
+  // RESET USERS
   if (acceptedUsers.size > 0) {
     try {
       const channel = await client.channels.fetch(ANNOUNCE_CHANNEL_ID);
@@ -58,75 +58,67 @@ client.once("ready", async () => {
 
       const embed = new EmbedBuilder()
         .setTitle("⚠️ Membership Reset Required")
-        .setDescription(
-          "**Your Fame membership has ended.**\n\n" +
-          "The bot was updated or restarted.\n\n" +
-          "**Run /fame upcoming to regain access.**"
-        )
-        .addFields({
-          name: "Affected Users",
-          value: mentions || "None",
-        })
-        .setColor(0xff0000)
-        .setTimestamp();
+        .setDescription("Run /fame upcoming to regain access.")
+        .addFields({ name: "Affected Users", value: mentions || "None" })
+        .setColor(0xff0000);
 
       await channel.send({ embeds: [embed] });
-    } catch (err) {
-      console.log("Reset message failed", err);
-    }
+    } catch (err) {}
 
     acceptedUsers.clear();
     saveUsers([]);
   }
 
-  // ===== COMMANDS =====
+  // COMMANDS
   const commands = [
     new SlashCommandBuilder()
       .setName("fame")
       .setDescription("Fame system")
       .addSubcommand(sub =>
-        sub.setName("upcoming")
-          .setDescription("Accept TOS")
+        sub.setName("upcoming").setDescription("Accept TOS")
       ),
 
     new SlashCommandBuilder()
       .setName("send")
       .setDescription("Send to exclusive users")
       .addStringOption(o =>
-        o.setName("message")
-          .setDescription("Message")
-          .setRequired(true)
+        o.setName("message").setDescription("Message").setRequired(true)
       )
       .addAttachmentOption(o =>
-        o.setName("image")
-          .setDescription("Optional image")
+        o.setName("image").setDescription("Optional image")
       ),
 
     new SlashCommandBuilder()
       .setName("channelidfinder")
       .setDescription("Get a channel ID")
       .addChannelOption(o =>
-        o.setName("channel")
-          .setDescription("Select a channel")
+        o.setName("channel").setDescription("Select channel").setRequired(true)
+      ),
+
+    // ✅ NEW COMMAND
+    new SlashCommandBuilder()
+      .setName("rolecolour")
+      .setDescription("Get a role's hex colour")
+      .addRoleOption(option =>
+        option.setName("role")
+          .setDescription("Select a role")
           .setRequired(true)
-      )
+      ),
   ];
 
   await client.application.commands.set(commands);
 });
 
-// ================= WELCOME SYSTEM =================
+// ================= WELCOME =================
 client.on("guildMemberAdd", async (member) => {
   try {
     const channel = await client.channels.fetch(WELCOME_CHANNEL_ID);
-    if (!channel) return;
 
     const embed = new EmbedBuilder()
       .setTitle("🌸 Welcome to Fame")
-      .setDescription(`Welcome ${member} to the server!\n\nEnjoy your stay 💖`)
+      .setDescription(`Welcome ${member} 💖`)
       .setColor(0xff69b4)
-      .setImage("https://media.discordapp.net/attachments/1448798824415101030/1496995710988451850/EB9CBC93-0BDF-4C15-832A-545BC2F41C2D.gif")
-      .setTimestamp();
+      .setImage("https://media.discordapp.net/attachments/1448798824415101030/1496995710988451850/EB9CBC93-0BDF-4C15-832A-545BC2F41C2D.gif");
 
     await channel.send({
       content: `${member}`,
@@ -134,7 +126,7 @@ client.on("guildMemberAdd", async (member) => {
     });
 
   } catch (err) {
-    console.log("Welcome message failed:", err);
+    console.log(err);
   }
 });
 
@@ -143,15 +135,10 @@ client.on("interactionCreate", async (interaction) => {
 
   if (interaction.isChatInputCommand()) {
 
-    // ===== CHANNEL ID FINDER =====
+    // CHANNEL ID FINDER
     if (interaction.commandName === "channelidfinder") {
-      const member = interaction.member;
-
-      if (!member.roles.cache.has(FOUNDER_ROLE_ID)) {
-        return interaction.reply({
-          content: "❌ Only users with the Founder role can use this.",
-          ephemeral: true,
-        });
+      if (!interaction.member.roles.cache.has(FOUNDER_ROLE_ID)) {
+        return interaction.reply({ content: "❌ Founder only", ephemeral: true });
       }
 
       const channel = interaction.options.getChannel("channel");
@@ -162,7 +149,37 @@ client.on("interactionCreate", async (interaction) => {
       });
     }
 
-    // ===== /fame upcoming =====
+    // ROLE COLOUR
+    if (interaction.commandName === "rolecolour") {
+      const role = interaction.options.getRole("role");
+      const colorInt = role.color;
+
+      if (!colorInt || colorInt === 0) {
+        return interaction.reply({
+          content: "⚠️ This role has no colour.",
+          ephemeral: true,
+        });
+      }
+
+      const hex = `#${colorInt.toString(16).padStart(6, "0")}`;
+
+      const r = (colorInt >> 16) & 255;
+      const g = (colorInt >> 8) & 255;
+      const b = colorInt & 255;
+
+      const embed = new EmbedBuilder()
+        .setTitle("🎨 Role Colour")
+        .addFields(
+          { name: "Role", value: `${role}`, inline: true },
+          { name: "Hex", value: `\`${hex}\``, inline: true },
+          { name: "RGB", value: `(${r}, ${g}, ${b})`, inline: true }
+        )
+        .setColor(colorInt);
+
+      return interaction.reply({ embeds: [embed] });
+    }
+
+    // FAME
     if (
       interaction.commandName === "fame" &&
       interaction.options.getSubcommand() === "upcoming"
@@ -171,7 +188,7 @@ client.on("interactionCreate", async (interaction) => {
 
       const embed = new EmbedBuilder()
         .setTitle("🌸 Fame Access")
-        .setDescription("Accept TOS to become an exclusive member.")
+        .setDescription("Accept TOS")
         .setColor(0xff69b4);
 
       const row = new ActionRowBuilder().addComponents(
@@ -186,21 +203,13 @@ client.on("interactionCreate", async (interaction) => {
           .setStyle(ButtonStyle.Danger)
       );
 
-      return interaction.reply({
-        embeds: [embed],
-        components: [row],
-      });
+      return interaction.reply({ embeds: [embed], components: [row] });
     }
 
-    // ===== /send =====
+    // SEND
     if (interaction.commandName === "send") {
-      const member = interaction.member;
-
-      if (!member.roles.cache.has(FOUNDER_ROLE_ID)) {
-        return interaction.reply({
-          content: "❌ Only the Founder role can use this.",
-          ephemeral: true,
-        });
+      if (!interaction.member.roles.cache.has(FOUNDER_ROLE_ID)) {
+        return interaction.reply({ content: "❌ Founder only", ephemeral: true });
       }
 
       const text = interaction.options.getString("message");
@@ -215,8 +224,7 @@ client.on("interactionCreate", async (interaction) => {
           const embed = new EmbedBuilder()
             .setTitle("📢 Fame Update")
             .setDescription(text)
-            .setColor(0xff69b4)
-            .setTimestamp();
+            .setColor(0xff69b4);
 
           if (image) embed.setImage(image.url);
 
@@ -232,18 +240,17 @@ client.on("interactionCreate", async (interaction) => {
     }
   }
 
-  // ===== BUTTONS =====
+  // BUTTONS
   if (interaction.isButton()) {
     const ownerId = interaction.customId.split("_")[1];
 
     if (interaction.user.id !== ownerId) {
       return interaction.reply({
-        content: "❌ Run the command yourself.",
+        content: "❌ Run command yourself",
         ephemeral: true,
       });
     }
 
-    // ACCEPT
     if (interaction.customId.startsWith("accept")) {
       acceptedUsers.add(interaction.user.id);
       saveUsers([...acceptedUsers]);
@@ -253,39 +260,21 @@ client.on("interactionCreate", async (interaction) => {
       await interaction.channel.send({
         embeds: [
           new EmbedBuilder()
-            .setTitle("✅ Accepted")
             .setDescription(`${interaction.user} is now an exclusive member.`)
             .setColor(0x00ff88),
         ],
       });
-
-      try {
-        await interaction.user.send({
-          embeds: [
-            new EmbedBuilder()
-              .setTitle("✨ Welcome to Fame")
-              .setDescription(
-                "You will receive:\n" +
-                "• Votes\n• Leaks\n• Upcoming systems\n\n" +
-                "Run /fame upcoming again if bot resets."
-              )
-              .setColor(0xff69b4),
-          ],
-        });
-      } catch {}
     }
 
-    // DECLINE
     if (interaction.customId.startsWith("decline")) {
       await interaction.message.delete().catch(() => {});
     }
   }
 });
 
-// ================= SERVER =================
+// SERVER
 http.createServer((req, res) => {
   res.end("Bot running");
 }).listen(PORT);
 
-// ================= LOGIN =================
 client.login(TOKEN);
