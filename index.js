@@ -18,6 +18,10 @@ const FOUNDER_ROLE_ID = "1482560426972549232";
 const ANNOUNCE_CHANNEL_ID = "1448798824415101030";
 const WELCOME_CHANNEL_ID = "1487287724674384032";
 
+// 🎯 NEW ROLE SYSTEM IDs
+const MESSAGE_ROLE_ID = "1497255894096941076";
+const UPGRADE_ROLE_ID = "1448796463491584060";
+
 if (!TOKEN) {
   console.error("Missing TOKEN");
   process.exit(1);
@@ -27,6 +31,8 @@ const client = new Client({
   intents: [
     GatewayIntentBits.Guilds,
     GatewayIntentBits.GuildMembers,
+    GatewayIntentBits.GuildMessages, // ✅ needed
+    GatewayIntentBits.MessageContent, // ✅ needed
     GatewayIntentBits.DirectMessages,
   ],
   partials: [Partials.Channel],
@@ -46,11 +52,13 @@ function saveUsers(users) {
 
 let acceptedUsers = new Set(loadUsers());
 
+// 🧠 MESSAGE COUNTS
+const messageCounts = new Map();
+
 // ================= READY =================
 client.once("ready", async () => {
   console.log("Bot online");
 
-  // RESET USERS
   if (acceptedUsers.size > 0) {
     try {
       const channel = await client.channels.fetch(ANNOUNCE_CHANNEL_ID);
@@ -63,13 +71,12 @@ client.once("ready", async () => {
         .setColor(0xff0000);
 
       await channel.send({ embeds: [embed] });
-    } catch (err) {}
+    } catch {}
 
     acceptedUsers.clear();
     saveUsers([]);
   }
 
-  // COMMANDS
   const commands = [
     new SlashCommandBuilder()
       .setName("fame")
@@ -95,7 +102,6 @@ client.once("ready", async () => {
         o.setName("channel").setDescription("Select channel").setRequired(true)
       ),
 
-    // ✅ NEW COMMAND
     new SlashCommandBuilder()
       .setName("rolecolour")
       .setDescription("Get a role's hex colour")
@@ -107,6 +113,62 @@ client.once("ready", async () => {
   ];
 
   await client.application.commands.set(commands);
+});
+
+// ================= MESSAGE TRACKING =================
+client.on("messageCreate", async (message) => {
+  if (!message.guild || message.author.bot) return;
+
+  const userId = message.author.id;
+  const member = message.member;
+
+  const count = (messageCounts.get(userId) || 0) + 1;
+  messageCounts.set(userId, count);
+
+  // ❌ If user has upgrade role → remove message role
+  if (member.roles.cache.has(UPGRADE_ROLE_ID)) {
+    if (member.roles.cache.has(MESSAGE_ROLE_ID)) {
+      await member.roles.remove(MESSAGE_ROLE_ID).catch(() => {});
+    }
+    return;
+  }
+
+  // 🎉 At 10 messages
+  if (count === 10) {
+    await member.roles.add(MESSAGE_ROLE_ID).catch(() => {});
+
+    try {
+      const channel = await client.channels.fetch(ANNOUNCE_CHANNEL_ID);
+
+      const role = message.guild.roles.cache.get(MESSAGE_ROLE_ID);
+
+      const embed = new EmbedBuilder()
+        .setDescription(
+          `${message.author} you have received this role <@&${MESSAGE_ROLE_ID}> 🎉\n` +
+          `you have received the Fame Newgen role`
+        )
+        .setColor(0xff69b4)
+        .setThumbnail(role?.iconURL());
+
+      await channel.send({ embeds: [embed] });
+
+    } catch (err) {
+      console.log(err);
+    }
+  }
+});
+
+// ================= AUTO REMOVE ON UPGRADE =================
+client.on("guildMemberUpdate", async (oldMember, newMember) => {
+
+  if (
+    !oldMember.roles.cache.has(UPGRADE_ROLE_ID) &&
+    newMember.roles.cache.has(UPGRADE_ROLE_ID)
+  ) {
+    if (newMember.roles.cache.has(MESSAGE_ROLE_ID)) {
+      await newMember.roles.remove(MESSAGE_ROLE_ID).catch(() => {});
+    }
+  }
 });
 
 // ================= WELCOME =================
@@ -135,7 +197,6 @@ client.on("interactionCreate", async (interaction) => {
 
   if (interaction.isChatInputCommand()) {
 
-    // CHANNEL ID FINDER
     if (interaction.commandName === "channelidfinder") {
       if (!interaction.member.roles.cache.has(FOUNDER_ROLE_ID)) {
         return interaction.reply({ content: "❌ Founder only", ephemeral: true });
@@ -149,7 +210,6 @@ client.on("interactionCreate", async (interaction) => {
       });
     }
 
-    // ROLE COLOUR
     if (interaction.commandName === "rolecolour") {
       const role = interaction.options.getRole("role");
       const colorInt = role.color;
@@ -179,7 +239,6 @@ client.on("interactionCreate", async (interaction) => {
       return interaction.reply({ embeds: [embed] });
     }
 
-    // FAME
     if (
       interaction.commandName === "fame" &&
       interaction.options.getSubcommand() === "upcoming"
@@ -206,7 +265,6 @@ client.on("interactionCreate", async (interaction) => {
       return interaction.reply({ embeds: [embed], components: [row] });
     }
 
-    // SEND
     if (interaction.commandName === "send") {
       if (!interaction.member.roles.cache.has(FOUNDER_ROLE_ID)) {
         return interaction.reply({ content: "❌ Founder only", ephemeral: true });
@@ -240,7 +298,6 @@ client.on("interactionCreate", async (interaction) => {
     }
   }
 
-  // BUTTONS
   if (interaction.isButton()) {
     const ownerId = interaction.customId.split("_")[1];
 
@@ -272,7 +329,7 @@ client.on("interactionCreate", async (interaction) => {
   }
 });
 
-// SERVER
+// ================= SERVER =================
 http.createServer((req, res) => {
   res.end("Bot running");
 }).listen(PORT);
