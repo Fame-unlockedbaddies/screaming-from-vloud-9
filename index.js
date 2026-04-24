@@ -16,6 +16,7 @@ const PORT = process.env.PORT || 3000;
 
 const FOUNDER_ROLE_ID = "1482560426972549232";
 const ANNOUNCE_CHANNEL_ID = "1448798824415101030";
+const WELCOME_CHANNEL_ID = "1487287724674384032";
 
 if (!TOKEN) {
   console.error("Missing TOKEN");
@@ -25,7 +26,7 @@ if (!TOKEN) {
 const client = new Client({
   intents: [
     GatewayIntentBits.Guilds,
-    GatewayIntentBits.GuildMembers, // REQUIRED for role checks
+    GatewayIntentBits.GuildMembers,
     GatewayIntentBits.DirectMessages,
   ],
   partials: [Partials.Channel],
@@ -45,7 +46,6 @@ function saveUsers(users) {
 
 let acceptedUsers = new Set(loadUsers());
 
-
 // ================= READY =================
 client.once("ready", async () => {
   console.log("Bot online");
@@ -54,20 +54,14 @@ client.once("ready", async () => {
   if (acceptedUsers.size > 0) {
     try {
       const channel = await client.channels.fetch(ANNOUNCE_CHANNEL_ID);
-
       const mentions = [...acceptedUsers].map(id => `<@${id}>`).join("\n");
 
       const embed = new EmbedBuilder()
         .setTitle("⚠️ Membership Reset Required")
         .setDescription(
           "**Your Fame membership has ended.**\n\n" +
-          "The bot was **updated or restarted**.\n\n" +
-          "To continue receiving:\n" +
-          "• Leaks\n" +
-          "• Upcoming updates\n" +
-          "• Items & systems\n\n" +
-          "**You must accept the TOS again.**\n\n" +
-          "👉 Run `/fame upcoming` to regain access."
+          "The bot was updated or restarted.\n\n" +
+          "**Run /fame upcoming to regain access.**"
         )
         .addFields({
           name: "Affected Users",
@@ -77,7 +71,6 @@ client.once("ready", async () => {
         .setTimestamp();
 
       await channel.send({ embeds: [embed] });
-
     } catch (err) {
       console.log("Reset message failed", err);
     }
@@ -111,7 +104,7 @@ client.once("ready", async () => {
 
     new SlashCommandBuilder()
       .setName("channelidfinder")
-      .setDescription("Get a channel ID (Founder role only)")
+      .setDescription("Get a channel ID")
       .addChannelOption(o =>
         o.setName("channel")
           .setDescription("Select a channel")
@@ -122,6 +115,28 @@ client.once("ready", async () => {
   await client.application.commands.set(commands);
 });
 
+// ================= WELCOME SYSTEM =================
+client.on("guildMemberAdd", async (member) => {
+  try {
+    const channel = await client.channels.fetch(WELCOME_CHANNEL_ID);
+    if (!channel) return;
+
+    const embed = new EmbedBuilder()
+      .setTitle("🌸 Welcome to Fame")
+      .setDescription(`Welcome ${member} to the server!\n\nEnjoy your stay 💖`)
+      .setColor(0xff69b4)
+      .setImage("https://media.discordapp.net/attachments/1448798824415101030/1496995710988451850/EB9CBC93-0BDF-4C15-832A-545BC2F41C2D.gif")
+      .setTimestamp();
+
+    await channel.send({
+      content: `${member}`,
+      embeds: [embed],
+    });
+
+  } catch (err) {
+    console.log("Welcome message failed:", err);
+  }
+});
 
 // ================= INTERACTIONS =================
 client.on("interactionCreate", async (interaction) => {
@@ -130,7 +145,6 @@ client.on("interactionCreate", async (interaction) => {
 
     // ===== CHANNEL ID FINDER =====
     if (interaction.commandName === "channelidfinder") {
-
       const member = interaction.member;
 
       if (!member.roles.cache.has(FOUNDER_ROLE_ID)) {
@@ -143,7 +157,7 @@ client.on("interactionCreate", async (interaction) => {
       const channel = interaction.options.getChannel("channel");
 
       return interaction.reply({
-        content: `📌 Channel: ${channel}\n🆔 ID: \`${channel.id}\``,
+        content: `📌 Channel: ${channel}\n🆔 ID: ${channel.id}`,
         ephemeral: true,
       });
     }
@@ -153,7 +167,6 @@ client.on("interactionCreate", async (interaction) => {
       interaction.commandName === "fame" &&
       interaction.options.getSubcommand() === "upcoming"
     ) {
-
       const userId = interaction.user.id;
 
       const embed = new EmbedBuilder()
@@ -173,12 +186,14 @@ client.on("interactionCreate", async (interaction) => {
           .setStyle(ButtonStyle.Danger)
       );
 
-      return interaction.reply({ embeds: [embed], components: [row] });
+      return interaction.reply({
+        embeds: [embed],
+        components: [row],
+      });
     }
 
     // ===== /send =====
     if (interaction.commandName === "send") {
-
       const member = interaction.member;
 
       if (!member.roles.cache.has(FOUNDER_ROLE_ID)) {
@@ -219,7 +234,6 @@ client.on("interactionCreate", async (interaction) => {
 
   // ===== BUTTONS =====
   if (interaction.isButton()) {
-
     const ownerId = interaction.customId.split("_")[1];
 
     if (interaction.user.id !== ownerId) {
@@ -231,7 +245,6 @@ client.on("interactionCreate", async (interaction) => {
 
     // ACCEPT
     if (interaction.customId.startsWith("accept")) {
-
       acceptedUsers.add(interaction.user.id);
       saveUsers([...acceptedUsers]);
 
@@ -242,8 +255,8 @@ client.on("interactionCreate", async (interaction) => {
           new EmbedBuilder()
             .setTitle("✅ Accepted")
             .setDescription(`${interaction.user} is now an exclusive member.`)
-            .setColor(0x00ff88)
-        ]
+            .setColor(0x00ff88),
+        ],
       });
 
       try {
@@ -254,10 +267,10 @@ client.on("interactionCreate", async (interaction) => {
               .setDescription(
                 "You will receive:\n" +
                 "• Votes\n• Leaks\n• Upcoming systems\n\n" +
-                "If the bot updates or restarts, you must run `/fame upcoming` again."
+                "Run /fame upcoming again if bot resets."
               )
-              .setColor(0xff69b4)
-          ]
+              .setColor(0xff69b4),
+          ],
         });
       } catch {}
     }
@@ -269,11 +282,10 @@ client.on("interactionCreate", async (interaction) => {
   }
 });
 
-
-client.login(TOKEN);
-
-
 // ================= SERVER =================
 http.createServer((req, res) => {
   res.end("Bot running");
 }).listen(PORT);
+
+// ================= LOGIN =================
+client.login(TOKEN);
