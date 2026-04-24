@@ -1,28 +1,16 @@
 const http = require("http");
 const fs = require("fs");
-const {
-  Client,
-  GatewayIntentBits,
-  Partials,
-  EmbedBuilder,
-  SlashCommandBuilder,
-  ActionRowBuilder,
-  ButtonBuilder,
-  ButtonStyle,
-} = require("discord.js");
+const { Client, GatewayIntentBits, Partials, EmbedBuilder } = require("discord.js");
 
-// ================= CONFIG =================
+// ===== CONFIG =====
 const TOKEN = process.env.TOKEN || process.env.DISCORD_TOKEN;
 const PORT = process.env.PORT || 3000;
 
 const ANNOUNCE_CHANNEL_ID = "1448798824415101030";
-const WELCOME_CHANNEL_ID = "1487287724674384032";
-
 const MESSAGE_ROLE_ID = "1497255894096941076";
 const UPGRADE_ROLE_ID = "1448796463491584060";
-const FOUNDER_ROLE_ID = "1482560426972549232";
 
-// ================= CLIENT =================
+// ===== CLIENT =====
 const client = new Client({
   intents: [
     GatewayIntentBits.Guilds,
@@ -33,28 +21,30 @@ const client = new Client({
   partials: [Partials.Channel],
 });
 
-// ================= STORAGE =================
-const COUNT_FILE = "./messageCounts.json";
+// ===== STORAGE =====
+const FILE = "./messageCounts.json";
 
 function loadCounts() {
-  if (!fs.existsSync(COUNT_FILE)) return {};
-  return JSON.parse(fs.readFileSync(COUNT_FILE));
+  if (!fs.existsSync(FILE)) return {};
+  return JSON.parse(fs.readFileSync(FILE));
 }
 
 function saveCounts(data) {
-  fs.writeFileSync(COUNT_FILE, JSON.stringify(data, null, 2));
+  fs.writeFileSync(FILE, JSON.stringify(data, null, 2));
 }
 
 let messageCounts = loadCounts();
 
-// ================= READY =================
+// ===== READY =====
 client.once("ready", () => {
   console.log(`✅ Logged in as ${client.user.tag}`);
 });
 
-// ================= MESSAGE SYSTEM =================
+// ===== MESSAGE SYSTEM =====
 client.on("messageCreate", async (message) => {
   if (!message.guild || message.author.bot) return;
+
+  console.log("📩 Message from:", message.author.tag);
 
   const userId = message.author.id;
   const member = message.member;
@@ -64,16 +54,21 @@ client.on("messageCreate", async (message) => {
   messageCounts[userId] = count;
   saveCounts(messageCounts);
 
+  console.log(`${message.author.tag} -> ${count} messages`);
+
   // Remove role if upgraded
   if (member.roles.cache.has(UPGRADE_ROLE_ID)) {
     if (member.roles.cache.has(MESSAGE_ROLE_ID)) {
       await member.roles.remove(MESSAGE_ROLE_ID).catch(() => {});
+      console.log(`❌ Removed role from ${message.author.tag}`);
     }
     return;
   }
 
-  // Give role after 10 messages
+  // Give role at 10 messages
   if (count >= 10 && !member.roles.cache.has(MESSAGE_ROLE_ID)) {
+
+    console.log(`🎉 Giving role to ${message.author.tag}`);
 
     await member.roles.add(MESSAGE_ROLE_ID).catch(console.error);
 
@@ -91,9 +86,8 @@ client.on("messageCreate", async (message) => {
       .setThumbnail(role?.iconURL())
       .setTimestamp();
 
-    // ✅ PUBLIC MESSAGE + FORCED TAG
     await channel.send({
-      content: `<@${userId}>`,
+      content: `<@${userId}>`, // 🔥 force tag
       embeds: [embed],
       allowedMentions: {
         users: [userId],
@@ -103,7 +97,7 @@ client.on("messageCreate", async (message) => {
   }
 });
 
-// ================= AUTO REMOVE ROLE =================
+// ===== REMOVE ROLE IF UPGRADED =====
 client.on("guildMemberUpdate", async (oldMember, newMember) => {
   if (
     !oldMember.roles.cache.has(UPGRADE_ROLE_ID) &&
@@ -111,42 +105,15 @@ client.on("guildMemberUpdate", async (oldMember, newMember) => {
   ) {
     if (newMember.roles.cache.has(MESSAGE_ROLE_ID)) {
       await newMember.roles.remove(MESSAGE_ROLE_ID).catch(() => {});
+      console.log(`❌ Auto removed role from ${newMember.user.tag}`);
     }
   }
 });
 
-// ================= WELCOME =================
-client.on("guildMemberAdd", async (member) => {
-  try {
-    const channel = await client.channels.fetch(WELCOME_CHANNEL_ID);
-
-    const embed = new EmbedBuilder()
-      .setTitle("🌸 Welcome")
-      .setDescription(`Welcome ${member}`)
-      .setColor(0xff69b4);
-
-    await channel.send({
-      content: `${member}`,
-      embeds: [embed],
-    });
-  } catch (err) {
-    console.log(err);
-  }
-});
-
-// ================= SIMPLE COMMAND (optional) =================
-client.on("interactionCreate", async (interaction) => {
-  if (!interaction.isChatInputCommand()) return;
-
-  if (interaction.commandName === "ping") {
-    return interaction.reply("🏓 Pong!");
-  }
-});
-
-// ================= KEEP ALIVE =================
+// ===== KEEP ALIVE =====
 http.createServer((req, res) => {
   res.end("Bot running");
 }).listen(PORT);
 
-// ================= LOGIN =================
+// ===== LOGIN =====
 client.login(TOKEN);
