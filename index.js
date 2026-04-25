@@ -55,23 +55,16 @@ client.on("messageCreate", async (message) => {
 
   if (inviteRegex.test(message.content)) {
 
-    // ✅ Check whitelist
     const isWhitelisted = WHITELIST_INVITES.some(link =>
       message.content.toLowerCase().includes(link.toLowerCase())
     );
 
     if (isWhitelisted) return;
 
-    console.log(`🚫 Invite link detected from ${message.author.tag}`);
-
     try {
-      // Delete message
       await message.delete().catch(() => {});
-
-      // Timeout for 5 minutes
       await message.member.timeout(5 * 60 * 1000, "Posting Discord invite links");
 
-      // DM user
       await message.author.send({
         embeds: [
           new EmbedBuilder()
@@ -84,9 +77,8 @@ client.on("messageCreate", async (message) => {
             .setTimestamp(),
         ],
       }).catch(() => {});
-
     } catch (err) {
-      console.error("❌ Error handling invite link:", err);
+      console.error(err);
     }
 
     return;
@@ -97,66 +89,48 @@ client.on("messageCreate", async (message) => {
   const contentLower = message.content.toLowerCase();
 
   if (bannedWords.some(word => contentLower.includes(word))) {
-    console.log(`🚫 Banned word detected from ${message.author.tag}`);
-
     try {
-      // Delete message
       await message.delete().catch(() => {});
 
-      // Send embed + GIF
-      const embed = new EmbedBuilder()
-        .setDescription(`ew not that ho <@${message.author.id}>`)
-        .setColor(0xff69b4)
-        .setTimestamp();
-
-      await message.channel.send({
-        content: `<@${message.author.id}>`,
-        embeds: [embed],
-        files: [
-          "https://tenor.com/view/princessphobic-gif-19757314"
-        ],
+      const sentMsg = await message.channel.send({
+        content: `<@${message.author.id}> https://tenor.com/view/princessphobic-gif-19757314`,
         allowedMentions: {
           users: [message.author.id],
         },
       });
 
+      // ⏱ delete after 3 seconds
+      setTimeout(() => {
+        sentMsg.delete().catch(() => {});
+      }, 3000);
+
     } catch (err) {
-      console.error("❌ Error handling banned word:", err);
+      console.error(err);
     }
 
     return;
   }
-
-  console.log("📩 Message from:", message.author.tag);
 
   const userId = message.author.id;
   const member = message.member;
 
-  // Count messages
   const count = (messageCounts[userId] || 0) + 1;
   messageCounts[userId] = count;
   saveCounts(messageCounts);
 
-  console.log(`${message.author.tag} -> ${count} messages`);
-
-  // Remove role if upgraded
   if (member.roles.cache.has(UPGRADE_ROLE_ID)) {
     if (member.roles.cache.has(MESSAGE_ROLE_ID)) {
       await member.roles.remove(MESSAGE_ROLE_ID).catch(() => {});
-      console.log(`❌ Removed role from ${message.author.tag}`);
     }
     return;
   }
 
-  // Give role at 10 messages
   if (count >= 10 && !member.roles.cache.has(MESSAGE_ROLE_ID)) {
-
-    console.log(` Giving role to ${message.author.tag}`);
 
     await member.roles.add(MESSAGE_ROLE_ID).catch(console.error);
 
     const channel = message.guild.channels.cache.get(ANNOUNCE_CHANNEL_ID);
-    if (!channel) return console.log("❌ Channel not found");
+    if (!channel) return;
 
     const role = message.guild.roles.cache.get(MESSAGE_ROLE_ID);
 
@@ -188,7 +162,6 @@ client.on("guildMemberUpdate", async (oldMember, newMember) => {
   ) {
     if (newMember.roles.cache.has(MESSAGE_ROLE_ID)) {
       await newMember.roles.remove(MESSAGE_ROLE_ID).catch(() => {});
-      console.log(`❌ Auto removed role from ${newMember.user.tag}`);
     }
   }
 });
