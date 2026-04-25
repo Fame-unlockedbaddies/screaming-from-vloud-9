@@ -40,8 +40,8 @@ function saveCounts(data) {
 
 let messageCounts = loadCounts();
 
-// ===== ANTI DUPLICATE =====
-const cooldown = new Set();
+// ===== GLOBAL COOLDOWN (prevents double send) =====
+let lastTriggerTime = 0;
 
 // ===== READY =====
 client.once("ready", () => {
@@ -53,9 +53,6 @@ client.on("messageCreate", async (message) => {
   if (!message.guild || message.author.bot) return;
 
   const userId = message.author.id;
-
-  // prevent duplicate triggers
-  if (cooldown.has(userId)) return;
 
   // ===== BLOCK DISCORD INVITES =====
   const inviteRegex = /(discord\.gg|discord\.com\/invite|discordapp\.com\/invite)\/\S+/i;
@@ -90,26 +87,25 @@ client.on("messageCreate", async (message) => {
     return;
   }
 
-  // ===== BLOCK "BATTLEGROUND(S)" WORD =====
+  // ===== BLOCK WORD =====
   const bannedWords = ["battleground", "battlegrounds"];
   const contentLower = message.content.toLowerCase();
 
   if (bannedWords.some(word => contentLower.includes(word))) {
-    try {
-      cooldown.add(userId);
 
+    // 🧠 prevent double firing (Discord sometimes fires twice)
+    const now = Date.now();
+    if (now - lastTriggerTime < 1500) return;
+    lastTriggerTime = now;
+
+    try {
       await message.delete().catch(() => {});
 
-      // ✅ ONE CLEAN MESSAGE → Discord auto-embeds GIF
       const sentMsg = await message.channel.send({
         content: `<@${userId}> not that unkown game https://tenor.com/view/princessphobic-gif-19757314`,
         allowedMentions: { users: [userId] },
       });
 
-      // remove cooldown after short delay
-      setTimeout(() => cooldown.delete(userId), 3000);
-
-      // delete after 3 seconds
       setTimeout(() => {
         sentMsg.delete().catch(() => {});
       }, 3000);
