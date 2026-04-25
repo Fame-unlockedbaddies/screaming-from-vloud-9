@@ -40,8 +40,8 @@ function saveCounts(data) {
 
 let messageCounts = loadCounts();
 
-// ===== ANTI DUPLICATE =====
-let lastTrigger = 0;
+// ===== TRUE ANTI-DUPLICATE =====
+const handledMessages = new Set();
 
 // ===== READY =====
 client.once("ready", () => {
@@ -92,10 +92,12 @@ client.on("messageCreate", async (message) => {
 
   if (regex.test(message.content)) {
 
-    // prevent double trigger
-    const now = Date.now();
-    if (now - lastTrigger < 1000) return;
-    lastTrigger = now;
+    // ✅ prevent duplicate handling of same message
+    if (handledMessages.has(message.id)) return;
+    handledMessages.add(message.id);
+
+    // clean memory
+    setTimeout(() => handledMessages.delete(message.id), 5000);
 
     try {
       await message.delete().catch(() => {});
