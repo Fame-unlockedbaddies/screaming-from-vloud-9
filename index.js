@@ -40,9 +40,6 @@ function saveCounts(data) {
 
 let messageCounts = loadCounts();
 
-// ===== ANTI DUPLICATE CACHE =====
-const recentTriggers = new Set();
-
 // ===== READY =====
 client.once("ready", () => {
   console.log(`✅ Logged in as ${client.user.tag}`);
@@ -54,17 +51,10 @@ client.on("messageCreate", async (message) => {
 
   const userId = message.author.id;
 
-  // ===== PREVENT DOUBLE TRIGGER =====
-  const triggerKey = `${userId}-${message.content}`;
-  if (recentTriggers.has(triggerKey)) return;
-  recentTriggers.add(triggerKey);
-  setTimeout(() => recentTriggers.delete(triggerKey), 3000);
-
   // ===== BLOCK DISCORD INVITES =====
   const inviteRegex = /(discord\.gg|discord\.com\/invite|discordapp\.com\/invite)\/\S+/i;
 
   if (inviteRegex.test(message.content)) {
-
     const isWhitelisted = WHITELIST_INVITES.some(link =>
       message.content.toLowerCase().includes(link.toLowerCase())
     );
@@ -102,14 +92,14 @@ client.on("messageCreate", async (message) => {
     try {
       await message.delete().catch(() => {});
 
-      // SEND CLEAN MESSAGE (NO DUPLICATE, NO EMBED)
+      // ✅ SEND REAL GIF (NO LINK BUGS)
       const sentMsg = await message.channel.send({
-        content: `<@${userId}> not that unkown game https://tenor.com/view/princessphobic-gif-19757314`,
+        content: `<@${userId}> not that unkown game`,
+        files: [
+          "https://media.tenor.com/images/9b7c9c5bdf5c8b7b8f7d7c8d1e9b0c7c/tenor.gif"
+        ],
         allowedMentions: { users: [userId] },
       });
-
-      // 🚫 instantly remove embed preview (prevents double gif look)
-      await sentMsg.suppressEmbeds(true).catch(() => {});
 
       // ⏱ delete after 3 seconds
       setTimeout(() => {
@@ -123,7 +113,7 @@ client.on("messageCreate", async (message) => {
     return;
   }
 
-  // ===== NORMAL MESSAGE COUNT SYSTEM =====
+  // ===== MESSAGE COUNT SYSTEM =====
   const member = message.member;
   const count = (messageCounts[userId] || 0) + 1;
   messageCounts[userId] = count;
