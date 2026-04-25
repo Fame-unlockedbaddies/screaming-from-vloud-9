@@ -40,12 +40,13 @@ function saveCounts(data) {
 
 let messageCounts = loadCounts();
 
-// ===== TRUE ANTI-DUPLICATE =====
+// ===== STRONG ANTI-DUPLICATE =====
 const handledMessages = new Set();
+const userCooldown = new Map();
 
 // ===== READY =====
 client.once("ready", () => {
-  console.log(`✅ Logged in as ${client.user.tag}`);
+  console.log(`✅ Logged in as ${client.user.tag} at ${Date.now()}`);
 });
 
 // ===== MESSAGE SYSTEM =====
@@ -53,6 +54,17 @@ client.on("messageCreate", async (message) => {
   if (!message.guild || message.author.bot) return;
 
   const userId = message.author.id;
+
+  // ===== HARD DUPLICATE BLOCK =====
+  if (handledMessages.has(message.id)) return;
+  handledMessages.add(message.id);
+  setTimeout(() => handledMessages.delete(message.id), 5000);
+
+  // ===== USER COOLDOWN (extra safety) =====
+  const now = Date.now();
+  if (userCooldown.has(userId) && now - userCooldown.get(userId) < 1500) {
+    return;
+  }
 
   // ===== BLOCK DISCORD INVITES =====
   const inviteRegex = /(discord\.gg|discord\.com\/invite|discordapp\.com\/invite)\/\S+/i;
@@ -87,17 +99,13 @@ client.on("messageCreate", async (message) => {
     return;
   }
 
-  // ===== FIXED WORD DETECTION =====
+  // ===== WORD FILTER (FIXED) =====
   const regex = /\bbattlegrounds?\b/i;
 
   if (regex.test(message.content)) {
 
-    // ✅ prevent duplicate handling of same message
-    if (handledMessages.has(message.id)) return;
-    handledMessages.add(message.id);
-
-    // clean memory
-    setTimeout(() => handledMessages.delete(message.id), 5000);
+    // cooldown trigger
+    userCooldown.set(userId, now);
 
     try {
       await message.delete().catch(() => {});
