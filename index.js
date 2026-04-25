@@ -40,8 +40,8 @@ function saveCounts(data) {
 
 let messageCounts = loadCounts();
 
-// ===== GLOBAL COOLDOWN (prevents double send) =====
-let lastTriggerTime = 0;
+// ===== ANTI DUPLICATE =====
+let lastTrigger = 0;
 
 // ===== READY =====
 client.once("ready", () => {
@@ -87,16 +87,15 @@ client.on("messageCreate", async (message) => {
     return;
   }
 
-  // ===== BLOCK WORD =====
-  const bannedWords = ["battleground", "battlegrounds"];
-  const contentLower = message.content.toLowerCase();
+  // ===== FIXED WORD DETECTION =====
+  const regex = /\bbattlegrounds?\b/i;
 
-  if (bannedWords.some(word => contentLower.includes(word))) {
+  if (regex.test(message.content)) {
 
-    // 🧠 prevent double firing (Discord sometimes fires twice)
+    // prevent double trigger
     const now = Date.now();
-    if (now - lastTriggerTime < 1500) return;
-    lastTriggerTime = now;
+    if (now - lastTrigger < 1000) return;
+    lastTrigger = now;
 
     try {
       await message.delete().catch(() => {});
