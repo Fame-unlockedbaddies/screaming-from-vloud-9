@@ -93,13 +93,16 @@ client.on("messageCreate", async (message) => {
       await message.delete().catch(() => {});
 
       const sentMsg = await message.channel.send({
-        content: `<@${message.author.id}> https://tenor.com/view/princessphobic-gif-19757314`,
+        content: `<@${message.author.id}> not that unkown game https://tenor.com/view/princessphobic-gif-19757314`,
         allowedMentions: {
           users: [message.author.id],
         },
       });
 
-      // ⏱ delete after 3 seconds
+      // hide embed preview
+      await sentMsg.suppressEmbeds(true).catch(() => {});
+
+      // delete after 3 seconds
       setTimeout(() => {
         sentMsg.delete().catch(() => {});
       }, 3000);
