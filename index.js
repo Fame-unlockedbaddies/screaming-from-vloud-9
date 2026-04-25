@@ -10,6 +10,12 @@ const ANNOUNCE_CHANNEL_ID = "1448798824415101030";
 const MESSAGE_ROLE_ID = "1497255894096941076";
 const UPGRADE_ROLE_ID = "1448796463491584060";
 
+// ✅ WHITELIST YOUR INVITE(S)
+const WHITELIST_INVITES = [
+  "discord.gg/yourcode",
+  "discord.com/invite/yourcode"
+];
+
 // ===== CLIENT =====
 const client = new Client({
   intents: [
@@ -43,6 +49,48 @@ client.once("ready", () => {
 // ===== MESSAGE SYSTEM =====
 client.on("messageCreate", async (message) => {
   if (!message.guild || message.author.bot) return;
+
+  // ===== BLOCK DISCORD INVITES =====
+  const inviteRegex = /(discord\.gg|discord\.com\/invite|discordapp\.com\/invite)\/\S+/i;
+
+  if (inviteRegex.test(message.content)) {
+
+    // ✅ Check whitelist
+    const isWhitelisted = WHITELIST_INVITES.some(link =>
+      message.content.toLowerCase().includes(link.toLowerCase())
+    );
+
+    if (isWhitelisted) return;
+
+    console.log(`🚫 Invite link detected from ${message.author.tag}`);
+
+    try {
+      // Delete message
+      await message.delete().catch(() => {});
+
+      // Timeout for 5 minutes
+      await message.member.timeout(5 * 60 * 1000, "Posting Discord invite links");
+
+      // DM user
+      await message.author.send({
+        embeds: [
+          new EmbedBuilder()
+            .setTitle("🚫 Invite Link Blocked")
+            .setDescription(
+              `Your message in **${message.guild.name}** was removed because it contained a Discord invite link.\n\n` +
+              `⏱ You have been timed out for **5 minutes**.`
+            )
+            .setColor(0xff0000)
+            .setTimestamp(),
+        ],
+      }).catch(() => {});
+
+    } catch (err) {
+      console.error("❌ Error handling invite link:", err);
+    }
+
+    return;
+  }
 
   console.log("📩 Message from:", message.author.tag);
 
@@ -87,7 +135,7 @@ client.on("messageCreate", async (message) => {
       .setTimestamp();
 
     await channel.send({
-      content: `<@${userId}>`, // 🔥 force tag
+      content: `<@${userId}>`,
       embeds: [embed],
       allowedMentions: {
         users: [userId],
