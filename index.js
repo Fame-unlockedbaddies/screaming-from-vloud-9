@@ -92,6 +92,41 @@ client.on("messageCreate", async (message) => {
     return;
   }
 
+  // ===== BLOCK "BATTLEGROUND(S)" WORD =====
+  const bannedWords = ["battleground", "battlegrounds"];
+  const contentLower = message.content.toLowerCase();
+
+  if (bannedWords.some(word => contentLower.includes(word))) {
+    console.log(`🚫 Banned word detected from ${message.author.tag}`);
+
+    try {
+      // Delete message
+      await message.delete().catch(() => {});
+
+      // Send embed + GIF
+      const embed = new EmbedBuilder()
+        .setDescription(`ew not that ho <@${message.author.id}>`)
+        .setColor(0xff69b4)
+        .setTimestamp();
+
+      await message.channel.send({
+        content: `<@${message.author.id}>`,
+        embeds: [embed],
+        files: [
+          "https://tenor.com/view/princessphobic-gif-19757314"
+        ],
+        allowedMentions: {
+          users: [message.author.id],
+        },
+      });
+
+    } catch (err) {
+      console.error("❌ Error handling banned word:", err);
+    }
+
+    return;
+  }
+
   console.log("📩 Message from:", message.author.tag);
 
   const userId = message.author.id;
@@ -116,7 +151,7 @@ client.on("messageCreate", async (message) => {
   // Give role at 10 messages
   if (count >= 10 && !member.roles.cache.has(MESSAGE_ROLE_ID)) {
 
-    console.log(`🎉 Giving role to ${message.author.tag}`);
+    console.log(` Giving role to ${message.author.tag}`);
 
     await member.roles.add(MESSAGE_ROLE_ID).catch(console.error);
 
