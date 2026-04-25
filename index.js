@@ -10,7 +10,6 @@ const ANNOUNCE_CHANNEL_ID = "1448798824415101030";
 const MESSAGE_ROLE_ID = "1497255894096941076";
 const UPGRADE_ROLE_ID = "1448796463491584060";
 
-// ✅ WHITELIST YOUR INVITE(S)
 const WHITELIST_INVITES = [
   "discord.gg/yourcode",
   "discord.com/invite/yourcode"
@@ -41,6 +40,9 @@ function saveCounts(data) {
 
 let messageCounts = loadCounts();
 
+// ===== ANTI DUPLICATE CACHE =====
+const recentTriggers = new Set();
+
 // ===== READY =====
 client.once("ready", () => {
   console.log(`✅ Logged in as ${client.user.tag}`);
@@ -49,6 +51,14 @@ client.once("ready", () => {
 // ===== MESSAGE SYSTEM =====
 client.on("messageCreate", async (message) => {
   if (!message.guild || message.author.bot) return;
+
+  const userId = message.author.id;
+
+  // ===== PREVENT DOUBLE TRIGGER =====
+  const triggerKey = `${userId}-${message.content}`;
+  if (recentTriggers.has(triggerKey)) return;
+  recentTriggers.add(triggerKey);
+  setTimeout(() => recentTriggers.delete(triggerKey), 3000);
 
   // ===== BLOCK DISCORD INVITES =====
   const inviteRegex = /(discord\.gg|discord\.com\/invite|discordapp\.com\/invite)\/\S+/i;
@@ -92,17 +102,16 @@ client.on("messageCreate", async (message) => {
     try {
       await message.delete().catch(() => {});
 
+      // SEND CLEAN MESSAGE (NO DUPLICATE, NO EMBED)
       const sentMsg = await message.channel.send({
-        content: `<@${message.author.id}> not that unkown game https://tenor.com/view/princessphobic-gif-19757314`,
-        allowedMentions: {
-          users: [message.author.id],
-        },
+        content: `<@${userId}> not that unkown game https://tenor.com/view/princessphobic-gif-19757314`,
+        allowedMentions: { users: [userId] },
       });
 
-      // hide embed preview
+      // 🚫 instantly remove embed preview (prevents double gif look)
       await sentMsg.suppressEmbeds(true).catch(() => {});
 
-      // delete after 3 seconds
+      // ⏱ delete after 3 seconds
       setTimeout(() => {
         sentMsg.delete().catch(() => {});
       }, 3000);
@@ -114,9 +123,8 @@ client.on("messageCreate", async (message) => {
     return;
   }
 
-  const userId = message.author.id;
+  // ===== NORMAL MESSAGE COUNT SYSTEM =====
   const member = message.member;
-
   const count = (messageCounts[userId] || 0) + 1;
   messageCounts[userId] = count;
   saveCounts(messageCounts);
