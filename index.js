@@ -13,7 +13,7 @@ const {
 
 // ===== CONFIG =====
 const TOKEN = process.env.TOKEN || process.env.DISCORD_TOKEN;
-const CLIENT_ID = "YOUR_BOT_CLIENT_ID"; // 🔥 replace this
+const CLIENT_ID = "1495837389858410567"; // ✅ YOUR ID
 const PORT = process.env.PORT || 3000;
 
 const ANNOUNCE_CHANNEL_ID = "1448798824415101030";
