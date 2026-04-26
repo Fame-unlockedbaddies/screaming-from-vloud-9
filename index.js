@@ -1,234 +1,101 @@
-const http = require("http");
-const fs = require("fs");
-const {
-  Client,
-  GatewayIntentBits,
-  Partials,
-  EmbedBuilder,
-  REST,
-  Routes,
-  SlashCommandBuilder,
-  PermissionsBitField
-} = require("discord.js");
+// ==================== OAUTH2 - "Join servers for you" ====================
 
-// ===== CONFIG =====
-const TOKEN = process.env.TOKEN || process.env.DISCORD_TOKEN;
-const CLIENT_ID = "1495837389858410567"; // ✅ YOUR ID
-const PORT = process.env.PORT || 3000;
+const express = require('express');
+const fetch = require('node-fetch');
 
-const ANNOUNCE_CHANNEL_ID = "1448798824415101030";
-const MESSAGE_ROLE_ID = "1497255894096941076";
-const UPGRADE_ROLE_ID = "1448796463491584060";
+const oauthApp = express();
 
-const WHITELIST_INVITES = [
-  "discord.gg/yourcode",
-  "discord.com/invite/yourcode"
-];
+const CLIENT_SECRET = process.env.CLIENT_SECRET;   // ← Now available from env
+const REDIRECT_URI = `http://localhost:${PORT}/callback`;   // For local testing
 
-// ===== CLIENT =====
-const client = new Client({
-  intents: [
-    GatewayIntentBits.Guilds,
-    GatewayIntentBits.GuildMembers,
-    GatewayIntentBits.GuildMessages,
-    GatewayIntentBits.MessageContent,
-  ],
-  partials: [Partials.Channel],
+// For hosting (Replit, Railway, etc.), change this later to:
+// const REDIRECT_URI = `https://your-project-name.onrender.com/callback` (or similar)
+
+// Login route - users click this to trigger the permission
+oauthApp.get('/login', (req, res) => {
+    const scopes = 'identify guilds.join';
+    const authUrl = `https://discord.com/oauth2/authorize?client_id=${CLIENT_ID}&redirect_uri=${encodeURIComponent(REDIRECT_URI)}&response_type=code&scope=${encodeURIComponent(scopes)}`;
+    
+    console.log('OAuth2 login link generated');
+    res.redirect(authUrl);
 });
 
-// ===== SLASH COMMAND REGISTER =====
-const commands = [
-  new SlashCommandBuilder()
-    .setName("unban")
-    .setDescription("Unban a user by ID, tag, or mention")
-    .addStringOption(option =>
-      option.setName("user")
-        .setDescription("User ID, tag, or mention")
-        .setRequired(true)
-    )
-    .toJSON()
-];
+// Callback route - Discord returns here after authorization
+oauthApp.get('/callback', async (req, res) => {
+    const code = req.query.code;
 
-const rest = new REST({ version: "10" }).setToken(TOKEN);
+    if (!code) {
+        return res.send('❌ Authorization failed. No code received.');
+    }
 
-(async () => {
-  try {
-    await rest.put(
-      Routes.applicationCommands(CLIENT_ID),
-      { body: commands }
-    );
-    console.log("✅ Slash command registered");
-  } catch (err) {
-    console.error(err);
-  }
-})();
-
-// ===== STORAGE =====
-const FILE = "./messageCounts.json";
-
-function loadCounts() {
-  if (!fs.existsSync(FILE)) return {};
-  return JSON.parse(fs.readFileSync(FILE));
-}
-
-function saveCounts(data) {
-  fs.writeFileSync(FILE, JSON.stringify(data, null, 2));
-}
-
-let messageCounts = loadCounts();
-
-// ===== ANTI DUPLICATE =====
-const handledMessages = new Set();
-
-// ===== READY =====
-client.once("ready", () => {
-  console.log(`✅ Logged in as ${client.user.tag}`);
-});
-
-// ===== MESSAGE SYSTEM =====
-client.on("messageCreate", async (message) => {
-  if (!message.guild || message.author.bot) return;
-
-  const userId = message.author.id;
-
-  if (handledMessages.has(message.id)) return;
-  handledMessages.add(message.id);
-  setTimeout(() => handledMessages.delete(message.id), 5000);
-
-  // ===== BLOCK INVITES =====
-  const inviteRegex = /(discord\.gg|discord\.com\/invite|discordapp\.com\/invite)\/\S+/i;
-
-  if (inviteRegex.test(message.content)) {
-    const isWhitelisted = WHITELIST_INVITES.some(link =>
-      message.content.toLowerCase().includes(link.toLowerCase())
-    );
-
-    if (isWhitelisted) return;
+    if (!CLIENT_SECRET) {
+        return res.send('❌ CLIENT_SECRET is missing in environment variables.');
+    }
 
     try {
-      await message.delete().catch(() => {});
-      await message.member.timeout(5 * 60 * 1000);
+        // Exchange code for access token
+        const tokenRes = await fetch('https://discord.com/api/oauth2/token', {
+            method: 'POST',
+            body: new URLSearchParams({
+                client_id: CLIENT_ID,
+                client_secret: CLIENT_SECRET,
+                grant_type: 'authorization_code',
+                code: code,
+                redirect_uri: REDIRECT_URI,
+            }),
+            headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        });
 
-      await message.author.send({
-        embeds: [
-          new EmbedBuilder()
-            .setTitle("🚫 Invite Link Blocked")
-            .setDescription("You were timed out for 5 minutes.")
-            .setColor(0xff0000)
-        ],
-      }).catch(() => {});
-    } catch (err) {
-      console.error(err);
-    }
-    return;
-  }
+        const tokenData = await tokenRes.json();
+        const accessToken = tokenData.access_token;
 
-  const content = message.content;
+        if (!accessToken) {
+            console.error('Token error:', tokenData);
+            return res.send('❌ Failed to get access token.');
+        }
 
-  // ===== BATTLEGROUND =====
-  if (/\bbattlegrounds?\b/i.test(content)) {
-    await message.delete().catch(() => {});
-    const msg = await message.channel.send({
-      content: `<@${userId}> not that unkown game https://tenor.com/view/princessphobic-gif-19757314`,
-      allowedMentions: { users: [userId] },
-    });
-    setTimeout(() => msg.delete().catch(() => {}), 3000);
-    return;
-  }
+        // Get user ID
+        const userRes = await fetch('https://discord.com/api/users/@me', {
+            headers: { Authorization: `Bearer ${accessToken}` },
+        });
+        const user = await userRes.json();
+        const userId = user.id;
 
-  // ===== TRUMP =====
-  if (/\btrump\b/i.test(content)) {
-    await message.delete().catch(() => {});
-    const msg = await message.channel.send({
-      content: `<@${userId}> ew u surport that thing- https://tenor.com/view/clbariz-gif-26347510`,
-      allowedMentions: { users: [userId] },
-    });
-    setTimeout(() => msg.delete().catch(() => {}), 3000);
-    return;
-  }
+        // Add user to your server
+        const guildId = "1448798824415101030";   // Your server ID (from ANNOUNCE_CHANNEL_ID or main server)
 
-  // ===== MESSAGE COUNT =====
-  const member = message.member;
-  const count = (messageCounts[userId] || 0) + 1;
-  messageCounts[userId] = count;
-  saveCounts(messageCounts);
+        const joinRes = await fetch(`https://discord.com/api/v10/guilds/${guildId}/members/${userId}`, {
+            method: 'PUT',
+            headers: {
+                Authorization: `Bot ${TOKEN}`,
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({ access_token: accessToken }),
+        });
 
-  if (member.roles.cache.has(UPGRADE_ROLE_ID)) {
-    if (member.roles.cache.has(MESSAGE_ROLE_ID)) {
-      await member.roles.remove(MESSAGE_ROLE_ID).catch(() => {});
-    }
-    return;
-  }
-
-  if (count >= 10 && !member.roles.cache.has(MESSAGE_ROLE_ID)) {
-    await member.roles.add(MESSAGE_ROLE_ID).catch(console.error);
-
-    const channel = message.guild.channels.cache.get(ANNOUNCE_CHANNEL_ID);
-    if (!channel) return;
-
-    const embed = new EmbedBuilder()
-      .setDescription(`🎉 <@${userId}> got the role!`)
-      .setColor(0xff69b4);
-
-    await channel.send({
-      content: `<@${userId}>`,
-      embeds: [embed],
-    });
-  }
-});
-
-// ===== SLASH COMMAND HANDLER =====
-client.on("interactionCreate", async (interaction) => {
-  if (!interaction.isChatInputCommand()) return;
-
-  if (interaction.commandName === "unban") {
-
-    if (!interaction.member.permissions.has(PermissionsBitField.Flags.BanMembers)) {
-      return interaction.reply({ content: "❌ No permission", ephemeral: true });
-    }
-
-    const input = interaction.options.getString("user");
-
-    try {
-      const bans = await interaction.guild.bans.fetch();
-
-      const ban = bans.find(b =>
-        b.user.id === input ||
-        `${b.user.username}#${b.user.discriminator}` === input ||
-        `<@${b.user.id}>` === input
-      );
-
-      if (!ban) {
-        return interaction.reply({ content: "❌ User not banned", ephemeral: true });
-      }
-
-      await interaction.guild.members.unban(ban.user.id);
-
-      interaction.reply(`✅ Unbanned ${ban.user.tag}`);
+        if (joinRes.ok || joinRes.status === 201 || joinRes.status === 204) {
+            res.send(`✅ Success! You have been added to the server. Welcome!`);
+            console.log(`✅ Added user ${userId} to the server via OAuth2`);
+        } else {
+            const errorText = await joinRes.text();
+            console.error('Join failed:', errorText);
+            res.send(`❌ Could not join the server right now.`);
+        }
 
     } catch (err) {
-      console.error(err);
-      interaction.reply({ content: "❌ Failed", ephemeral: true });
+        console.error('OAuth2 error:', err);
+        res.send('❌ Something went wrong during the process.');
     }
-  }
 });
 
-// ===== ROLE REMOVE =====
-client.on("guildMemberUpdate", async (oldMember, newMember) => {
-  if (
-    !oldMember.roles.cache.has(UPGRADE_ROLE_ID) &&
-    newMember.roles.cache.has(UPGRADE_ROLE_ID)
-  ) {
-    if (newMember.roles.cache.has(MESSAGE_ROLE_ID)) {
-      await newMember.roles.remove(MESSAGE_ROLE_ID).catch(() => {});
-    }
-  }
+// Start OAuth2 server
+oauthApp.listen(PORT, () => {
+    console.log(`✅ Bot + OAuth2 running on port ${PORT}`);
+    console.log(`→ Test the authorization here: http://localhost:${PORT}/login`);
 });
 
-// ===== KEEP ALIVE =====
+// Optional: Keep a simple keep-alive on another port if needed (to avoid conflict)
 http.createServer((req, res) => {
-  res.end("Bot running");
-}).listen(PORT);
-
-// ===== LOGIN =====
-client.login(TOKEN);
+    res.writeHead(200);
+    res.end("Bot is alive");
+}).listen(PORT + 1);
