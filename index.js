@@ -1,9 +1,19 @@
 const http = require("http");
 const fs = require("fs");
-const { Client, GatewayIntentBits, Partials, EmbedBuilder } = require("discord.js");
+const {
+  Client,
+  GatewayIntentBits,
+  Partials,
+  EmbedBuilder,
+  REST,
+  Routes,
+  SlashCommandBuilder,
+  PermissionsBitField
+} = require("discord.js");
 
 // ===== CONFIG =====
 const TOKEN = process.env.TOKEN || process.env.DISCORD_TOKEN;
+const CLIENT_ID = "YOUR_BOT_CLIENT_ID"; // 🔥 replace this
 const PORT = process.env.PORT || 3000;
 
 const ANNOUNCE_CHANNEL_ID = "1448798824415101030";
@@ -26,6 +36,33 @@ const client = new Client({
   partials: [Partials.Channel],
 });
 
+// ===== SLASH COMMAND REGISTER =====
+const commands = [
+  new SlashCommandBuilder()
+    .setName("unban")
+    .setDescription("Unban a user by ID, tag, or mention")
+    .addStringOption(option =>
+      option.setName("user")
+        .setDescription("User ID, tag, or mention")
+        .setRequired(true)
+    )
+    .toJSON()
+];
+
+const rest = new REST({ version: "10" }).setToken(TOKEN);
+
+(async () => {
+  try {
+    await rest.put(
+      Routes.applicationCommands(CLIENT_ID),
+      { body: commands }
+    );
+    console.log("✅ Slash command registered");
+  } catch (err) {
+    console.error(err);
+  }
+})();
+
 // ===== STORAGE =====
 const FILE = "./messageCounts.json";
 
@@ -45,7 +82,7 @@ const handledMessages = new Set();
 
 // ===== READY =====
 client.once("ready", () => {
-  console.log(`✅ Logged in as ${client.user.tag} at ${Date.now()}`);
+  console.log(`✅ Logged in as ${client.user.tag}`);
 });
 
 // ===== MESSAGE SYSTEM =====
@@ -54,12 +91,11 @@ client.on("messageCreate", async (message) => {
 
   const userId = message.author.id;
 
-  // prevent duplicate handling of same message
   if (handledMessages.has(message.id)) return;
   handledMessages.add(message.id);
   setTimeout(() => handledMessages.delete(message.id), 5000);
 
-  // ===== BLOCK DISCORD INVITES =====
+  // ===== BLOCK INVITES =====
   const inviteRegex = /(discord\.gg|discord\.com\/invite|discordapp\.com\/invite)\/\S+/i;
 
   if (inviteRegex.test(message.content)) {
@@ -71,76 +107,47 @@ client.on("messageCreate", async (message) => {
 
     try {
       await message.delete().catch(() => {});
-      await message.member.timeout(5 * 60 * 1000, "Posting Discord invite links");
+      await message.member.timeout(5 * 60 * 1000);
 
       await message.author.send({
         embeds: [
           new EmbedBuilder()
             .setTitle("🚫 Invite Link Blocked")
-            .setDescription(
-              `Your message in **${message.guild.name}** was removed because it contained a Discord invite link.\n\n` +
-              `⏱ You have been timed out for **5 minutes**.`
-            )
+            .setDescription("You were timed out for 5 minutes.")
             .setColor(0xff0000)
-            .setTimestamp(),
         ],
       }).catch(() => {});
     } catch (err) {
       console.error(err);
     }
-
     return;
   }
 
   const content = message.content;
 
-  // ===== BATTLEGROUND FILTER =====
-  const battlegroundRegex = /\bbattlegrounds?\b/i;
-
-  if (battlegroundRegex.test(content)) {
-    try {
-      await message.delete().catch(() => {});
-
-      const sentMsg = await message.channel.send({
-        content: `<@${userId}> not that unkown game https://tenor.com/view/princessphobic-gif-19757314`,
-        allowedMentions: { users: [userId] },
-      });
-
-      setTimeout(() => {
-        sentMsg.delete().catch(() => {});
-      }, 3000);
-
-    } catch (err) {
-      console.error(err);
-    }
-
+  // ===== BATTLEGROUND =====
+  if (/\bbattlegrounds?\b/i.test(content)) {
+    await message.delete().catch(() => {});
+    const msg = await message.channel.send({
+      content: `<@${userId}> not that unkown game https://tenor.com/view/princessphobic-gif-19757314`,
+      allowedMentions: { users: [userId] },
+    });
+    setTimeout(() => msg.delete().catch(() => {}), 3000);
     return;
   }
 
-  // ===== TRUMP FILTER =====
-  const trumpRegex = /\btrump\b/i;
-
-  if (trumpRegex.test(content)) {
-    try {
-      await message.delete().catch(() => {});
-
-      const sentMsg = await message.channel.send({
-        content: `<@${userId}> ew u surport that thing- https://tenor.com/view/clbariz-gif-26347510`,
-        allowedMentions: { users: [userId] },
-      });
-
-      setTimeout(() => {
-        sentMsg.delete().catch(() => {});
-      }, 3000);
-
-    } catch (err) {
-      console.error(err);
-    }
-
+  // ===== TRUMP =====
+  if (/\btrump\b/i.test(content)) {
+    await message.delete().catch(() => {});
+    const msg = await message.channel.send({
+      content: `<@${userId}> ew u surport that thing- https://tenor.com/view/clbariz-gif-26347510`,
+      allowedMentions: { users: [userId] },
+    });
+    setTimeout(() => msg.delete().catch(() => {}), 3000);
     return;
   }
 
-  // ===== MESSAGE COUNT SYSTEM =====
+  // ===== MESSAGE COUNT =====
   const member = message.member;
   const count = (messageCounts[userId] || 0) + 1;
   messageCounts[userId] = count;
@@ -154,35 +161,59 @@ client.on("messageCreate", async (message) => {
   }
 
   if (count >= 10 && !member.roles.cache.has(MESSAGE_ROLE_ID)) {
-
     await member.roles.add(MESSAGE_ROLE_ID).catch(console.error);
 
     const channel = message.guild.channels.cache.get(ANNOUNCE_CHANNEL_ID);
     if (!channel) return;
 
-    const role = message.guild.roles.cache.get(MESSAGE_ROLE_ID);
-
     const embed = new EmbedBuilder()
-      .setDescription(
-        `🎉 <@${userId}> you have received this role <@&${MESSAGE_ROLE_ID}>\n` +
-        `You have received the Fame Newgen role!`
-      )
-      .setColor(0xff69b4)
-      .setThumbnail(role?.iconURL())
-      .setTimestamp();
+      .setDescription(`🎉 <@${userId}> got the role!`)
+      .setColor(0xff69b4);
 
     await channel.send({
       content: `<@${userId}>`,
       embeds: [embed],
-      allowedMentions: {
-        users: [userId],
-        roles: [MESSAGE_ROLE_ID],
-      },
     });
   }
 });
 
-// ===== REMOVE ROLE IF UPGRADED =====
+// ===== SLASH COMMAND HANDLER =====
+client.on("interactionCreate", async (interaction) => {
+  if (!interaction.isChatInputCommand()) return;
+
+  if (interaction.commandName === "unban") {
+
+    if (!interaction.member.permissions.has(PermissionsBitField.Flags.BanMembers)) {
+      return interaction.reply({ content: "❌ No permission", ephemeral: true });
+    }
+
+    const input = interaction.options.getString("user");
+
+    try {
+      const bans = await interaction.guild.bans.fetch();
+
+      const ban = bans.find(b =>
+        b.user.id === input ||
+        `${b.user.username}#${b.user.discriminator}` === input ||
+        `<@${b.user.id}>` === input
+      );
+
+      if (!ban) {
+        return interaction.reply({ content: "❌ User not banned", ephemeral: true });
+      }
+
+      await interaction.guild.members.unban(ban.user.id);
+
+      interaction.reply(`✅ Unbanned ${ban.user.tag}`);
+
+    } catch (err) {
+      console.error(err);
+      interaction.reply({ content: "❌ Failed", ephemeral: true });
+    }
+  }
+});
+
+// ===== ROLE REMOVE =====
 client.on("guildMemberUpdate", async (oldMember, newMember) => {
   if (
     !oldMember.roles.cache.has(UPGRADE_ROLE_ID) &&
