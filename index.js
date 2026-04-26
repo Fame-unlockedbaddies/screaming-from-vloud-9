@@ -40,9 +40,8 @@ function saveCounts(data) {
 
 let messageCounts = loadCounts();
 
-// ===== STRONG ANTI-DUPLICATE =====
+// ===== ANTI DUPLICATE =====
 const handledMessages = new Set();
-const userCooldown = new Map();
 
 // ===== READY =====
 client.once("ready", () => {
@@ -55,16 +54,10 @@ client.on("messageCreate", async (message) => {
 
   const userId = message.author.id;
 
-  // ===== HARD DUPLICATE BLOCK =====
+  // prevent duplicate handling of same message
   if (handledMessages.has(message.id)) return;
   handledMessages.add(message.id);
   setTimeout(() => handledMessages.delete(message.id), 5000);
-
-  // ===== USER COOLDOWN (extra safety) =====
-  const now = Date.now();
-  if (userCooldown.has(userId) && now - userCooldown.get(userId) < 1500) {
-    return;
-  }
 
   // ===== BLOCK DISCORD INVITES =====
   const inviteRegex = /(discord\.gg|discord\.com\/invite|discordapp\.com\/invite)\/\S+/i;
@@ -99,19 +92,40 @@ client.on("messageCreate", async (message) => {
     return;
   }
 
-  // ===== WORD FILTER (FIXED) =====
-  const regex = /\bbattlegrounds?\b/i;
+  const content = message.content;
 
-  if (regex.test(message.content)) {
+  // ===== BATTLEGROUND FILTER =====
+  const battlegroundRegex = /\bbattlegrounds?\b/i;
 
-    // cooldown trigger
-    userCooldown.set(userId, now);
-
+  if (battlegroundRegex.test(content)) {
     try {
       await message.delete().catch(() => {});
 
       const sentMsg = await message.channel.send({
         content: `<@${userId}> not that unkown game https://tenor.com/view/princessphobic-gif-19757314`,
+        allowedMentions: { users: [userId] },
+      });
+
+      setTimeout(() => {
+        sentMsg.delete().catch(() => {});
+      }, 3000);
+
+    } catch (err) {
+      console.error(err);
+    }
+
+    return;
+  }
+
+  // ===== TRUMP FILTER =====
+  const trumpRegex = /\btrump\b/i;
+
+  if (trumpRegex.test(content)) {
+    try {
+      await message.delete().catch(() => {});
+
+      const sentMsg = await message.channel.send({
+        content: `<@${userId}> ew u surport that thing- https://tenor.com/view/clbariz-gif-26347510`,
         allowedMentions: { users: [userId] },
       });
 
