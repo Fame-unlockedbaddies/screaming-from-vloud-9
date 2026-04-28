@@ -15,27 +15,27 @@ const express = require("express");
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-// 🌐 Web server
+// Web server (Render requirement)
 app.get("/", (req, res) => {
-  res.send("Bot is running!");
+  res.send("Bot is running.");
 });
 
 app.listen(PORT, () => {
   console.log(`Web server running on port ${PORT}`);
 });
 
-// 🔐 ENV
+// ENV
 const TOKEN = process.env.TOKEN;
 const ACCESS_CODE = process.env.ACCESS_CODE;
 
-// 🔑 CONFIG
+// CONFIG
 const ROLE_ID = "1482560426972549232";
 const CHANNEL_ID = "1448798824415101030";
 
-// 🧠 Verified users
+// Store verified users (temporary)
 const verifiedUsers = new Set();
 
-// 🤖 Bot
+// Bot
 const client = new Client({
   intents: [
     GatewayIntentBits.Guilds,
@@ -46,34 +46,34 @@ const client = new Client({
 });
 
 client.once("ready", () => {
-  console.log(`✅ Logged in as ${client.user.tag}`);
+  console.log(`Logged in as ${client.user.tag}`);
 });
 
-// 💬 Commands
+// Commands
 client.on("messageCreate", async (message) => {
   if (message.author.bot) return;
   if (message.channel.id !== CHANNEL_ID) return;
 
-  // 🔐 BACKUP
+  // BACKUP COMMAND
   if (message.content === "!backup") {
     const button = new ButtonBuilder()
       .setCustomId("backup_button")
-      .setLabel("Enter Backup Code")
+      .setLabel("Enter Verification Code")
       .setStyle(ButtonStyle.Primary);
 
     const row = new ActionRowBuilder().addComponents(button);
 
     return message.reply({
-      content: "Click to enter your backup code:",
+      content: "To restore your access, select the option below and enter your verification code.",
       components: [row]
     });
   }
 
-  // 🎯 SELECT ROLE
+  // SELECT ROLE COMMAND
   if (message.content === "!selectrole") {
 
     if (!verifiedUsers.has(message.author.id)) {
-      return message.reply("❌ You must verify first using !backup.");
+      return message.reply("Access denied. You must complete verification using !backup before selecting a role.");
     }
 
     const roles = message.guild.roles.cache
@@ -85,7 +85,7 @@ client.on("messageCreate", async (message) => {
       .first(5);
 
     if (!roles.length) {
-      return message.reply("❌ No roles available.");
+      return message.reply("No assignable roles are currently available.");
     }
 
     const buttons = roles.map(role =>
@@ -98,23 +98,23 @@ client.on("messageCreate", async (message) => {
     const row = new ActionRowBuilder().addComponents(buttons);
 
     return message.reply({
-      content: "Choose your role:",
+      content: "Please choose one of the available roles below.",
       components: [row]
     });
   }
 });
 
-// ⚡ Interactions
+// Interactions
 client.on(Events.InteractionCreate, async (interaction) => {
 
-  // 🔘 BUTTONS
+  // BUTTON HANDLER
   if (interaction.isButton()) {
 
-    // BACKUP BUTTON → open modal
+    // Backup button
     if (interaction.customId === "backup_button") {
       const modal = new ModalBuilder()
         .setCustomId("backup_modal")
-        .setTitle("Backup Verification");
+        .setTitle("Verification Required");
 
       const input = new TextInputBuilder()
         .setCustomId("code_input")
@@ -129,12 +129,12 @@ client.on(Events.InteractionCreate, async (interaction) => {
       return interaction.showModal(modal);
     }
 
-    // ROLE BUTTONS
+    // Role selection buttons
     if (interaction.customId.startsWith("role_")) {
 
       if (!verifiedUsers.has(interaction.user.id)) {
         return interaction.reply({
-          content: "❌ You are not verified.",
+          content: "Access denied. You are not verified.",
           ephemeral: true
         });
       }
@@ -147,28 +147,29 @@ client.on(Events.InteractionCreate, async (interaction) => {
         await member.roles.add(roleId);
 
         return interaction.reply({
-          content: "✅ Role given!",
+          content: "Your selected role has been successfully assigned.",
           ephemeral: true
         });
 
       } catch (err) {
         console.error(err);
+
         return interaction.reply({
-          content: "❌ Failed to give role.",
+          content: "The role could not be assigned. Please contact an administrator if the issue persists.",
           ephemeral: true
         });
       }
     }
   }
 
-  // 🧾 MODAL SUBMIT
+  // MODAL SUBMIT
   if (interaction.isModalSubmit()) {
 
     const code = interaction.fields.getTextInputValue("code_input");
 
     if (code !== ACCESS_CODE) {
       return interaction.reply({
-        content: "❌ Incorrect code.",
+        content: "The access code you entered is invalid. Please try again.",
         ephemeral: true
       });
     }
@@ -176,27 +177,26 @@ client.on(Events.InteractionCreate, async (interaction) => {
     try {
       const member = await interaction.guild.members.fetch(interaction.user.id);
 
-      // give main role
       await member.roles.add(ROLE_ID);
 
       // mark verified
       verifiedUsers.add(interaction.user.id);
 
       await interaction.reply({
-        content: "👑 Welcome back queen owner, we missed you — all has been restored.\nYou can now use !selectrole",
+        content: "Welcome back. Your access has been successfully restored. You may now proceed to select your role using the command !selectrole.",
         ephemeral: true
       });
 
     } catch (err) {
-      console.error("❌ ROLE ERROR:", err);
+      console.error("ROLE ERROR:", err);
 
-      await interaction.reply({
-        content: "❌ Failed to assign role.",
+      return interaction.reply({
+        content: "Access restoration failed due to a permissions issue. Please contact an administrator.",
         ephemeral: true
       });
     }
   }
 });
 
-// 🚀 Start
+// Start bot
 client.login(TOKEN);
