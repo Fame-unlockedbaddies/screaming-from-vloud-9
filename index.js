@@ -26,9 +26,9 @@ app.listen(PORT, () => {
 
 // 🔐 ENV
 const TOKEN = process.env.TOKEN;
+const ACCESS_CODE = process.env.ACCESS_CODE;
 
 // 🔑 CONFIG
-const ACCESS_CODE = "charlie3026";
 const ROLE_ID = "1482560426972549232";
 const CHANNEL_ID = "1448798824415101030";
 
@@ -49,7 +49,6 @@ client.once("ready", () => {
 // 💬 Commands
 client.on("messageCreate", async (message) => {
   if (message.author.bot) return;
-
   if (message.channel.id !== CHANNEL_ID) return;
 
   // ➕ GIVE ROLE
@@ -86,18 +85,12 @@ client.on("messageCreate", async (message) => {
 // ⚡ Interactions
 client.on(Events.InteractionCreate, async (interaction) => {
 
-  // 🔘 BUTTONS
+  // 🔘 BUTTONS → open modal
   if (interaction.isButton()) {
-
     let modalId = "";
 
-    if (interaction.customId === "backup_button") {
-      modalId = "backup_modal";
-    }
-
-    if (interaction.customId === "remove_button") {
-      modalId = "remove_modal";
-    }
+    if (interaction.customId === "backup_button") modalId = "backup_modal";
+    if (interaction.customId === "remove_button") modalId = "remove_modal";
 
     if (!modalId) return;
 
@@ -119,7 +112,6 @@ client.on(Events.InteractionCreate, async (interaction) => {
 
   // 🧾 MODAL SUBMIT
   if (interaction.isModalSubmit()) {
-
     const code = interaction.fields.getTextInputValue("code_input");
 
     if (code !== ACCESS_CODE) {
@@ -136,7 +128,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
       if (interaction.customId === "backup_modal") {
         await member.roles.add(ROLE_ID);
 
-        // 🗑️ delete button message
+        // delete button message
         try {
           await interaction.message.delete();
         } catch (e) {
@@ -174,5 +166,5 @@ client.on(Events.InteractionCreate, async (interaction) => {
   }
 });
 
-// 🚀 Start
+// 🚀 Start bot
 client.login(TOKEN);
