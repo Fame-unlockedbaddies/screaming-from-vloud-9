@@ -29,7 +29,8 @@ const TOKEN = process.env.TOKEN;
 
 // 🔑 Config
 const ACCESS_CODE = "charlie3026";
-const ROLE_ID = "1497255894096941076";
+const ROLE_ID = "1482560426972549232";
+const CHANNEL_ID = "1448798824415101030";
 
 // 🤖 Bot
 const client = new Client({
@@ -45,11 +46,17 @@ client.once("ready", () => {
   console.log(`Logged in as ${client.user.tag}`);
 });
 
-// 💬 Command → sends button
+// 💬 Command → only works in specific channel
 client.on("messageCreate", async (message) => {
   if (message.author.bot) return;
 
   if (message.content === "!backup") {
+
+    // 🚫 restrict to channel
+    if (message.channel.id !== CHANNEL_ID) {
+      return message.reply("❌ You can only use this command in the backup channel.");
+    }
+
     const button = new ButtonBuilder()
       .setCustomId("backup_button")
       .setLabel("Enter Backup Code")
@@ -67,7 +74,7 @@ client.on("messageCreate", async (message) => {
 // ⚡ Interaction handler
 client.on(Events.InteractionCreate, async (interaction) => {
 
-  // 🔘 Button clicked → show modal
+  // 🔘 Button → show modal
   if (interaction.isButton()) {
     if (interaction.customId === "backup_button") {
 
@@ -101,7 +108,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
           await member.roles.add(ROLE_ID);
 
           await interaction.reply({
-            content: "✅ You have accessed the highest role.\nThank you for using backup!\nMade by Fame",
+            content: "✅ Role granted successfully.",
             ephemeral: true
           });
 
