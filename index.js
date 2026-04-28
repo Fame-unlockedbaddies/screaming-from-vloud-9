@@ -1,96 +1,127 @@
 const {
   Client,
   GatewayIntentBits,
-  ActionRowBuilder,
-  ButtonBuilder,
-  ButtonStyle,
-  ModalBuilder,
-  TextInputBuilder,
-  TextInputStyle,
-  Events
+  REST,
+  Routes,
+  SlashCommandBuilder
 } = require("discord.js");
 
 const express = require("express");
+
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-// Web server (Render requirement)
-app.get("/", (req, res) => res.send("Bot is running!"));
-app.listen(PORT, () => console.log(`Web server running on ${PORT}`));
+// 🌐 Web server (required for Render Web Service)
+app.get("/", (req, res) => {
+  res.send("Bot is running!");
+});
 
+app.listen(PORT, () => {
+  console.log(`Web server running on port ${PORT}`);
+});
+
+// 🔐 ENV VARIABLES
+const TOKEN = process.env.TOKEN;
+const CLIENT_ID = process.env.CLIENT_ID;
+const GUILD_ID = process.env.GUILD_ID; // set this in Render too
+
+// 🤖 Create bot
 const client = new Client({
   intents: [
     GatewayIntentBits.Guilds,
     GatewayIntentBits.GuildMessages,
-    GatewayIntentBits.MessageContent
-  ]
+    GatewayIntentBits.MessageContent,
+    GatewayIntentBits.DirectMessages
+  ],
+  partials: ["CHANNEL"]
 });
 
-const SECRET_CODE = "1234"; // change this
+// 🔑 Backup code (change this)
+const BACKUP_CODE = "12345";
 
+// 📌 Slash command definition
+const commands = [
+  new SlashCommandBuilder()
+    .setName("findroleid")
+    .setDescription("Get the ID of a role")
+    .addRoleOption(option =>
+      option.setName("role")
+        .setDescription("Select a role")
+        .setRequired(true)
+    )
+    .toJSON()
+];
+
+// 📡 Register slash command
+const rest = new REST({ version: "10" }).setToken(TOKEN);
+
+(async () => {
+  try {
+    console.log("Registering slash command...");
+
+    await rest.put(
+      Routes.applicationGuildCommands(CLIENT_ID, GUILD_ID),
+      { body: commands }
+    );
+
+    console.log("Slash command registered!");
+  } catch (error) {
+    console.error(error);
+  }
+})();
+
+// ✅ Bot ready
 client.once("ready", () => {
   console.log(`Logged in as ${client.user.tag}`);
 });
 
-// Step 1: User types !backup
+// 💬 Message commands
 client.on("messageCreate", async (message) => {
   if (message.author.bot) return;
 
+  // 🔐 !backup command
   if (message.content === "!backup") {
-    const button = new ButtonBuilder()
-      .setCustomId("open_backup_form")
-      .setLabel("Enter Backup Code")
-      .setStyle(ButtonStyle.Primary);
+    try {
+      await message.author.send("📋 Backup Request\nPlease enter your backup code:");
 
-    const row = new ActionRowBuilder().addComponents(button);
+      const filter = (m) => m.author.id === message.author.id;
+      const dmChannel = await message.author.createDM();
 
-    await message.reply({
-      content: "Click the button to enter your backup code:",
-      components: [row]
-    });
-  }
-});
+      const collector = dmChannel.createMessageCollector({
+        filter,
+        time: 30000,
+        max: 1
+      });
 
-// Step 2: Handle button + modal
-client.on(Events.InteractionCreate, async (interaction) => {
-  // Button clicked → show modal
-  if (interaction.isButton()) {
-    if (interaction.customId === "open_backup_form") {
-      const modal = new ModalBuilder()
-        .setCustomId("backup_modal")
-        .setTitle("Backup Verification");
+      collector.on("collect", (msg) => {
+        if (msg.content === BACKUP_CODE) {
+          msg.reply("✅ Code correct! Backup process started.");
+        } else {
+          msg.reply("❌ Incorrect code. Access denied.");
+        }
+      });
 
-      const codeInput = new TextInputBuilder()
-        .setCustomId("backup_code")
-        .setLabel("Enter your backup code")
-        .setStyle(TextInputStyle.Short)
-        .setRequired(true);
+      collector.on("end", (collected) => {
+        if (collected.size === 0) {
+          message.author.send("⌛ You didn’t enter a code in time.");
+        }
+      });
 
-      const row = new ActionRowBuilder().addComponents(codeInput);
-      modal.addComponents(row);
-
-      await interaction.showModal(modal);
-    }
-  }
-
-  // Step 3: Handle form submission
-  if (interaction.isModalSubmit()) {
-    if (interaction.customId === "backup_modal") {
-      const enteredCode = interaction.fields.getTextInputValue("backup_code");
-
-      if (enteredCode === SECRET_CODE) {
-        await interaction.reply({
-          content: "✅ Code accepted. Backup started!",
-          ephemeral: true
-        });
-      } else {
-        await interaction.reply({
-          content: "❌ Invalid code.",
-          ephemeral: true
-        });
-      }
+    } catch (err) {
+      message.reply("❌ I couldn't DM you. Please enable DMs.");
     }
   }
 });
 
-client.login(process.env.TOKEN);
+// ⚡ Slash command handler
+client.on("interactionCreate", async (interaction) => {
+  if (!interaction.isChatInputCommand()) return;
+
+  if (interaction.commandName === "findroleid") {
+    const role = interaction.options.getRole("role");
+    await interaction.reply(`🆔 Role ID: \`${role.id}\``);
+  }
+});
+
+// 🚀 Login
+client.login(TOKEN);
