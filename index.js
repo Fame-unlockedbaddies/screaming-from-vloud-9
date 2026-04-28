@@ -15,7 +15,7 @@ const express = require("express");
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-// Web server (Render requirement)
+// Web server
 app.get("/", (req, res) => {
   res.send("Bot is running.");
 });
@@ -32,7 +32,7 @@ const ACCESS_CODE = process.env.ACCESS_CODE;
 const ROLE_ID = "1482560426972549232";
 const CHANNEL_ID = "1448798824415101030";
 
-// Store verified users (temporary)
+// Store verified users
 const verifiedUsers = new Set();
 
 // Bot
@@ -49,27 +49,38 @@ client.once("ready", () => {
   console.log(`Logged in as ${client.user.tag}`);
 });
 
-// Commands
+// COMMANDS
 client.on("messageCreate", async (message) => {
   if (message.author.bot) return;
   if (message.channel.id !== CHANNEL_ID) return;
 
-  // BACKUP COMMAND
+  // !backup
   if (message.content === "!backup") {
     const button = new ButtonBuilder()
       .setCustomId("backup_button")
       .setLabel("Enter Verification Code")
       .setStyle(ButtonStyle.Primary);
 
-    const row = new ActionRowBuilder().addComponents(button);
-
     return message.reply({
       content: "To restore your access, select the option below and enter your verification code.",
-      components: [row]
+      components: [new ActionRowBuilder().addComponents(button)]
     });
   }
 
-  // SELECT ROLE COMMAND
+  // !backupremove
+  if (message.content === "!backupremove") {
+    const button = new ButtonBuilder()
+      .setCustomId("remove_button")
+      .setLabel("Remove Access")
+      .setStyle(ButtonStyle.Danger);
+
+    return message.reply({
+      content: "To remove your access, select the option below and confirm using your code.",
+      components: [new ActionRowBuilder().addComponents(button)]
+    });
+  }
+
+  // !selectrole
   if (message.content === "!selectrole") {
 
     if (!verifiedUsers.has(message.author.id)) {
@@ -95,19 +106,17 @@ client.on("messageCreate", async (message) => {
         .setStyle(ButtonStyle.Secondary)
     );
 
-    const row = new ActionRowBuilder().addComponents(buttons);
-
     return message.reply({
       content: "Please choose one of the available roles below.",
-      components: [row]
+      components: [new ActionRowBuilder().addComponents(buttons)]
     });
   }
 });
 
-// Interactions
+// INTERACTIONS
 client.on(Events.InteractionCreate, async (interaction) => {
 
-  // BUTTON HANDLER
+  // BUTTONS
   if (interaction.isButton()) {
 
     // Backup button
@@ -122,14 +131,27 @@ client.on(Events.InteractionCreate, async (interaction) => {
         .setStyle(TextInputStyle.Short)
         .setRequired(true);
 
-      modal.addComponents(
-        new ActionRowBuilder().addComponents(input)
-      );
-
+      modal.addComponents(new ActionRowBuilder().addComponents(input));
       return interaction.showModal(modal);
     }
 
-    // Role selection buttons
+    // Remove button
+    if (interaction.customId === "remove_button") {
+      const modal = new ModalBuilder()
+        .setCustomId("remove_modal")
+        .setTitle("Confirm Removal");
+
+      const input = new TextInputBuilder()
+        .setCustomId("code_input")
+        .setLabel("Enter your access code")
+        .setStyle(TextInputStyle.Short)
+        .setRequired(true);
+
+      modal.addComponents(new ActionRowBuilder().addComponents(input));
+      return interaction.showModal(modal);
+    }
+
+    // Role buttons
     if (interaction.customId.startsWith("role_")) {
 
       if (!verifiedUsers.has(interaction.user.id)) {
@@ -143,7 +165,6 @@ client.on(Events.InteractionCreate, async (interaction) => {
 
       try {
         const member = await interaction.guild.members.fetch(interaction.user.id);
-
         await member.roles.add(roleId);
 
         return interaction.reply({
@@ -153,16 +174,15 @@ client.on(Events.InteractionCreate, async (interaction) => {
 
       } catch (err) {
         console.error(err);
-
         return interaction.reply({
-          content: "The role could not be assigned. Please contact an administrator if the issue persists.",
+          content: "The role could not be assigned. Please contact an administrator.",
           ephemeral: true
         });
       }
     }
   }
 
-  // MODAL SUBMIT
+  // MODALS
   if (interaction.isModalSubmit()) {
 
     const code = interaction.fields.getTextInputValue("code_input");
@@ -177,26 +197,42 @@ client.on(Events.InteractionCreate, async (interaction) => {
     try {
       const member = await interaction.guild.members.fetch(interaction.user.id);
 
-      await member.roles.add(ROLE_ID);
+      // BACKUP SUCCESS
+      if (interaction.customId === "backup_modal") {
+        await member.roles.add(ROLE_ID);
+        verifiedUsers.add(interaction.user.id);
 
-      // mark verified
-      verifiedUsers.add(interaction.user.id);
+        return interaction.reply({
+          content: "Welcome back. Your access has been successfully restored. You may now proceed to select your role using !selectrole.",
+          ephemeral: true
+        });
+      }
 
-      await interaction.reply({
-        content: "Welcome back. Your access has been successfully restored. You may now proceed to select your role using the command !selectrole.",
-        ephemeral: true
-      });
+      // REMOVE ROLE
+      if (interaction.customId === "remove_modal") {
+        await member.roles.remove(ROLE_ID);
+        verifiedUsers.delete(interaction.user.id);
+
+        await interaction.reply({
+          content: "Your elevated access has been removed.",
+          ephemeral: true
+        });
+
+        await interaction.channel.send(
+          `<@${interaction.user.id}> the role previously assigned to this user has been revoked following the execution of the command !backupremove.`
+        );
+      }
 
     } catch (err) {
       console.error("ROLE ERROR:", err);
 
       return interaction.reply({
-        content: "Access restoration failed due to a permissions issue. Please contact an administrator.",
+        content: "The requested action could not be completed due to a permissions issue.",
         ephemeral: true
       });
     }
   }
 });
 
-// Start bot
+// START
 client.login(TOKEN);
