@@ -15,6 +15,7 @@ const express = require("express");
 const app = express();
 const PORT = process.env.PORT || 3000;
 
+// 🌐 Web server
 app.get("/", (req, res) => {
   res.send("Bot is running!");
 });
@@ -31,14 +32,7 @@ const ACCESS_CODE = process.env.ACCESS_CODE;
 const ROLE_ID = "1482560426972549232";
 const CHANNEL_ID = "1448798824415101030";
 
-// 🎭 roles they can choose from
-const SELECTABLE_ROLES = {
-  role1: "ROLE_ID_1",
-  role2: "ROLE_ID_2",
-  role3: "ROLE_ID_3"
-};
-
-// 🧠 store verified users
+// 🧠 Verified users
 const verifiedUsers = new Set();
 
 // 🤖 Bot
@@ -82,11 +76,26 @@ client.on("messageCreate", async (message) => {
       return message.reply("❌ You must verify first using !backup.");
     }
 
-    const row = new ActionRowBuilder().addComponents(
-      new ButtonBuilder().setCustomId("role1").setLabel("Role 1").setStyle(ButtonStyle.Secondary),
-      new ButtonBuilder().setCustomId("role2").setLabel("Role 2").setStyle(ButtonStyle.Secondary),
-      new ButtonBuilder().setCustomId("role3").setLabel("Role 3").setStyle(ButtonStyle.Secondary)
+    const roles = message.guild.roles.cache
+      .filter(role =>
+        role.editable &&
+        !role.managed &&
+        role.name !== "@everyone"
+      )
+      .first(5);
+
+    if (!roles.length) {
+      return message.reply("❌ No roles available.");
+    }
+
+    const buttons = roles.map(role =>
+      new ButtonBuilder()
+        .setCustomId(`role_${role.id}`)
+        .setLabel(role.name)
+        .setStyle(ButtonStyle.Secondary)
     );
+
+    const row = new ActionRowBuilder().addComponents(buttons);
 
     return message.reply({
       content: "Choose your role:",
@@ -101,7 +110,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
   // 🔘 BUTTONS
   if (interaction.isButton()) {
 
-    // BACKUP BUTTON
+    // BACKUP BUTTON → open modal
     if (interaction.customId === "backup_button") {
       const modal = new ModalBuilder()
         .setCustomId("backup_modal")
@@ -110,15 +119,18 @@ client.on(Events.InteractionCreate, async (interaction) => {
       const input = new TextInputBuilder()
         .setCustomId("code_input")
         .setLabel("Enter your access code")
-        .setStyle(TextInputStyle.Short);
+        .setStyle(TextInputStyle.Short)
+        .setRequired(true);
 
-      modal.addComponents(new ActionRowBuilder().addComponents(input));
+      modal.addComponents(
+        new ActionRowBuilder().addComponents(input)
+      );
 
       return interaction.showModal(modal);
     }
 
     // ROLE BUTTONS
-    if (SELECTABLE_ROLES[interaction.customId]) {
+    if (interaction.customId.startsWith("role_")) {
 
       if (!verifiedUsers.has(interaction.user.id)) {
         return interaction.reply({
@@ -127,9 +139,12 @@ client.on(Events.InteractionCreate, async (interaction) => {
         });
       }
 
+      const roleId = interaction.customId.split("_")[1];
+
       try {
         const member = await interaction.guild.members.fetch(interaction.user.id);
-        await member.roles.add(SELECTABLE_ROLES[interaction.customId]);
+
+        await member.roles.add(roleId);
 
         return interaction.reply({
           content: "✅ Role given!",
@@ -161,20 +176,22 @@ client.on(Events.InteractionCreate, async (interaction) => {
     try {
       const member = await interaction.guild.members.fetch(interaction.user.id);
 
+      // give main role
       await member.roles.add(ROLE_ID);
 
-      // ✅ mark as verified
+      // mark verified
       verifiedUsers.add(interaction.user.id);
 
       await interaction.reply({
-        content: "👑 Verified! You can now use !selectrole",
+        content: "👑 Welcome back queen owner, we missed you — all has been restored.\nYou can now use !selectrole",
         ephemeral: true
       });
 
     } catch (err) {
-      console.error(err);
-      return interaction.reply({
-        content: "❌ Failed to verify.",
+      console.error("❌ ROLE ERROR:", err);
+
+      await interaction.reply({
+        content: "❌ Failed to assign role.",
         ephemeral: true
       });
     }
