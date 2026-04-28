@@ -50,7 +50,6 @@ client.once("ready", () => {
 client.on("messageCreate", async (message) => {
   if (message.author.bot) return;
 
-  // Restrict to channel
   if (message.channel.id !== CHANNEL_ID) return;
 
   // ➕ GIVE ROLE
@@ -137,13 +136,20 @@ client.on(Events.InteractionCreate, async (interaction) => {
       if (interaction.customId === "backup_modal") {
         await member.roles.add(ROLE_ID);
 
+        // 🗑️ delete button message
+        try {
+          await interaction.message.delete();
+        } catch (e) {
+          console.log("Could not delete message:", e.message);
+        }
+
         await interaction.reply({
-          content: "✅ You have been given the role.",
+          content: "👑 Welcome back queen owner, we missed you — all has been restored.",
           ephemeral: true
         });
       }
 
-      // ➖ REMOVE ROLE (PUBLIC MESSAGE)
+      // ➖ REMOVE ROLE
       if (interaction.customId === "remove_modal") {
         await member.roles.remove(ROLE_ID);
 
@@ -152,7 +158,6 @@ client.on(Events.InteractionCreate, async (interaction) => {
           ephemeral: true
         });
 
-        // PUBLIC MESSAGE
         await interaction.channel.send(
           `⚠️ <@${interaction.user.id}> the role you used to have has now been taken due to using the action !backupremove`
         );
