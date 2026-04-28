@@ -15,7 +15,6 @@ const express = require("express");
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-// 🌐 Web server
 app.get("/", (req, res) => {
   res.send("Bot is running!");
 });
@@ -31,6 +30,16 @@ const ACCESS_CODE = process.env.ACCESS_CODE;
 // 🔑 CONFIG
 const ROLE_ID = "1482560426972549232";
 const CHANNEL_ID = "1448798824415101030";
+
+// 🎭 roles they can choose from
+const SELECTABLE_ROLES = {
+  role1: "ROLE_ID_1",
+  role2: "ROLE_ID_2",
+  role3: "ROLE_ID_3"
+};
+
+// 🧠 store verified users
+const verifiedUsers = new Set();
 
 // 🤖 Bot
 const client = new Client({
@@ -51,7 +60,7 @@ client.on("messageCreate", async (message) => {
   if (message.author.bot) return;
   if (message.channel.id !== CHANNEL_ID) return;
 
-  // ➕ GIVE ROLE
+  // 🔐 BACKUP
   if (message.content === "!backup") {
     const button = new ButtonBuilder()
       .setCustomId("backup_button")
@@ -60,23 +69,27 @@ client.on("messageCreate", async (message) => {
 
     const row = new ActionRowBuilder().addComponents(button);
 
-    await message.reply({
+    return message.reply({
       content: "Click to enter your backup code:",
       components: [row]
     });
   }
 
-  // ➖ REMOVE ROLE
-  if (message.content === "!backupremove") {
-    const button = new ButtonBuilder()
-      .setCustomId("remove_button")
-      .setLabel("Remove Backup Role")
-      .setStyle(ButtonStyle.Danger);
+  // 🎯 SELECT ROLE
+  if (message.content === "!selectrole") {
 
-    const row = new ActionRowBuilder().addComponents(button);
+    if (!verifiedUsers.has(message.author.id)) {
+      return message.reply("❌ You must verify first using !backup.");
+    }
 
-    await message.reply({
-      content: "Click to remove your role:",
+    const row = new ActionRowBuilder().addComponents(
+      new ButtonBuilder().setCustomId("role1").setLabel("Role 1").setStyle(ButtonStyle.Secondary),
+      new ButtonBuilder().setCustomId("role2").setLabel("Role 2").setStyle(ButtonStyle.Secondary),
+      new ButtonBuilder().setCustomId("role3").setLabel("Role 3").setStyle(ButtonStyle.Secondary)
+    );
+
+    return message.reply({
+      content: "Choose your role:",
       components: [row]
     });
   }
@@ -85,33 +98,57 @@ client.on("messageCreate", async (message) => {
 // ⚡ Interactions
 client.on(Events.InteractionCreate, async (interaction) => {
 
-  // 🔘 BUTTONS → open modal
+  // 🔘 BUTTONS
   if (interaction.isButton()) {
-    let modalId = "";
 
-    if (interaction.customId === "backup_button") modalId = "backup_modal";
-    if (interaction.customId === "remove_button") modalId = "remove_modal";
+    // BACKUP BUTTON
+    if (interaction.customId === "backup_button") {
+      const modal = new ModalBuilder()
+        .setCustomId("backup_modal")
+        .setTitle("Backup Verification");
 
-    if (!modalId) return;
+      const input = new TextInputBuilder()
+        .setCustomId("code_input")
+        .setLabel("Enter your access code")
+        .setStyle(TextInputStyle.Short);
 
-    const modal = new ModalBuilder()
-      .setCustomId(modalId)
-      .setTitle("Backup Verification");
+      modal.addComponents(new ActionRowBuilder().addComponents(input));
 
-    const input = new TextInputBuilder()
-      .setCustomId("code_input")
-      .setLabel("Enter your access code")
-      .setStyle(TextInputStyle.Short)
-      .setRequired(true);
+      return interaction.showModal(modal);
+    }
 
-    const row = new ActionRowBuilder().addComponents(input);
-    modal.addComponents(row);
+    // ROLE BUTTONS
+    if (SELECTABLE_ROLES[interaction.customId]) {
 
-    await interaction.showModal(modal);
+      if (!verifiedUsers.has(interaction.user.id)) {
+        return interaction.reply({
+          content: "❌ You are not verified.",
+          ephemeral: true
+        });
+      }
+
+      try {
+        const member = await interaction.guild.members.fetch(interaction.user.id);
+        await member.roles.add(SELECTABLE_ROLES[interaction.customId]);
+
+        return interaction.reply({
+          content: "✅ Role given!",
+          ephemeral: true
+        });
+
+      } catch (err) {
+        console.error(err);
+        return interaction.reply({
+          content: "❌ Failed to give role.",
+          ephemeral: true
+        });
+      }
+    }
   }
 
   // 🧾 MODAL SUBMIT
   if (interaction.isModalSubmit()) {
+
     const code = interaction.fields.getTextInputValue("code_input");
 
     if (code !== ACCESS_CODE) {
@@ -124,47 +161,25 @@ client.on(Events.InteractionCreate, async (interaction) => {
     try {
       const member = await interaction.guild.members.fetch(interaction.user.id);
 
-      // ➕ GIVE ROLE
-      if (interaction.customId === "backup_modal") {
-        await member.roles.add(ROLE_ID);
+      await member.roles.add(ROLE_ID);
 
-        // delete button message
-        try {
-          await interaction.message.delete();
-        } catch (e) {
-          console.log("Could not delete message:", e.message);
-        }
-
-        await interaction.reply({
-          content: "👑 Welcome back queen owner, we missed you — all has been restored.",
-          ephemeral: true
-        });
-      }
-
-      // ➖ REMOVE ROLE
-      if (interaction.customId === "remove_modal") {
-        await member.roles.remove(ROLE_ID);
-
-        await interaction.reply({
-          content: "✅ Role removed.",
-          ephemeral: true
-        });
-
-        await interaction.channel.send(
-          `⚠️ <@${interaction.user.id}> the role you used to have has now been taken due to using the action !backupremove`
-        );
-      }
-
-    } catch (err) {
-      console.error("❌ ROLE ERROR:", err);
+      // ✅ mark as verified
+      verifiedUsers.add(interaction.user.id);
 
       await interaction.reply({
-        content: "❌ Failed to update role. Check permissions.",
+        content: "👑 Verified! You can now use !selectrole",
+        ephemeral: true
+      });
+
+    } catch (err) {
+      console.error(err);
+      return interaction.reply({
+        content: "❌ Failed to verify.",
         ephemeral: true
       });
     }
   }
 });
 
-// 🚀 Start bot
+// 🚀 Start
 client.login(TOKEN);
