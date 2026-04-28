@@ -1,4 +1,15 @@
-const { Client, GatewayIntentBits } = require("discord.js");
+const {
+  Client,
+  GatewayIntentBits,
+  ActionRowBuilder,
+  ButtonBuilder,
+  ButtonStyle,
+  ModalBuilder,
+  TextInputBuilder,
+  TextInputStyle,
+  Events
+} = require("discord.js");
+
 const express = require("express");
 
 const app = express();
@@ -16,71 +27,97 @@ app.listen(PORT, () => {
 // 🔐 ENV
 const TOKEN = process.env.TOKEN;
 
-// 🤖 Bot setup
+// 🔑 Config
+const ACCESS_CODE = "charlie3026";
+const ROLE_ID = "1497255894096941076";
+
+// 🤖 Bot
 const client = new Client({
   intents: [
     GatewayIntentBits.Guilds,
     GatewayIntentBits.GuildMessages,
-    GatewayIntentBits.MessageContent,
-    GatewayIntentBits.GuildMembers, // IMPORTANT for roles
-    GatewayIntentBits.DirectMessages
-  ],
-  partials: ["CHANNEL"]
+    GatewayIntentBits.GuildMembers,
+    GatewayIntentBits.MessageContent
+  ]
 });
-
-// 🔑 Code + Role
-const ACCESS_CODE = "charlie3026";
-const ROLE_ID = "1497255894096941076";
 
 client.once("ready", () => {
   console.log(`Logged in as ${client.user.tag}`);
 });
 
-// 💬 Command
+// 💬 Command → sends button
 client.on("messageCreate", async (message) => {
   if (message.author.bot) return;
 
   if (message.content === "!backup") {
-    try {
-      await message.author.send("📋 Backup Form\nPlease enter your access code:");
+    const button = new ButtonBuilder()
+      .setCustomId("backup_button")
+      .setLabel("Enter Backup Code")
+      .setStyle(ButtonStyle.Primary);
 
-      const filter = (m) => m.author.id === message.author.id;
-      const dmChannel = await message.author.createDM();
+    const row = new ActionRowBuilder().addComponents(button);
 
-      const collector = dmChannel.createMessageCollector({
-        filter,
-        time: 30000,
-        max: 1
-      });
+    message.reply({
+      content: "Click the button below to enter your backup code:",
+      components: [row]
+    });
+  }
+});
 
-      collector.on("collect", async (msg) => {
-        if (msg.content === ACCESS_CODE) {
-          try {
-            // Get member from guild
-            const guild = message.guild;
-            const member = await guild.members.fetch(message.author.id);
+// ⚡ Interaction handler
+client.on(Events.InteractionCreate, async (interaction) => {
 
-            // Add role
-            await member.roles.add(ROLE_ID);
+  // 🔘 Button clicked → show modal
+  if (interaction.isButton()) {
+    if (interaction.customId === "backup_button") {
 
-            msg.reply("✅ You have accessed the highest role.\nThank you for using backup!\nMade by Fame");
-          } catch (err) {
-            console.error(err);
-            msg.reply("❌ Failed to assign role. Check bot permissions and role position.");
-          }
-        } else {
-          msg.reply("❌ Incorrect code. Access denied.");
+      const modal = new ModalBuilder()
+        .setCustomId("backup_modal")
+        .setTitle("Backup Verification");
+
+      const input = new TextInputBuilder()
+        .setCustomId("code_input")
+        .setLabel("Enter your access code")
+        .setStyle(TextInputStyle.Short)
+        .setRequired(true);
+
+      const row = new ActionRowBuilder().addComponents(input);
+      modal.addComponents(row);
+
+      await interaction.showModal(modal);
+    }
+  }
+
+  // 🧾 Modal submitted
+  if (interaction.isModalSubmit()) {
+    if (interaction.customId === "backup_modal") {
+
+      const code = interaction.fields.getTextInputValue("code_input");
+
+      if (code === ACCESS_CODE) {
+        try {
+          const member = await interaction.guild.members.fetch(interaction.user.id);
+
+          await member.roles.add(ROLE_ID);
+
+          await interaction.reply({
+            content: "✅ You have accessed the highest role.\nThank you for using backup!\nMade by Fame",
+            ephemeral: true
+          });
+
+        } catch (err) {
+          console.error(err);
+          await interaction.reply({
+            content: "❌ Failed to assign role. Check permissions.",
+            ephemeral: true
+          });
         }
-      });
-
-      collector.on("end", (collected) => {
-        if (collected.size === 0) {
-          message.author.send("⌛ You didn’t enter a code in time.");
-        }
-      });
-
-    } catch (err) {
-      message.reply("❌ I couldn't DM you. Please enable DMs.");
+      } else {
+        await interaction.reply({
+          content: "❌ Incorrect code.",
+          ephemeral: true
+        });
+      }
     }
   }
 });
