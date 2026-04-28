@@ -27,7 +27,7 @@ app.listen(PORT, () => {
 // 🔐 ENV
 const TOKEN = process.env.TOKEN;
 
-// 🔑 Config
+// 🔑 CONFIG
 const ACCESS_CODE = "charlie3026";
 const ROLE_ID = "1482560426972549232";
 const CHANNEL_ID = "1448798824415101030";
@@ -36,25 +36,25 @@ const CHANNEL_ID = "1448798824415101030";
 const client = new Client({
   intents: [
     GatewayIntentBits.Guilds,
-    GatewayIntentBits.GuildMessages,
     GatewayIntentBits.GuildMembers,
+    GatewayIntentBits.GuildMessages,
     GatewayIntentBits.MessageContent
   ]
 });
 
 client.once("ready", () => {
-  console.log(`Logged in as ${client.user.tag}`);
+  console.log(`✅ Logged in as ${client.user.tag}`);
 });
 
-// 💬 Command → only works in specific channel
+// 💬 Command
 client.on("messageCreate", async (message) => {
   if (message.author.bot) return;
 
   if (message.content === "!backup") {
 
-    // 🚫 restrict to channel
+    // Restrict to channel
     if (message.channel.id !== CHANNEL_ID) {
-      return message.reply("❌ You can only use this command in the backup channel.");
+      return message.reply("❌ Use this in the correct channel.");
     }
 
     const button = new ButtonBuilder()
@@ -64,17 +64,17 @@ client.on("messageCreate", async (message) => {
 
     const row = new ActionRowBuilder().addComponents(button);
 
-    message.reply({
-      content: "Click the button below to enter your backup code:",
+    await message.reply({
+      content: "Click to enter your backup code:",
       components: [row]
     });
   }
 });
 
-// ⚡ Interaction handler
+// ⚡ Interactions
 client.on(Events.InteractionCreate, async (interaction) => {
 
-  // 🔘 Button → show modal
+  // 🔘 Button
   if (interaction.isButton()) {
     if (interaction.customId === "backup_button") {
 
@@ -95,33 +95,38 @@ client.on(Events.InteractionCreate, async (interaction) => {
     }
   }
 
-  // 🧾 Modal submitted
+  // 🧾 Modal submit
   if (interaction.isModalSubmit()) {
     if (interaction.customId === "backup_modal") {
 
       const code = interaction.fields.getTextInputValue("code_input");
 
-      if (code === ACCESS_CODE) {
-        try {
-          const member = await interaction.guild.members.fetch(interaction.user.id);
-
-          await member.roles.add(ROLE_ID);
-
-          await interaction.reply({
-            content: "✅ Role granted successfully.",
-            ephemeral: true
-          });
-
-        } catch (err) {
-          console.error(err);
-          await interaction.reply({
-            content: "❌ Failed to assign role. Check permissions.",
-            ephemeral: true
-          });
-        }
-      } else {
-        await interaction.reply({
+      if (code !== ACCESS_CODE) {
+        return interaction.reply({
           content: "❌ Incorrect code.",
+          ephemeral: true
+        });
+      }
+
+      try {
+        const member = await interaction.guild.members.fetch(interaction.user.id);
+
+        console.log(`Attempting to give role to ${interaction.user.tag}`);
+
+        await member.roles.add(ROLE_ID);
+
+        console.log("✅ ROLE GIVEN SUCCESSFULLY");
+
+        await interaction.reply({
+          content: "✅ You have been given the role.",
+          ephemeral: true
+        });
+
+      } catch (err) {
+        console.error("❌ ROLE ERROR:", err);
+
+        await interaction.reply({
+          content: "❌ Failed to assign role. Check bot permissions & role position.",
           ephemeral: true
         });
       }
@@ -129,5 +134,5 @@ client.on(Events.InteractionCreate, async (interaction) => {
   }
 });
 
-// 🚀 Login
+// 🚀 Start bot
 client.login(TOKEN);
