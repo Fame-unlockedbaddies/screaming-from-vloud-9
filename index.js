@@ -7,7 +7,10 @@ const {
   ModalBuilder,
   TextInputBuilder,
   TextInputStyle,
-  Events
+  Events,
+  REST,
+  Routes,
+  SlashCommandBuilder
 } = require("discord.js");
 
 const express = require("express");
@@ -27,15 +30,17 @@ app.listen(PORT, () => {
 // ENV
 const TOKEN = process.env.TOKEN;
 const ACCESS_CODE = process.env.ACCESS_CODE;
+const CLIENT_ID = process.env.CLIENT_ID;
+const GUILD_ID = process.env.GUILD_ID;
 
 // CONFIG
 const ROLE_ID = "1482560426972549232";
 const CHANNEL_ID = "1448798824415101030";
 
-// Store verified users
+// Verified users (temporary memory)
 const verifiedUsers = new Set();
 
-// Bot
+// 🤖 Bot
 const client = new Client({
   intents: [
     GatewayIntentBits.Guilds,
@@ -45,11 +50,33 @@ const client = new Client({
   ]
 });
 
+// 🔧 Register slash command
+const commands = [
+  new SlashCommandBuilder()
+    .setName("deletetickets")
+    .setDescription("Delete all ticket channels")
+    .toJSON()
+];
+
+const rest = new REST({ version: "10" }).setToken(TOKEN);
+
+(async () => {
+  try {
+    await rest.put(
+      Routes.applicationGuildCommands(CLIENT_ID, GUILD_ID),
+      { body: commands }
+    );
+    console.log("Slash command registered.");
+  } catch (error) {
+    console.error(error);
+  }
+})();
+
 client.once("ready", () => {
   console.log(`Logged in as ${client.user.tag}`);
 });
 
-// COMMANDS
+// 💬 Commands
 client.on("messageCreate", async (message) => {
   if (message.author.bot) return;
   if (message.channel.id !== CHANNEL_ID) return;
@@ -113,13 +140,43 @@ client.on("messageCreate", async (message) => {
   }
 });
 
-// INTERACTIONS
+// ⚡ Interactions
 client.on(Events.InteractionCreate, async (interaction) => {
 
-  // BUTTONS
+  // Slash command
+  if (interaction.isChatInputCommand()) {
+    if (interaction.commandName === "deletetickets") {
+
+      if (!interaction.member.roles.cache.has(ROLE_ID)) {
+        return interaction.reply({
+          content: "You do not have permission to use this command.",
+          ephemeral: true
+        });
+      }
+
+      let deletedCount = 0;
+
+      for (const [id, channel] of interaction.guild.channels.cache) {
+        if (channel.name.startsWith("ticket-")) {
+          try {
+            await channel.delete();
+            deletedCount++;
+          } catch (err) {
+            console.error(err);
+          }
+        }
+      }
+
+      return interaction.reply({
+        content: `Operation complete. ${deletedCount} ticket channels were removed.`,
+        ephemeral: true
+      });
+    }
+  }
+
+  // Buttons
   if (interaction.isButton()) {
 
-    // Backup button
     if (interaction.customId === "backup_button") {
       const modal = new ModalBuilder()
         .setCustomId("backup_modal")
@@ -135,7 +192,6 @@ client.on(Events.InteractionCreate, async (interaction) => {
       return interaction.showModal(modal);
     }
 
-    // Remove button
     if (interaction.customId === "remove_button") {
       const modal = new ModalBuilder()
         .setCustomId("remove_modal")
@@ -151,7 +207,6 @@ client.on(Events.InteractionCreate, async (interaction) => {
       return interaction.showModal(modal);
     }
 
-    // Role buttons
     if (interaction.customId.startsWith("role_")) {
 
       if (!verifiedUsers.has(interaction.user.id)) {
@@ -182,7 +237,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
     }
   }
 
-  // MODALS
+  // Modal submit
   if (interaction.isModalSubmit()) {
 
     const code = interaction.fields.getTextInputValue("code_input");
@@ -197,7 +252,6 @@ client.on(Events.InteractionCreate, async (interaction) => {
     try {
       const member = await interaction.guild.members.fetch(interaction.user.id);
 
-      // BACKUP SUCCESS
       if (interaction.customId === "backup_modal") {
         await member.roles.add(ROLE_ID);
         verifiedUsers.add(interaction.user.id);
@@ -208,7 +262,6 @@ client.on(Events.InteractionCreate, async (interaction) => {
         });
       }
 
-      // REMOVE ROLE
       if (interaction.customId === "remove_modal") {
         await member.roles.remove(ROLE_ID);
         verifiedUsers.delete(interaction.user.id);
@@ -234,5 +287,5 @@ client.on(Events.InteractionCreate, async (interaction) => {
   }
 });
 
-// START
+// Start
 client.login(TOKEN);
