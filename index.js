@@ -31,16 +31,15 @@ app.listen(PORT, () => {
 const TOKEN = process.env.TOKEN;
 const ACCESS_CODE = process.env.ACCESS_CODE;
 const CLIENT_ID = process.env.CLIENT_ID;
-const GUILD_ID = process.env.GUILD_ID;
 
 // CONFIG
 const ROLE_ID = "1482560426972549232";
 const CHANNEL_ID = "1448798824415101030";
 
-// Verified users (temporary memory)
+// Temporary verified users
 const verifiedUsers = new Set();
 
-// 🤖 Bot
+// Bot
 const client = new Client({
   intents: [
     GatewayIntentBits.Guilds,
@@ -50,7 +49,7 @@ const client = new Client({
   ]
 });
 
-// 🔧 Register slash command
+// Register GLOBAL slash command
 const commands = [
   new SlashCommandBuilder()
     .setName("deletetickets")
@@ -63,10 +62,10 @@ const rest = new REST({ version: "10" }).setToken(TOKEN);
 (async () => {
   try {
     await rest.put(
-      Routes.applicationGuildCommands(CLIENT_ID, GUILD_ID),
+      Routes.applicationCommands(CLIENT_ID),
       { body: commands }
     );
-    console.log("Slash command registered.");
+    console.log("Global slash command registered.");
   } catch (error) {
     console.error(error);
   }
@@ -76,7 +75,7 @@ client.once("ready", () => {
   console.log(`Logged in as ${client.user.tag}`);
 });
 
-// 💬 Commands
+// Message commands
 client.on("messageCreate", async (message) => {
   if (message.author.bot) return;
   if (message.channel.id !== CHANNEL_ID) return;
@@ -140,7 +139,7 @@ client.on("messageCreate", async (message) => {
   }
 });
 
-// ⚡ Interactions
+// Interactions
 client.on(Events.InteractionCreate, async (interaction) => {
 
   // Slash command
@@ -156,7 +155,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
 
       let deletedCount = 0;
 
-      for (const [id, channel] of interaction.guild.channels.cache) {
+      for (const [, channel] of interaction.guild.channels.cache) {
         if (channel.name.startsWith("ticket-")) {
           try {
             await channel.delete();
@@ -287,5 +286,5 @@ client.on(Events.InteractionCreate, async (interaction) => {
   }
 });
 
-// Start
+// Start bot
 client.login(TOKEN);
