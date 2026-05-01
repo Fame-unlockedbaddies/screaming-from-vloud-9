@@ -1,4 +1,3 @@
-
 process.on("uncaughtException", console.error);
 process.on("unhandledRejection", console.error);
 
@@ -21,16 +20,19 @@ const PORT = process.env.PORT || 3000;
 app.get("/", (req, res) => res.send("Bot is running."));
 app.listen(PORT, () => console.log("Web server running"));
 
+// ENV
 const TOKEN = process.env.TOKEN;
 const CLIENT_ID = process.env.CLIENT_ID;
 
+// BOT
 const client = new Client({
   intents: [GatewayIntentBits.Guilds]
 });
 
+// MEMORY
 let weaponCache = {};
 
-// SLASH
+// ---------------- COMMANDS ----------------
 const commands = [
   new SlashCommandBuilder()
     .setName("fame")
@@ -42,7 +44,22 @@ const commands = [
         .addStringOption(opt =>
           opt.setName("name").setDescription("Weapon name").setRequired(true)
         )
+    ),
+
+  new SlashCommandBuilder()
+    .setName("roblox")
+    .setDescription("Roblox tools")
+    .addSubcommand(sub =>
+      sub
+        .setName("outfit")
+        .setDescription("Get a player's outfit")
+        .addStringOption(opt =>
+          opt.setName("username")
+            .setDescription("Roblox username")
+            .setRequired(true)
+        )
     )
+
 ].map(c => c.toJSON());
 
 const rest = new REST({ version: "10" }).setToken(TOKEN);
@@ -53,7 +70,7 @@ const rest = new REST({ version: "10" }).setToken(TOKEN);
 })();
 
 
-// 🔥 REAL SCRAPER (NO FALLBACK)
+// ---------------- SCRAPER ----------------
 async function loadWeapons() {
   try {
     weaponCache = {};
@@ -72,18 +89,9 @@ async function loadWeapons() {
         /<script id="__NEXT_DATA__" type="application\/json">(.*?)<\/script>/
       );
 
-      if (!match) {
-        console.log("No NEXT_DATA found");
-        break;
-      }
+      if (!match) break;
 
       const json = JSON.parse(match[1]);
-
-      // 🔍 DEBUG ON FIRST PAGE
-      if (page === 1) {
-        console.log("DEBUG STRUCTURE:");
-        console.log(Object.keys(json.props.pageProps));
-      }
 
       const items =
         json?.props?.pageProps?.items ||
@@ -92,10 +100,7 @@ async function loadWeapons() {
         json?.props?.pageProps?.inventory ||
         [];
 
-      if (!items || items.length === 0) {
-        console.log("No items on page", page);
-        break;
-      }
+      if (!items || items.length === 0) break;
 
       for (const item of items) {
         if (!item?.name) continue;
@@ -119,18 +124,20 @@ async function loadWeapons() {
 }
 
 
-// READY
+// ---------------- READY ----------------
 client.once("ready", async () => {
   console.log(`Logged in as ${client.user.tag}`);
   await loadWeapons();
 });
 
 
-// SEARCH (clean but strict)
+// ---------------- HANDLER ----------------
 client.on(Events.InteractionCreate, async (interaction) => {
   if (!interaction.isChatInputCommand()) return;
 
+  // ================= FAME =================
   if (interaction.commandName === "fame") {
+
     const input = interaction.options.getString("name").toLowerCase();
 
     let weapon = weaponCache[input];
@@ -160,6 +167,60 @@ client.on(Events.InteractionCreate, async (interaction) => {
 
     return interaction.reply({ embeds: [embed] });
   }
+
+  // ================= ROBLOX =================
+  if (interaction.commandName === "roblox") {
+
+    if (interaction.options.getSubcommand() === "outfit") {
+
+      const username = interaction.options.getString("username");
+
+      try {
+        // 1. get user id
+        const userRes = await axios.post(
+          "https://users.roblox.com/v1/usernames/users",
+          {
+            usernames: [username],
+            excludeBannedUsers: true
+          }
+        );
+
+        const user = userRes.data.data[0];
+
+        if (!user) {
+          return interaction.reply({
+            content: "Roblox user not found."
+          });
+        }
+
+        const userId = user.id;
+
+        // 2. get avatar image
+        const avatarRes = await axios.get(
+          `https://thumbnails.roblox.com/v1/users/avatar?userIds=${userId}&size=420x420&format=Png&isCircular=false`
+        );
+
+        const image = avatarRes.data.data[0].imageUrl;
+
+        // 3. send embed
+        const embed = new EmbedBuilder()
+          .setColor(0x2b2d31)
+          .setTitle(`${username}'s Outfit`)
+          .setImage(image)
+          .setFooter({ text: "Fame • Roblox System" })
+          .setTimestamp();
+
+        return interaction.reply({ embeds: [embed] });
+
+      } catch (err) {
+        console.error(err);
+        return interaction.reply({
+          content: "Failed to fetch Roblox outfit."
+        });
+      }
+    }
+  }
 });
 
+// START
 client.login(TOKEN);
