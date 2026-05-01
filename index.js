@@ -184,7 +184,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
 
       return interaction.reply({
         content: `Operation complete. ${deletedCount} ticket channels were removed.`,
-        ephemeral: true
+        ephemeral: false
       });
     }
 
