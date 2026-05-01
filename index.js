@@ -10,22 +10,19 @@ const {
   Events,
   REST,
   Routes,
-  SlashCommandBuilder
+  SlashCommandBuilder,
+  EmbedBuilder
 } = require("discord.js");
 
 const express = require("express");
+const axios = require("axios");
+const cheerio = require("cheerio");
 
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-// Web server
-app.get("/", (req, res) => {
-  res.send("Bot is running.");
-});
-
-app.listen(PORT, () => {
-  console.log(`Web server running on port ${PORT}`);
-});
+app.get("/", (req, res) => res.send("Bot is running."));
+app.listen(PORT, () => console.log(`Web server running on port ${PORT}`));
 
 // ENV
 const TOKEN = process.env.TOKEN;
@@ -36,10 +33,14 @@ const CLIENT_ID = process.env.CLIENT_ID;
 const ROLE_ID = "1482560426972549232";
 const CHANNEL_ID = "1448798824415101030";
 
-// Temporary verified users
-const verifiedUsers = new Set();
+// RAP ICON (your image)
+const RAP_ICON = "https://bloxtsar.com/_next/image?url=https%3A%2F%2Fcdn.meowia.com%2Fbaddies%2Ftokens.png&w=32&q=75";
 
-// 🤖 Bot
+// MEMORY
+const verifiedUsers = new Set();
+let weaponCache = {};
+
+// BOT
 const client = new Client({
   intents: [
     GatewayIntentBits.Guilds,
@@ -49,7 +50,7 @@ const client = new Client({
   ]
 });
 
-// 🔧 Register GLOBAL slash commands
+// SLASH COMMANDS
 const commands = [
   new SlashCommandBuilder()
     .setName("deletetickets")
@@ -57,11 +58,11 @@ const commands = [
 
   new SlashCommandBuilder()
     .setName("fame")
-    .setDescription("Fame system commands")
+    .setDescription("Fame system")
     .addSubcommand(sub =>
       sub
         .setName("weapon")
-        .setDescription("Check weapon RAP")
+        .setDescription("Lookup weapon")
         .addStringOption(option =>
           option
             .setName("name")
@@ -74,27 +75,54 @@ const commands = [
 const rest = new REST({ version: "10" }).setToken(TOKEN);
 
 (async () => {
-  try {
-    await rest.put(
-      Routes.applicationCommands(CLIENT_ID),
-      { body: commands }
-    );
-    console.log("Global slash commands registered.");
-  } catch (error) {
-    console.error(error);
-  }
+  await rest.put(Routes.applicationCommands(CLIENT_ID), { body: commands });
+  console.log("Commands registered");
 })();
 
-client.once("ready", () => {
+// SCRAPER
+async function loadWeapons() {
+  try {
+    const { data } = await axios.get("https://bloxtsar.com/baddies/items");
+    const $ = cheerio.load(data);
+
+    weaponCache = {};
+
+    $(".item, .card, .item-card").each((i, el) => {
+      const name = $(el).find("h3, .name, .item-name").text().trim();
+      const image = $(el).find("img").attr("src");
+      const value = $(el).find(".value, .rap").text().trim();
+
+      if (name) {
+        weaponCache[name.toLowerCase()] = {
+          name,
+          rap: value || "Unknown",
+          value: value || "Unknown",
+          image: image?.startsWith("http")
+            ? image
+            : `https://bloxtsar.com${image}`
+        };
+      }
+    });
+
+    console.log("Weapons loaded:", Object.keys(weaponCache).length);
+
+  } catch (err) {
+    console.error("Scrape failed:", err);
+  }
+}
+
+client.once("ready", async () => {
   console.log(`Logged in as ${client.user.tag}`);
+  await loadWeapons();
+
+  setInterval(loadWeapons, 10 * 60 * 1000);
 });
 
-// 💬 Message commands
+// MESSAGE COMMANDS
 client.on("messageCreate", async (message) => {
   if (message.author.bot) return;
   if (message.channel.id !== CHANNEL_ID) return;
 
-  // !backup
   if (message.content === "!backup") {
     const button = new ButtonBuilder()
       .setCustomId("backup_button")
@@ -102,227 +130,105 @@ client.on("messageCreate", async (message) => {
       .setStyle(ButtonStyle.Primary);
 
     return message.reply({
-      content: "To restore your access, select the option below and enter your verification code.",
+      content: "To restore access, press the button.",
       components: [new ActionRowBuilder().addComponents(button)]
-    });
-  }
-
-  // !backupremove
-  if (message.content === "!backupremove") {
-    const button = new ButtonBuilder()
-      .setCustomId("remove_button")
-      .setLabel("Remove Access")
-      .setStyle(ButtonStyle.Danger);
-
-    return message.reply({
-      content: "To remove your access, select the option below and confirm using your code.",
-      components: [new ActionRowBuilder().addComponents(button)]
-    });
-  }
-
-  // !selectrole
-  if (message.content === "!selectrole") {
-
-    if (!verifiedUsers.has(message.author.id)) {
-      return message.reply("Access denied. You must complete verification using !backup before selecting a role.");
-    }
-
-    const roles = message.guild.roles.cache
-      .filter(role =>
-        role.editable &&
-        !role.managed &&
-        role.name !== "@everyone"
-      )
-      .first(5);
-
-    if (!roles.length) {
-      return message.reply("No assignable roles are currently available.");
-    }
-
-    const buttons = roles.map(role =>
-      new ButtonBuilder()
-        .setCustomId(`role_${role.id}`)
-        .setLabel(role.name)
-        .setStyle(ButtonStyle.Secondary)
-    );
-
-    return message.reply({
-      content: "Please choose one of the available roles below.",
-      components: [new ActionRowBuilder().addComponents(buttons)]
     });
   }
 });
 
-// ⚡ Interactions
+// INTERACTIONS
 client.on(Events.InteractionCreate, async (interaction) => {
 
-  // Slash commands
+  // SLASH
   if (interaction.isChatInputCommand()) {
 
-    // /deletetickets
     if (interaction.commandName === "deletetickets") {
-
       if (!interaction.member.roles.cache.has(ROLE_ID)) {
-        return interaction.reply({
-          content: "You do not have permission to use this command.",
-          ephemeral: true
-        });
+        return interaction.reply({ content: "No permission." });
       }
 
-      let deletedCount = 0;
-
-      for (const [, channel] of interaction.guild.channels.cache) {
-        if (channel.name.startsWith("ticket-")) {
-          try {
-            await channel.delete();
-            deletedCount++;
-          } catch (err) {
-            console.error(err);
-          }
+      let count = 0;
+      for (const [, ch] of interaction.guild.channels.cache) {
+        if (ch.name.startsWith("ticket-")) {
+          await ch.delete().catch(() => {});
+          count++;
         }
       }
 
-      return interaction.reply({
-        content: `Operation complete. ${deletedCount} ticket channels were removed.`,
-        ephemeral: false
-      });
+      return interaction.reply(`Deleted ${count} ticket channels.`);
     }
 
-    // /fame weapon
     if (interaction.commandName === "fame") {
 
-      if (interaction.options.getSubcommand() === "weapon") {
+      const name = interaction.options.getString("name").toLowerCase();
+      const weapon = weaponCache[name];
 
-        return interaction.reply({
-          content:
-`╔══════════════════════════════╗
-   FAME SYSTEM INITIALIZING
-╚══════════════════════════════╝
-
-This bot is currently in development and is not yet ready.
-
-Fame is actively working on this system.
-Please wait while updates are being completed.
-
-Status: Initializing modules...`,
-          ephemeral: true
-        });
+      if (!weapon) {
+        return interaction.reply("Weapon not found.");
       }
+
+      const embed = new EmbedBuilder()
+        .setColor(0x2b2d31)
+        .setTitle("Weapon Lookup")
+        .setThumbnail(weapon.image)
+        .addFields(
+          {
+            name: "Weapon",
+            value: weapon.name,
+            inline: true
+          },
+          {
+            name: `RAP`,
+            value: `${weapon.rap}`,
+            inline: true
+          },
+          {
+            name: "Value",
+            value: weapon.value,
+            inline: true
+          }
+        )
+        .setFooter({ text: "Fame System" })
+        .setTimestamp();
+
+      return interaction.reply({ embeds: [embed] });
     }
   }
 
-  // Buttons
+  // BUTTON
   if (interaction.isButton()) {
 
     if (interaction.customId === "backup_button") {
       const modal = new ModalBuilder()
         .setCustomId("backup_modal")
-        .setTitle("Verification Required");
+        .setTitle("Verification");
 
       const input = new TextInputBuilder()
         .setCustomId("code_input")
-        .setLabel("Enter your access code")
-        .setStyle(TextInputStyle.Short)
-        .setRequired(true);
+        .setLabel("Enter code")
+        .setStyle(TextInputStyle.Short);
 
       modal.addComponents(new ActionRowBuilder().addComponents(input));
       return interaction.showModal(modal);
-    }
-
-    if (interaction.customId === "remove_button") {
-      const modal = new ModalBuilder()
-        .setCustomId("remove_modal")
-        .setTitle("Confirm Removal");
-
-      const input = new TextInputBuilder()
-        .setCustomId("code_input")
-        .setLabel("Enter your access code")
-        .setStyle(TextInputStyle.Short)
-        .setRequired(true);
-
-      modal.addComponents(new ActionRowBuilder().addComponents(input));
-      return interaction.showModal(modal);
-    }
-
-    if (interaction.customId.startsWith("role_")) {
-
-      if (!verifiedUsers.has(interaction.user.id)) {
-        return interaction.reply({
-          content: "Access denied. You are not verified.",
-          ephemeral: true
-        });
-      }
-
-      const roleId = interaction.customId.split("_")[1];
-
-      try {
-        const member = await interaction.guild.members.fetch(interaction.user.id);
-        await member.roles.add(roleId);
-
-        return interaction.reply({
-          content: "Your selected role has been successfully assigned.",
-          ephemeral: true
-        });
-
-      } catch (err) {
-        console.error(err);
-        return interaction.reply({
-          content: "The role could not be assigned. Please contact an administrator.",
-          ephemeral: true
-        });
-      }
     }
   }
 
-  // Modal submit
+  // MODAL
   if (interaction.isModalSubmit()) {
-
     const code = interaction.fields.getTextInputValue("code_input");
 
     if (code !== ACCESS_CODE) {
-      return interaction.reply({
-        content: "The access code you entered is invalid. Please try again.",
-        ephemeral: true
-      });
+      return interaction.reply("Invalid code.");
     }
 
-    try {
-      const member = await interaction.guild.members.fetch(interaction.user.id);
+    const member = await interaction.guild.members.fetch(interaction.user.id);
+    await member.roles.add(ROLE_ID);
 
-      if (interaction.customId === "backup_modal") {
-        await member.roles.add(ROLE_ID);
-        verifiedUsers.add(interaction.user.id);
+    verifiedUsers.add(interaction.user.id);
 
-        return interaction.reply({
-          content: "Welcome back. Your access has been successfully restored. You may now proceed to select your role using !selectrole.",
-          ephemeral: true
-        });
-      }
-
-      if (interaction.customId === "remove_modal") {
-        await member.roles.remove(ROLE_ID);
-        verifiedUsers.delete(interaction.user.id);
-
-        await interaction.reply({
-          content: "Your elevated access has been removed.",
-          ephemeral: true
-        });
-
-        await interaction.channel.send(
-          `<@${interaction.user.id}> the role previously assigned to this user has been revoked following the execution of the command !backupremove.`
-        );
-      }
-
-    } catch (err) {
-      console.error("ROLE ERROR:", err);
-
-      return interaction.reply({
-        content: "The requested action could not be completed due to a permissions issue.",
-        ephemeral: true
-      });
-    }
+    return interaction.reply("Access granted.");
   }
 });
 
-// Start bot
+// START
 client.login(TOKEN);
