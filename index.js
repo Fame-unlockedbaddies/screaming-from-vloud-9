@@ -39,7 +39,7 @@ const CHANNEL_ID = "1448798824415101030";
 // Temporary verified users
 const verifiedUsers = new Set();
 
-// Bot
+// 🤖 Bot
 const client = new Client({
   intents: [
     GatewayIntentBits.Guilds,
@@ -49,13 +49,27 @@ const client = new Client({
   ]
 });
 
-// Register GLOBAL slash command
+// 🔧 Register GLOBAL slash commands
 const commands = [
   new SlashCommandBuilder()
     .setName("deletetickets")
-    .setDescription("Delete all ticket channels")
-    .toJSON()
-];
+    .setDescription("Delete all ticket channels"),
+
+  new SlashCommandBuilder()
+    .setName("fame")
+    .setDescription("Fame system commands")
+    .addSubcommand(sub =>
+      sub
+        .setName("weapon")
+        .setDescription("Check weapon RAP")
+        .addStringOption(option =>
+          option
+            .setName("name")
+            .setDescription("Weapon name")
+            .setRequired(true)
+        )
+    )
+].map(cmd => cmd.toJSON());
 
 const rest = new REST({ version: "10" }).setToken(TOKEN);
 
@@ -65,7 +79,7 @@ const rest = new REST({ version: "10" }).setToken(TOKEN);
       Routes.applicationCommands(CLIENT_ID),
       { body: commands }
     );
-    console.log("Global slash command registered.");
+    console.log("Global slash commands registered.");
   } catch (error) {
     console.error(error);
   }
@@ -75,7 +89,7 @@ client.once("ready", () => {
   console.log(`Logged in as ${client.user.tag}`);
 });
 
-// Message commands
+// 💬 Message commands
 client.on("messageCreate", async (message) => {
   if (message.author.bot) return;
   if (message.channel.id !== CHANNEL_ID) return;
@@ -139,11 +153,13 @@ client.on("messageCreate", async (message) => {
   }
 });
 
-// Interactions
+// ⚡ Interactions
 client.on(Events.InteractionCreate, async (interaction) => {
 
-  // Slash command
+  // Slash commands
   if (interaction.isChatInputCommand()) {
+
+    // /deletetickets
     if (interaction.commandName === "deletetickets") {
 
       if (!interaction.member.roles.cache.has(ROLE_ID)) {
@@ -170,6 +186,28 @@ client.on(Events.InteractionCreate, async (interaction) => {
         content: `Operation complete. ${deletedCount} ticket channels were removed.`,
         ephemeral: true
       });
+    }
+
+    // /fame weapon
+    if (interaction.commandName === "fame") {
+
+      if (interaction.options.getSubcommand() === "weapon") {
+
+        return interaction.reply({
+          content:
+`╔══════════════════════════════╗
+   FAME SYSTEM INITIALIZING
+╚══════════════════════════════╝
+
+This bot is currently in development and is not yet ready.
+
+Fame is actively working on this system.
+Please wait while updates are being completed.
+
+Status: Initializing modules...`,
+          ephemeral: true
+        });
+      }
     }
   }
 
