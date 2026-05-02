@@ -69,7 +69,6 @@ const rest = new REST({ version: "10" }).setToken(TOKEN);
   console.log("Commands registered");
 })();
 
-
 // ---------------- SCRAPER ----------------
 async function loadWeapons() {
   try {
@@ -123,19 +122,17 @@ async function loadWeapons() {
   }
 }
 
-
 // ---------------- READY ----------------
 client.once("ready", async () => {
   console.log(`Logged in as ${client.user.tag}`);
   await loadWeapons();
 });
 
-
 // ---------------- HANDLER ----------------
 client.on(Events.InteractionCreate, async (interaction) => {
   if (!interaction.isChatInputCommand()) return;
 
-  // ================= FAME =================
+  // ===== FAME =====
   if (interaction.commandName === "fame") {
 
     const input = interaction.options.getString("name").toLowerCase();
@@ -149,9 +146,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
     }
 
     if (!weapon) {
-      return interaction.reply({
-        content: "Weapon not found."
-      });
+      return interaction.reply({ content: "Weapon not found." });
     }
 
     const embed = new EmbedBuilder()
@@ -168,7 +163,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
     return interaction.reply({ embeds: [embed] });
   }
 
-  // ================= ROBLOX =================
+  // ===== ROBLOX =====
   if (interaction.commandName === "roblox") {
 
     if (interaction.options.getSubcommand() === "outfit") {
@@ -195,18 +190,18 @@ client.on(Events.InteractionCreate, async (interaction) => {
 
         const userId = user.id;
 
-        // 2. get avatar image
+        // 2. HIGH QUALITY AVATAR (FIXED)
         const avatarRes = await axios.get(
-          `https://thumbnails.roblox.com/v1/users/avatar?userIds=${userId}&size=420x420&format=Png&isCircular=false`
+          `https://thumbnails.roblox.com/v1/users/avatar?userIds=${userId}&size=1024x1024&format=Png&isCircular=false`
         );
 
         const image = avatarRes.data.data[0].imageUrl;
 
-        // 3. send embed
+        // 3. embed
         const embed = new EmbedBuilder()
           .setColor(0x2b2d31)
           .setTitle(`${username}'s Outfit`)
-          .setImage(image)
+          .setImage(image) // big clear image
           .setFooter({ text: "Fame • Roblox System" })
           .setTimestamp();
 
