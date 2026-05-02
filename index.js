@@ -181,28 +181,65 @@ client.on(Events.InteractionCreate, async (interaction) => {
         );
 
         const user = userRes.data.data[0];
-
         if (!user) {
-          return interaction.reply({
-            content: "Roblox user not found."
-          });
+          return interaction.reply({ content: "Roblox user not found." });
         }
 
         const userId = user.id;
 
-        // 2. HIGH QUALITY AVATAR (FIXED)
+        // 2. avatar (HD)
         const avatarRes = await axios.get(
           `https://thumbnails.roblox.com/v1/users/avatar?userIds=${userId}&size=1024x1024&format=Png&isCircular=false`
         );
 
         const image = avatarRes.data.data[0].imageUrl;
 
-        // 3. embed
+        // 3. worn items
+        const wornRes = await axios.get(
+          `https://avatar.roblox.com/v1/users/${userId}/currently-wearing`
+        );
+
+        const assetIds = wornRes.data.assetIds;
+
+        let itemsText = "None";
+
+        if (assetIds.length > 0) {
+          const detailsRes = await axios.post(
+            "https://catalog.roblox.com/v1/catalog/items/details",
+            {
+              items: assetIds.map(id => ({
+                itemType: "Asset",
+                id: id
+              }))
+            }
+          );
+
+          const items = detailsRes.data.data;
+
+          itemsText = items
+            .slice(0, 10)
+            .map(item => {
+              let text = `• ${item.name}`;
+
+              if (item.isLimited || item.isLimitedUnique) {
+                text += " (Limited)";
+              }
+
+              return text;
+            })
+            .join("\n");
+        }
+
+        // 4. embed
         const embed = new EmbedBuilder()
           .setColor(0x2b2d31)
           .setTitle(`${username}'s Outfit`)
-          .setImage(image) // big clear image
-          .setFooter({ text: "Fame • Roblox System" })
+          .setImage(image)
+          .addFields({
+            name: "Equipped Items",
+            value: itemsText
+          })
+          .setFooter({ text: "Fame • Roblox Trading System" })
           .setTimestamp();
 
         return interaction.reply({ embeds: [embed] });
