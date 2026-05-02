@@ -14,6 +14,14 @@ const {
 const express = require("express");
 const axios = require("axios");
 
+// ✅ FIX: axios with headers (prevents Roblox blocking)
+const axiosInstance = axios.create({
+  timeout: 10000,
+  headers: {
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"
+  }
+});
+
 const app = express();
 const PORT = process.env.PORT || 3000;
 
@@ -78,7 +86,7 @@ async function loadWeapons() {
     while (true) {
       console.log("Fetching page", page);
 
-      const res = await axios.get(
+      const res = await axiosInstance.get(
         `https://bloxtsar.com/baddies/items?page=${page}`
       );
 
@@ -118,7 +126,7 @@ async function loadWeapons() {
     console.log("Weapons loaded:", Object.keys(weaponCache).length);
 
   } catch (err) {
-    console.error("SCRAPER ERROR:", err);
+    console.error("SCRAPER ERROR:", err.message);
   }
 }
 
@@ -172,7 +180,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
 
       try {
         // USER LOOKUP
-        const userRes = await axios.post(
+        const userRes = await axiosInstance.post(
           "https://users.roblox.com/v1/usernames/users",
           {
             usernames: [username],
@@ -188,7 +196,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
         const userId = user.id;
 
         // AVATAR
-        const avatarRes = await axios.get(
+        const avatarRes = await axiosInstance.get(
           `https://thumbnails.roblox.com/v1/users/avatar?userIds=${userId}&size=1024x1024&format=Png&isCircular=false`
         );
 
@@ -198,14 +206,14 @@ client.on(Events.InteractionCreate, async (interaction) => {
         let itemsText = "None";
 
         try {
-          const wornRes = await axios.get(
+          const wornRes = await axiosInstance.get(
             `https://avatar.roblox.com/v1/users/${userId}/currently-wearing`
           );
 
           const assetIds = wornRes.data?.assetIds || [];
 
           if (assetIds.length > 0) {
-            const detailsRes = await axios.post(
+            const detailsRes = await axiosInstance.post(
               "https://catalog.roblox.com/v1/catalog/items/details",
               {
                 items: assetIds.map(id => ({
@@ -254,7 +262,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
         console.error("ROBLOX ERROR:", err.response?.data || err.message);
 
         return interaction.reply({
-          content: "Failed to fetch Roblox outfit. (API error)"
+          content: "Failed to fetch Roblox outfit. (API blocked or error)"
         });
       }
     }
