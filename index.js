@@ -49,10 +49,22 @@ const commands = [
   new SlashCommandBuilder()
     .setName("roblox")
     .setDescription("Roblox tools")
+
     .addSubcommand(sub =>
       sub
         .setName("outfit")
-        .setDescription("Get a player's avatar")
+        .setDescription("Get player's full avatar")
+        .addStringOption(opt =>
+          opt.setName("username")
+            .setDescription("Roblox username")
+            .setRequired(true)
+        )
+    )
+
+    .addSubcommand(sub =>
+      sub
+        .setName("mug")
+        .setDescription("Get player's headshot")
         .addStringOption(opt =>
           opt.setName("username")
             .setDescription("Roblox username")
@@ -133,7 +145,6 @@ client.on(Events.InteractionCreate, async (interaction) => {
 
   // ===== FAME =====
   if (interaction.commandName === "fame") {
-
     const input = interaction.options.getString("name").toLowerCase();
 
     let weapon = weaponCache[input];
@@ -164,57 +175,82 @@ client.on(Events.InteractionCreate, async (interaction) => {
 
   // ===== ROBLOX =====
   if (interaction.commandName === "roblox") {
+    const sub = interaction.options.getSubcommand();
+    const username = interaction.options.getString("username");
 
-    if (interaction.options.getSubcommand() === "outfit") {
-
-      const username = interaction.options.getString("username");
-
-      try {
-        // USER LOOKUP
-        const userRes = await axios.post(
-          "https://users.roblox.com/v1/usernames/users",
-          {
-            usernames: [username],
-            excludeBannedUsers: true
-          }
-        );
-
-        if (!userRes.data.data || userRes.data.data.length === 0) {
-          return interaction.reply({ content: "Roblox user not found." });
+    try {
+      // USER LOOKUP
+      const userRes = await axios.post(
+        "https://users.roblox.com/v1/usernames/users",
+        {
+          usernames: [username],
+          excludeBannedUsers: true
         }
+      );
 
-        const user = userRes.data.data[0];
-        const userId = user.id;
+      if (!userRes.data.data?.length) {
+        return interaction.reply({ content: "Roblox user not found." });
+      }
 
-        // ✅ FIXED AVATAR FETCH (WORKING)
-        const thumbRes = await axios.get(
-          `https://thumbnails.roblox.com/v1/users/avatar-headshot?userIds=${userId}&size=420x420&format=Png&isCircular=false`
+      const user = userRes.data.data[0];
+      const userId = user.id;
+
+      let image;
+
+      // FULL OUTFIT
+      if (sub === "outfit") {
+        const res = await axios.get(
+          `https://thumbnails.roblox.com/v1/users/avatar?userIds=${userId}&size=720x720&format=Png&isCircular=false`
         );
 
-        const image = thumbRes.data?.data?.[0]?.imageUrl;
+        image = res.data?.data?.[0]?.imageUrl;
 
         if (!image) {
           return interaction.reply({
-            content: "Could not load avatar image."
+            content: "Could not load avatar outfit."
           });
         }
 
         const embed = new EmbedBuilder()
           .setColor(0x2b2d31)
-          .setTitle(`${username}'s Avatar`)
+          .setTitle(`${username}'s Outfit`)
           .setImage(image)
-          .setFooter({ text: "Fame • Roblox System" })
+          .setFooter({ text: "Fame • Roblox Outfit" })
           .setTimestamp();
 
         return interaction.reply({ embeds: [embed] });
-
-      } catch (err) {
-        console.error("ROBLOX ERROR:", err.message);
-
-        return interaction.reply({
-          content: "Failed to fetch Roblox avatar."
-        });
       }
+
+      // MUGSHOT
+      if (sub === "mug") {
+        const res = await axios.get(
+          `https://thumbnails.roblox.com/v1/users/avatar-headshot?userIds=${userId}&size=420x420&format=Png&isCircular=false`
+        );
+
+        image = res.data?.data?.[0]?.imageUrl;
+
+        if (!image) {
+          return interaction.reply({
+            content: "Could not load avatar mugshot."
+          });
+        }
+
+        const embed = new EmbedBuilder()
+          .setColor(0x2b2d31)
+          .setTitle(`${username}'s Mugshot`)
+          .setImage(image)
+          .setFooter({ text: "Fame • Roblox Mug" })
+          .setTimestamp();
+
+        return interaction.reply({ embeds: [embed] });
+      }
+
+    } catch (err) {
+      console.error("ROBLOX ERROR:", err.message);
+
+      return interaction.reply({
+        content: "Failed to fetch Roblox data."
+      });
     }
   }
 });
