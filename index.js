@@ -170,7 +170,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
       const username = interaction.options.getString("username");
 
       try {
-        // USER LOOKUP (safe)
+        // USER LOOKUP
         const userRes = await axios.post(
           "https://users.roblox.com/v1/usernames/users",
           {
@@ -186,14 +186,23 @@ client.on(Events.InteractionCreate, async (interaction) => {
         const user = userRes.data.data[0];
         const userId = user.id;
 
-        // ✅ SAFE AVATAR (never blocked)
-        const image = `https://www.roblox.com/headshot-thumbnail/image?userId=${userId}&width=420&height=420&format=png`;
+        // ✅ FIXED AVATAR FETCH (WORKING)
+        const thumbRes = await axios.get(
+          `https://thumbnails.roblox.com/v1/users/avatar-headshot?userIds=${userId}&size=420x420&format=Png&isCircular=false`
+        );
+
+        const image = thumbRes.data?.data?.[0]?.imageUrl;
+
+        if (!image) {
+          return interaction.reply({
+            content: "Could not load avatar image."
+          });
+        }
 
         const embed = new EmbedBuilder()
           .setColor(0x2b2d31)
           .setTitle(`${username}'s Avatar`)
           .setImage(image)
-          .setDescription("Avatar loaded successfully.")
           .setFooter({ text: "Fame • Roblox System" })
           .setTimestamp();
 
@@ -203,7 +212,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
         console.error("ROBLOX ERROR:", err.message);
 
         return interaction.reply({
-          content: "Roblox lookup failed."
+          content: "Failed to fetch Roblox avatar."
         });
       }
     }
