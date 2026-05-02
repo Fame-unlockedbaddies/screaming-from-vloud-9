@@ -14,14 +14,6 @@ const {
 const express = require("express");
 const axios = require("axios");
 
-// ✅ FIX: axios with headers (prevents Roblox blocking)
-const axiosInstance = axios.create({
-  timeout: 10000,
-  headers: {
-    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"
-  }
-});
-
 const app = express();
 const PORT = process.env.PORT || 3000;
 
@@ -86,7 +78,7 @@ async function loadWeapons() {
     while (true) {
       console.log("Fetching page", page);
 
-      const res = await axiosInstance.get(
+      const res = await axios.get(
         `https://bloxtsar.com/baddies/items?page=${page}`
       );
 
@@ -180,7 +172,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
 
       try {
         // USER LOOKUP
-        const userRes = await axiosInstance.post(
+        const userRes = await axios.post(
           "https://users.roblox.com/v1/usernames/users",
           {
             usernames: [username],
@@ -195,25 +187,21 @@ client.on(Events.InteractionCreate, async (interaction) => {
         const user = userRes.data.data[0];
         const userId = user.id;
 
-        // AVATAR
-        const avatarRes = await axiosInstance.get(
-          `https://thumbnails.roblox.com/v1/users/avatar?userIds=${userId}&size=1024x1024&format=Png&isCircular=false`
-        );
-
-        const image = avatarRes.data?.data?.[0]?.imageUrl || null;
+        // ✅ STABLE AVATAR (no API blocking)
+        const image = `https://www.roblox.com/headshot-thumbnail/image?userId=${userId}&width=420&height=420&format=png`;
 
         // ITEMS
         let itemsText = "None";
 
         try {
-          const wornRes = await axiosInstance.get(
+          const wornRes = await axios.get(
             `https://avatar.roblox.com/v1/users/${userId}/currently-wearing`
           );
 
           const assetIds = wornRes.data?.assetIds || [];
 
           if (assetIds.length > 0) {
-            const detailsRes = await axiosInstance.post(
+            const detailsRes = await axios.post(
               "https://catalog.roblox.com/v1/catalog/items/details",
               {
                 items: assetIds.map(id => ({
@@ -247,6 +235,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
         const embed = new EmbedBuilder()
           .setColor(0x2b2d31)
           .setTitle(`${username}'s Outfit`)
+          .setImage(image)
           .addFields({
             name: "Equipped Items",
             value: itemsText
@@ -254,15 +243,13 @@ client.on(Events.InteractionCreate, async (interaction) => {
           .setFooter({ text: "Fame • Roblox System" })
           .setTimestamp();
 
-        if (image) embed.setImage(image);
-
         return interaction.reply({ embeds: [embed] });
 
       } catch (err) {
-        console.error("ROBLOX ERROR:", err.response?.data || err.message);
+        console.error("ROBLOX ERROR:", err.message);
 
         return interaction.reply({
-          content: "Failed to fetch Roblox outfit. (API blocked or error)"
+          content: "Failed to fetch Roblox outfit."
         });
       }
     }
