@@ -52,14 +52,13 @@ const commands = [
     .addSubcommand(sub =>
       sub
         .setName("outfit")
-        .setDescription("Get a player's outfit")
+        .setDescription("Get a player's avatar")
         .addStringOption(opt =>
           opt.setName("username")
             .setDescription("Roblox username")
             .setRequired(true)
         )
     )
-
 ].map(c => c.toJSON());
 
 const rest = new REST({ version: "10" }).setToken(TOKEN);
@@ -171,7 +170,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
       const username = interaction.options.getString("username");
 
       try {
-        // USER LOOKUP
+        // USER LOOKUP (safe)
         const userRes = await axios.post(
           "https://users.roblox.com/v1/usernames/users",
           {
@@ -187,59 +186,14 @@ client.on(Events.InteractionCreate, async (interaction) => {
         const user = userRes.data.data[0];
         const userId = user.id;
 
-        // ✅ STABLE AVATAR (no API blocking)
+        // ✅ SAFE AVATAR (never blocked)
         const image = `https://www.roblox.com/headshot-thumbnail/image?userId=${userId}&width=420&height=420&format=png`;
 
-        // ITEMS
-        let itemsText = "None";
-
-        try {
-          const wornRes = await axios.get(
-            `https://avatar.roblox.com/v1/users/${userId}/currently-wearing`
-          );
-
-          const assetIds = wornRes.data?.assetIds || [];
-
-          if (assetIds.length > 0) {
-            const detailsRes = await axios.post(
-              "https://catalog.roblox.com/v1/catalog/items/details",
-              {
-                items: assetIds.map(id => ({
-                  itemType: "Asset",
-                  id: id
-                }))
-              }
-            );
-
-            const items = detailsRes.data?.data || [];
-
-            if (items.length > 0) {
-              itemsText = items
-                .slice(0, 10)
-                .map(item => {
-                  let text = `• ${item.name || "Unknown Item"}`;
-                  if (item.isLimited || item.isLimitedUnique) {
-                    text += " (Limited)";
-                  }
-                  return text;
-                })
-                .join("\n");
-            }
-          }
-        } catch (itemErr) {
-          console.log("Item fetch failed:", itemErr.message);
-          itemsText = "Could not load items.";
-        }
-
-        // EMBED
         const embed = new EmbedBuilder()
           .setColor(0x2b2d31)
-          .setTitle(`${username}'s Outfit`)
+          .setTitle(`${username}'s Avatar`)
           .setImage(image)
-          .addFields({
-            name: "Equipped Items",
-            value: itemsText
-          })
+          .setDescription("Avatar loaded successfully.")
           .setFooter({ text: "Fame • Roblox System" })
           .setTimestamp();
 
@@ -249,7 +203,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
         console.error("ROBLOX ERROR:", err.message);
 
         return interaction.reply({
-          content: "Failed to fetch Roblox outfit."
+          content: "Roblox lookup failed."
         });
       }
     }
