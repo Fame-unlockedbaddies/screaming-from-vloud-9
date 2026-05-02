@@ -171,7 +171,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
       const username = interaction.options.getString("username");
 
       try {
-        // 1. get user id
+        // USER LOOKUP
         const userRes = await axios.post(
           "https://users.roblox.com/v1/usernames/users",
           {
@@ -180,74 +180,81 @@ client.on(Events.InteractionCreate, async (interaction) => {
           }
         );
 
-        const user = userRes.data.data[0];
-        if (!user) {
+        if (!userRes.data.data || userRes.data.data.length === 0) {
           return interaction.reply({ content: "Roblox user not found." });
         }
 
+        const user = userRes.data.data[0];
         const userId = user.id;
 
-        // 2. avatar (HD)
+        // AVATAR
         const avatarRes = await axios.get(
           `https://thumbnails.roblox.com/v1/users/avatar?userIds=${userId}&size=1024x1024&format=Png&isCircular=false`
         );
 
-        const image = avatarRes.data.data[0].imageUrl;
+        const image = avatarRes.data?.data?.[0]?.imageUrl || null;
 
-        // 3. worn items
-        const wornRes = await axios.get(
-          `https://avatar.roblox.com/v1/users/${userId}/currently-wearing`
-        );
-
-        const assetIds = wornRes.data.assetIds;
-
+        // ITEMS
         let itemsText = "None";
 
-        if (assetIds.length > 0) {
-          const detailsRes = await axios.post(
-            "https://catalog.roblox.com/v1/catalog/items/details",
-            {
-              items: assetIds.map(id => ({
-                itemType: "Asset",
-                id: id
-              }))
-            }
+        try {
+          const wornRes = await axios.get(
+            `https://avatar.roblox.com/v1/users/${userId}/currently-wearing`
           );
 
-          const items = detailsRes.data.data;
+          const assetIds = wornRes.data?.assetIds || [];
 
-          itemsText = items
-            .slice(0, 10)
-            .map(item => {
-              let text = `• ${item.name}`;
-
-              if (item.isLimited || item.isLimitedUnique) {
-                text += " (Limited)";
+          if (assetIds.length > 0) {
+            const detailsRes = await axios.post(
+              "https://catalog.roblox.com/v1/catalog/items/details",
+              {
+                items: assetIds.map(id => ({
+                  itemType: "Asset",
+                  id: id
+                }))
               }
+            );
 
-              return text;
-            })
-            .join("\n");
+            const items = detailsRes.data?.data || [];
+
+            if (items.length > 0) {
+              itemsText = items
+                .slice(0, 10)
+                .map(item => {
+                  let text = `• ${item.name || "Unknown Item"}`;
+                  if (item.isLimited || item.isLimitedUnique) {
+                    text += " (Limited)";
+                  }
+                  return text;
+                })
+                .join("\n");
+            }
+          }
+        } catch (itemErr) {
+          console.log("Item fetch failed:", itemErr.message);
+          itemsText = "Could not load items.";
         }
 
-        // 4. embed
+        // EMBED
         const embed = new EmbedBuilder()
           .setColor(0x2b2d31)
           .setTitle(`${username}'s Outfit`)
-          .setImage(image)
           .addFields({
             name: "Equipped Items",
             value: itemsText
           })
-          .setFooter({ text: "Fame • Roblox Trading System" })
+          .setFooter({ text: "Fame • Roblox System" })
           .setTimestamp();
+
+        if (image) embed.setImage(image);
 
         return interaction.reply({ embeds: [embed] });
 
       } catch (err) {
-        console.error(err);
+        console.error("ROBLOX ERROR:", err.response?.data || err.message);
+
         return interaction.reply({
-          content: "Failed to fetch Roblox outfit."
+          content: "Failed to fetch Roblox outfit. (API error)"
         });
       }
     }
