@@ -5,10 +5,7 @@ const express = require("express");
 const fs = require("fs");
 const path = require("path");
 const axios = require("axios");
-
-const ffmpeg = require("fluent-ffmpeg");
-const ffmpegPath = require("ffmpeg-static");
-ffmpeg.setFfmpegPath(ffmpegPath);
+const { exec } = require("child_process");
 
 const {
   Client,
@@ -75,18 +72,11 @@ const commands = [
 const rest = new REST({ version: "10" }).setToken(TOKEN);
 
 (async () => {
-  try {
-    await rest.put(Routes.applicationCommands(CLIENT_ID), {
-      body: commands
-    });
-    console.log("Commands registered");
-  } catch (err) {
-    console.error(err);
-  }
+  await rest.put(Routes.applicationCommands(CLIENT_ID), { body: commands });
 })();
 
-// ---------------- AUDIO GENERATOR ----------------
-function generateToneWav(filename, genre) {
+// ---------------- SIMPLE AUDIO GENERATOR ----------------
+function generateToneWav(filePath, genre) {
   const sampleRate = 44100;
   const duration = 5;
   const samples = sampleRate * duration;
@@ -123,7 +113,7 @@ function generateToneWav(filename, genre) {
     buffer.writeInt16LE(sample * 32767, 44 + i * 2);
   }
 
-  fs.writeFileSync(filename, buffer);
+  fs.writeFileSync(filePath, buffer);
 }
 
 // ---------------- HANDLER ----------------
@@ -139,20 +129,16 @@ client.on(Events.InteractionCreate, async interaction => {
 
     await interaction.deferReply();
 
-    try {
-      const filePath = path.join(__dirname, "song.wav");
-      generateToneWav(filePath, genre.toLowerCase());
+    const filePath = path.join(__dirname, "song.wav");
 
-      await interaction.editReply({
-        content: `Generated ${genre} audio`,
-        files: [filePath]
-      });
+    generateToneWav(filePath, genre.toLowerCase());
 
-      fs.unlinkSync(filePath);
-    } catch (err) {
-      console.error(err);
-      interaction.editReply("Error generating audio");
-    }
+    await interaction.editReply({
+      content: `Generated ${genre} audio`,
+      files: [filePath]
+    });
+
+    fs.unlinkSync(filePath);
   }
 
   // ===== /audio bassboost =====
@@ -172,7 +158,7 @@ client.on(Events.InteractionCreate, async interaction => {
     const outputPath = path.join(__dirname, "boosted.mp3");
 
     try {
-      // Download
+      // DOWNLOAD FILE
       const response = await axios({
         url: file.url,
         method: "GET",
@@ -187,36 +173,32 @@ client.on(Events.InteractionCreate, async interaction => {
         writer.on("error", rej);
       });
 
-      // Bass boost
-      await new Promise((resolve, reject) => {
-        ffmpeg(inputPath)
-          .audioFilters([
-            "bass=g=25",
-            "equalizer=f=60:width_type=o:width=2:g=15",
-            "equalizer=f=120:width_type=o:width=2:g=10",
-            "volume=1.8"
-          ])
-          .save(outputPath)
-          .on("end", resolve)
-          .on("error", reject);
+      // 🔥 REAL BASS BOOST USING FFMPEG
+      const command = `ffmpeg -i "${inputPath}" -af "bass=g=30,volume=1.8" "${outputPath}" -y`;
+
+      exec(command, async (err) => {
+        if (err) {
+          console.error(err);
+          return interaction.editReply("Error processing audio.");
+        }
+
+        const embed = new EmbedBuilder()
+          .setColor(0x2b2d31)
+          .setTitle("Bass Boost Complete")
+          .setDescription("Your audio has been heavily bass boosted.");
+
+        await interaction.editReply({
+          embeds: [embed],
+          files: [new AttachmentBuilder(outputPath)]
+        });
+
+        fs.unlinkSync(inputPath);
+        fs.unlinkSync(outputPath);
       });
-
-      const embed = new EmbedBuilder()
-        .setColor(0x2b2d31)
-        .setTitle("Bass Boost Complete")
-        .setDescription("Your audio has been heavily bass boosted.");
-
-      await interaction.editReply({
-        embeds: [embed],
-        files: [new AttachmentBuilder(outputPath)]
-      });
-
-      fs.unlinkSync(inputPath);
-      fs.unlinkSync(outputPath);
 
     } catch (err) {
       console.error(err);
-      interaction.editReply("Error processing audio.");
+      interaction.editReply("Error processing file.");
     }
   }
 });
