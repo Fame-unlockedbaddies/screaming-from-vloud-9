@@ -42,6 +42,9 @@ const customWeapons = {
   }
 };
 
+// 🖼️ RAP ICON IMAGE (UPLOAD YOUR IMAGE AND PUT LINK HERE)
+const RAP_ICON = "PASTE_YOUR_RAP_IMAGE_URL_HERE";
+
 // ---------------- COMMANDS ----------------
 const commands = [
   new SlashCommandBuilder()
@@ -55,6 +58,17 @@ const commands = [
         .addStringOption(opt =>
           opt.setName("name").setDescription("Weapon name").setRequired(true)
         )
+    ),
+
+  new SlashCommandBuilder()
+    .setName("emojiid")
+    .setDescription("Get the ID of a custom emoji")
+    .setDMPermission(true)
+    .addStringOption(opt =>
+      opt
+        .setName("emoji")
+        .setDescription("Paste the emoji (e.g. <:rap:123>)")
+        .setRequired(true)
     ),
 
   new SlashCommandBuilder()
@@ -99,8 +113,6 @@ async function loadWeapons() {
     let page = 1;
 
     while (true) {
-      console.log("Fetching page", page);
-
       const res = await axios.get(
         `https://bloxtsar.com/baddies/items?page=${page}`
       );
@@ -122,7 +134,7 @@ async function loadWeapons() {
         json?.props?.pageProps?.inventory ||
         [];
 
-      if (!items || items.length === 0) break;
+      if (!items.length) break;
 
       for (const item of items) {
         if (!item?.name) continue;
@@ -139,7 +151,6 @@ async function loadWeapons() {
     }
 
     console.log("Weapons loaded:", Object.keys(weaponCache).length);
-
   } catch (err) {
     console.error("SCRAPER ERROR:", err.message);
   }
@@ -155,6 +166,26 @@ client.once("ready", async () => {
 client.on(Events.InteractionCreate, async (interaction) => {
   if (!interaction.isChatInputCommand()) return;
 
+  // ===== EMOJI ID =====
+  if (interaction.commandName === "emojiid") {
+    const input = interaction.options.getString("emoji");
+
+    const match = input.match(/<?a?:\w+:(\d+)>?/);
+
+    if (!match) {
+      return interaction.reply({
+        content: "That is not a valid custom emoji.",
+        ephemeral: true
+      });
+    }
+
+    const emojiId = match[1];
+
+    return interaction.reply({
+      content: `Emoji ID: ${emojiId}`
+    });
+  }
+
   // ===== FAME =====
   if (interaction.commandName === "fame") {
     await interaction.deferReply();
@@ -169,7 +200,6 @@ client.on(Events.InteractionCreate, async (interaction) => {
       );
     }
 
-    // 🔥 CUSTOM OVERRIDE
     if (customWeapons[input]) {
       weapon = customWeapons[input];
     }
@@ -183,18 +213,17 @@ client.on(Events.InteractionCreate, async (interaction) => {
       .setTitle(weapon.name)
       .setThumbnail(weapon.image)
 
-      .addFields(
-        {
-          name: "<:rap:1500288970528133131> RAP",
-          value: `${weapon.rap}`,
-          inline: true
-        },
-        {
-          name: "💰 Value",
-          value: `${weapon.value}`,
-          inline: true
-        }
-      )
+      // RAP ICON IMAGE
+      .setAuthor({
+        name: `RAP: ${weapon.rap}`,
+        iconURL: RAP_ICON
+      })
+
+      .addFields({
+        name: "Value",
+        value: `${weapon.value}`,
+        inline: true
+      })
 
       .setFooter({ text: "Fame • Live Data" })
       .setTimestamp();
@@ -222,8 +251,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
         return interaction.editReply({ content: "Roblox user not found." });
       }
 
-      const user = userRes.data.data[0];
-      const userId = user.id;
+      const userId = userRes.data.data[0].id;
 
       let image;
 
@@ -233,12 +261,6 @@ client.on(Events.InteractionCreate, async (interaction) => {
         );
 
         image = res.data?.data?.[0]?.imageUrl;
-
-        if (!image) {
-          return interaction.editReply({
-            content: "Could not load avatar outfit."
-          });
-        }
 
         const embed = new EmbedBuilder()
           .setColor(0x2b2d31)
@@ -256,12 +278,6 @@ client.on(Events.InteractionCreate, async (interaction) => {
 
         image = res.data?.data?.[0]?.imageUrl;
 
-        if (!image) {
-          return interaction.editReply({
-            content: "Could not load avatar mugshot."
-          });
-        }
-
         const embed = new EmbedBuilder()
           .setColor(0x2b2d31)
           .setTitle(`${username}'s Mugshot`)
@@ -272,8 +288,6 @@ client.on(Events.InteractionCreate, async (interaction) => {
       }
 
     } catch (err) {
-      console.error("ROBLOX ERROR:", err.message);
-
       return interaction.editReply({
         content: "Failed to fetch Roblox data."
       });
