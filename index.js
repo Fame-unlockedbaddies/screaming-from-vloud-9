@@ -8,80 +8,28 @@ const {
   REST,
   Routes,
   SlashCommandBuilder,
-  EmbedBuilder
+  ModalBuilder,
+  TextInputBuilder,
+  TextInputStyle,
+  ActionRowBuilder
 } = require("discord.js");
 
-const express = require("express");
-const axios = require("axios");
-
-const app = express();
-const PORT = process.env.PORT || 3000;
-
-app.get("/", (req, res) => res.send("Bot is running."));
-app.listen(PORT, () => console.log("Web server running"));
-
-// ENV
 const TOKEN = process.env.TOKEN;
 const CLIENT_ID = process.env.CLIENT_ID;
 
-// BOT
 const client = new Client({
   intents: [GatewayIntentBits.Guilds]
 });
 
-// 🔥 CUSTOM GLITTER BOMB
-const customWeapons = {
-  "glitter bomb": {
-    name: "Glitter Bomb",
-    image: "https://cdn.meowia.com/baddies/glitter-bomb.png",
-    rarity: "Legend",
-    value: "200,000",
-    rap: "145,000",
-    demand: "Amazing",
-    trend: "Raising"
-  }
-};
-
-// ---------------- COMMANDS ----------------
+// ---------------- COMMAND ----------------
 const commands = [
   new SlashCommandBuilder()
-    .setName("fame")
-    .setDescription("Fame trading system")
-    .setDMPermission(true)
+    .setName("make")
+    .setDescription("Create things")
     .addSubcommand(sub =>
       sub
-        .setName("weapon")
-        .setDescription("Lookup weapon")
-        .addStringOption(opt =>
-          opt.setName("name").setDescription("Weapon name").setRequired(true)
-        )
-    ),
-
-  new SlashCommandBuilder()
-    .setName("roblox")
-    .setDescription("Roblox tools")
-    .setDMPermission(true)
-
-    .addSubcommand(sub =>
-      sub
-        .setName("outfit")
-        .setDescription("Get player's full avatar")
-        .addStringOption(opt =>
-          opt.setName("username")
-            .setDescription("Roblox username")
-            .setRequired(true)
-        )
-    )
-
-    .addSubcommand(sub =>
-      sub
-        .setName("mug")
-        .setDescription("Get player's headshot")
-        .addStringOption(opt =>
-          opt.setName("username")
-            .setDescription("Roblox username")
-            .setRequired(true)
-        )
+        .setName("audio")
+        .setDescription("Generate music")
     )
 ].map(c => c.toJSON());
 
@@ -99,115 +47,64 @@ client.once("ready", () => {
 
 // ---------------- HANDLER ----------------
 client.on(Events.InteractionCreate, async (interaction) => {
-  if (!interaction.isChatInputCommand()) return;
 
-  // ===== FAME =====
-  if (interaction.commandName === "fame") {
-    await interaction.deferReply();
+  // ===== OPEN MODAL =====
+  if (interaction.isChatInputCommand()) {
+    if (
+      interaction.commandName === "make" &&
+      interaction.options.getSubcommand() === "audio"
+    ) {
+      const modal = new ModalBuilder()
+        .setCustomId("audioModal")
+        .setTitle("Create a Song");
 
-    const input = interaction.options.getString("name").toLowerCase();
-    const weapon = customWeapons[input];
+      const songName = new TextInputBuilder()
+        .setCustomId("songName")
+        .setLabel("Song Name")
+        .setStyle(TextInputStyle.Short)
+        .setRequired(true);
 
-    if (!weapon) {
-      return interaction.editReply({ content: "Weapon not found." });
-    }
+      const genre = new TextInputBuilder()
+        .setCustomId("genre")
+        .setLabel("Genre (phonk, pop, rock...)")
+        .setStyle(TextInputStyle.Short)
+        .setRequired(true);
 
-    const embed = new EmbedBuilder()
-      .setColor(0x2b2d31)
-      .setTitle(weapon.name)
-      .setThumbnail(weapon.image)
-      .setDescription(
-        `__${weapon.rarity}__\n\n` +
-        `**<:rap:1500289824333234236> RAP:** ${weapon.rap}\n` +
-        `**Value:** ${weapon.value}\n` +
-        `**Demand:** ${weapon.demand}\n` +
-        `**Trend:** ${weapon.trend}\n\n` +
-        `────────────────────────────\n` +
-        `*these values are from fame!*`
+      modal.addComponents(
+        new ActionRowBuilder().addComponents(songName),
+        new ActionRowBuilder().addComponents(genre)
       );
 
-    return interaction.editReply({ embeds: [embed] });
+      return interaction.showModal(modal);
+    }
   }
 
-  // ===== ROBLOX =====
-  if (interaction.commandName === "roblox") {
-    const sub = interaction.options.getSubcommand();
-    const username = interaction.options.getString("username");
+  // ===== HANDLE FORM =====
+  if (interaction.isModalSubmit()) {
+    if (interaction.customId === "audioModal") {
+      const name = interaction.fields.getTextInputValue("songName");
+      const genre = interaction.fields.getTextInputValue("genre");
 
-    await interaction.deferReply();
-
-    try {
-      // USER LOOKUP
-      const userRes = await axios.post(
-        "https://users.roblox.com/v1/usernames/users",
-        {
-          usernames: [username],
-          excludeBannedUsers: true
-        }
-      );
-
-      if (!userRes.data.data?.length) {
-        return interaction.editReply({ content: "Roblox user not found." });
-      }
-
-      const user = userRes.data.data[0];
-      const userId = user.id;
-      const displayName = user.displayName || user.name;
-
-      // ===== OUTFIT =====
-      if (sub === "outfit") {
-        const res = await axios.get(
-          `https://thumbnails.roblox.com/v1/users/avatar?userIds=${userId}&size=720x720&format=Png&isCircular=false`
-        );
-
-        const image = res.data?.data?.[0]?.imageUrl;
-
-        if (!image) {
-          return interaction.editReply({ content: "Failed to load outfit." });
-        }
-
-        return interaction.editReply({
-          embeds: [
-            new EmbedBuilder()
-              .setColor(0x2b2d31)
-              .setTitle(`${displayName}'s Outfit`)
-              .setURL(`https://www.roblox.com/users/${userId}/profile`)
-              .setImage(image)
-          ]
-        });
-      }
-
-      // ===== MUGSHOT =====
-      if (sub === "mug") {
-        const res = await axios.get(
-          `https://thumbnails.roblox.com/v1/users/avatar-headshot?userIds=${userId}&size=420x420&format=Png&isCircular=false`
-        );
-
-        const image = res.data?.data?.[0]?.imageUrl;
-
-        if (!image) {
-          return interaction.editReply({ content: "Failed to load mugshot." });
-        }
-
-        return interaction.editReply({
-          embeds: [
-            new EmbedBuilder()
-              .setColor(0x2b2d31)
-              .setTitle(`${displayName}'s Mugshot`)
-              .setURL(`https://www.roblox.com/users/${userId}/profile`)
-              .setImage(image)
-          ]
-        });
-      }
-
-    } catch (err) {
-      console.error("ROBLOX ERROR:", err.message);
-      return interaction.editReply({
-        content: "Failed to fetch Roblox data."
+      // 🔥 For now: fake generation
+      await interaction.reply({
+        content:
+          `🎵 **Generating your song...**\n\n` +
+          `**Title:** ${name}\n` +
+          `**Genre:** ${genre}\n\n` +
+          `⏳ Please wait...`
       });
+
+      // Simulate delay
+      setTimeout(async () => {
+        await interaction.followUp({
+          content:
+            `✅ **Your song is ready!**\n\n` +
+            `**${name}** (${genre})\n` +
+            `🔊 [Download Song](https://example.com/fake-audio.mp3)`
+        });
+      }, 5000);
     }
   }
 });
 
-// START
 client.login(TOKEN);
