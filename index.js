@@ -14,30 +14,33 @@ const {
   Routes,
   SlashCommandBuilder,
   AttachmentBuilder,
-  EmbedBuilder
+  EmbedBuilder,
+  ButtonBuilder,
+  ActionRowBuilder,
+  ButtonStyle
 } = require("discord.js");
 
-// WEB
+// ---------------- WEB ----------------
 const app = express();
 app.get("/", (req, res) => res.send("Cálido running"));
 app.listen(process.env.PORT || 3000, "0.0.0.0");
 
-// BOT
+// ---------------- BOT ----------------
 const client = new Client({
   intents: [
     GatewayIntentBits.Guilds,
     GatewayIntentBits.GuildMessages,
-    GatewayIntentBits.MessageContent
+    GatewayIntentBits.MessageContent,
+    GatewayIntentBits.GuildMembers
   ]
 });
 
 const TOKEN = process.env.TOKEN;
 const CLIENT_ID = process.env.CLIENT_ID;
 
-// COMMANDS
+// ---------------- COMMANDS ----------------
 const commands = [
 
-  // AUDIO EDIT
   new SlashCommandBuilder()
     .setName("audio")
     .setDescription("Edit audio")
@@ -60,7 +63,6 @@ const commands = [
         )
     ),
 
-  // BASSBOOST
   new SlashCommandBuilder()
     .setName("bassboost")
     .setDescription("Add bass to audio")
@@ -68,7 +70,6 @@ const commands = [
       opt.setName("file").setDescription("Audio file").setRequired(true)
     ),
 
-  // ADD INTRO
   new SlashCommandBuilder()
     .setName("add")
     .setDescription("Add intro to audio")
@@ -79,7 +80,6 @@ const commands = [
       opt.setName("main").setDescription("Main audio").setRequired(true)
     ),
 
-  // DOWNLOAD MUSIC
   new SlashCommandBuilder()
     .setName("download")
     .setDescription("Get music info")
@@ -104,10 +104,10 @@ client.once("ready", () => {
   console.log("Cálido running");
 });
 
-// HANDLER
+// ---------------- INTERACTIONS ----------------
 client.on(Events.InteractionCreate, async interaction => {
 
-  // ================= AUDIO =================
+  // AUDIO EDIT
   if (interaction.isChatInputCommand() && interaction.commandName === "audio") {
     const file = interaction.options.getAttachment("file");
     const auto = interaction.options.getBoolean("auto");
@@ -126,7 +126,6 @@ client.on(Events.InteractionCreate, async interaction => {
     const res = await axios({ url: file.url, method: "GET", responseType: "stream" });
     const writer = fs.createWriteStream(input);
     res.data.pipe(writer);
-
     await new Promise(r => writer.on("finish", r));
 
     let filter;
@@ -159,45 +158,94 @@ client.on(Events.InteractionCreate, async interaction => {
     });
   }
 
-  // ================= DOWNLOAD =================
-  if (interaction.isChatInputCommand() && interaction.commandName === "download") {
+  // BASSBOOST
+  if (interaction.commandName === "bassboost") {
+    const file = interaction.options.getAttachment("file");
+
+    if (!file.contentType?.startsWith("audio")) {
+      return interaction.reply("Upload an audio file.");
+    }
+
+    await interaction.deferReply();
+
+    const name = file.url.split("/").pop().split("?")[0];
+    const input = "in_" + name;
+    const output = name;
+
+    const res = await axios({ url: file.url, method: "GET", responseType: "stream" });
+    const writer = fs.createWriteStream(input);
+    res.data.pipe(writer);
+    await new Promise(r => writer.on("finish", r));
+
+    exec(`ffmpeg -i "${input}" -af "bass=g=10,volume=1.6" "${output}" -y`, async () => {
+      await interaction.editReply({ files: [new AttachmentBuilder(output)] });
+      fs.unlinkSync(input);
+      fs.unlinkSync(output);
+    });
+  }
+
+  // ADD INTRO
+  if (interaction.commandName === "add") {
+    await interaction.deferReply();
+
+    const intro = interaction.options.getAttachment("intro");
+    const main = interaction.options.getAttachment("main");
+
+    exec(`ffmpeg -i "${intro.url}" -i "${main.url}" -filter_complex "[0:a][1:a]concat=n=2:v=0:a=1[out]" -map "[out]" combined.mp3 -y`, async () => {
+      await interaction.editReply({
+        files: [new AttachmentBuilder("combined.mp3")]
+      });
+    });
+  }
+
+  // DOWNLOAD MUSIC
+  if (interaction.commandName === "download") {
     const link = interaction.options.getString("link");
 
     await interaction.deferReply();
 
-    try {
-      // YOUTUBE
-      if (link.includes("youtube.com") || link.includes("youtu.be")) {
-        const id = link.split("v=")[1]?.split("&")[0] || link.split("/").pop();
+    if (link.includes("youtube.com") || link.includes("youtu.be")) {
+      const id = link.split("v=")[1]?.split("&")[0] || link.split("/").pop();
 
-        const embed = new EmbedBuilder()
-          .setTitle("YouTube Video")
-          .setDescription(link)
-          .setImage(`https://img.youtube.com/vi/${id}/maxresdefault.jpg`);
+      const embed = new EmbedBuilder()
+        .setTitle("Music")
+        .setDescription(link)
+        .setImage(`https://img.youtube.com/vi/${id}/maxresdefault.jpg`);
 
-        return interaction.editReply({ embeds: [embed] });
-      }
+      const button = new ButtonBuilder()
+        .setLabel("Open")
+        .setStyle(ButtonStyle.Link)
+        .setURL(link);
 
-      // SPOTIFY
-      if (link.includes("spotify.com")) {
-        const embed = new EmbedBuilder()
-          .setTitle("Spotify Track")
-          .setDescription(link)
-          .setThumbnail("https://upload.wikimedia.org/wikipedia/commons/8/84/Spotify_icon.svg");
-
-        return interaction.editReply({ embeds: [embed] });
-      }
-
-      interaction.editReply("Invalid link.");
-
-    } catch {
-      interaction.editReply("Error.");
+      return interaction.editReply({
+        embeds: [embed],
+        components: [new ActionRowBuilder().addComponents(button)]
+      });
     }
+
+    if (link.includes("spotify.com")) {
+      const embed = new EmbedBuilder()
+        .setTitle("Spotify Track")
+        .setDescription(link)
+        .setThumbnail("https://upload.wikimedia.org/wikipedia/commons/8/84/Spotify_icon.svg");
+
+      const button = new ButtonBuilder()
+        .setLabel("Open")
+        .setStyle(ButtonStyle.Link)
+        .setURL(link);
+
+      return interaction.editReply({
+        embeds: [embed],
+        components: [new ActionRowBuilder().addComponents(button)]
+      });
+    }
+
+    interaction.editReply("Invalid link.");
   }
 
 });
 
-// ================= !LIST =================
+// ---------------- !LIST ----------------
 client.on("messageCreate", async (message) => {
   if (message.author.bot) return;
   if (!message.content.startsWith("!list")) return;
@@ -217,4 +265,36 @@ client.on("messageCreate", async (message) => {
   );
 });
 
+// ---------------- WELCOME SYSTEM ----------------
+client.on("guildMemberAdd", async (member) => {
+  const channel = member.guild.channels.cache.get("1487287724674384032");
+  const roleId = "1448796463491584060";
+
+  if (!channel) return;
+
+  // give role
+  try {
+    await member.roles.add(roleId);
+  } catch (e) {
+    console.error("Role error:", e);
+  }
+
+  const avatar = member.user.displayAvatarURL({ dynamic: true, size: 1024 });
+  const count = member.guild.memberCount;
+
+  channel.send({
+    content: `Welcome <@${member.id}>!`,
+    embeds: [
+      {
+        description: `You're member **#${count}**`,
+        thumbnail: { url: avatar },
+        image: {
+          url: "https://media.tenor.com/3Z1u1pJqkP4AAAAC/karol-g-karol-ariescarey-latina-foreva.gif"
+        }
+      }
+    ]
+  });
+});
+
+// ---------------- START ----------------
 client.login(TOKEN);
