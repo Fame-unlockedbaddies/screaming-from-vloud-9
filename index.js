@@ -20,11 +20,9 @@ const PORT = process.env.PORT || 3000;
 app.get("/", (req, res) => res.send("Bot is running."));
 app.listen(PORT, () => console.log("Web server running"));
 
-// ENV
 const TOKEN = process.env.TOKEN;
 const CLIENT_ID = process.env.CLIENT_ID;
 
-// BOT
 const client = new Client({
   intents: [GatewayIntentBits.Guilds]
 });
@@ -55,9 +53,7 @@ const commands = [
         .setName("weapon")
         .setDescription("Lookup weapon")
         .addStringOption(opt =>
-          opt.setName("name")
-            .setDescription("Weapon name")
-            .setRequired(true)
+          opt.setName("name").setDescription("Weapon name").setRequired(true)
         )
     ),
 
@@ -96,58 +92,9 @@ const rest = new REST({ version: "10" }).setToken(TOKEN);
   console.log("Commands registered");
 })();
 
-// ---------------- SCRAPER ----------------
-async function loadWeapons() {
-  try {
-    weaponCache = {};
-    let page = 1;
-
-    while (true) {
-      const res = await axios.get(
-        `https://bloxtsar.com/baddies/items?page=${page}`
-      );
-
-      const html = res.data;
-
-      const match = html.match(
-        /<script id="__NEXT_DATA__" type="application\/json">(.*?)<\/script>/
-      );
-
-      if (!match) break;
-
-      const json = JSON.parse(match[1]);
-
-      const items =
-        json?.props?.pageProps?.items ||
-        json?.props?.pageProps?.data ||
-        json?.props?.pageProps?.inventory ||
-        [];
-
-      if (!items.length) break;
-
-      for (const item of items) {
-        if (!item?.name) continue;
-
-        weaponCache[item.name.toLowerCase()] = {
-          name: item.name,
-          rap: item.rap?.toLocaleString?.() || "Unknown",
-          value: item.value?.toLocaleString?.() || "Unknown",
-          image: item.image || item.icon || ""
-        };
-      }
-
-      page++;
-    }
-
-  } catch (err) {
-    console.error("SCRAPER ERROR:", err.message);
-  }
-}
-
 // ---------------- READY ----------------
 client.once("ready", async () => {
   console.log(`Logged in as ${client.user.tag}`);
-  await loadWeapons();
 });
 
 // ---------------- HANDLER ----------------
@@ -160,17 +107,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
 
     const input = interaction.options.getString("name").toLowerCase();
 
-    let weapon = weaponCache[input];
-
-    if (!weapon) {
-      weapon = Object.values(weaponCache).find(w =>
-        w.name.toLowerCase().includes(input)
-      );
-    }
-
-    if (customWeapons[input]) {
-      weapon = customWeapons[input];
-    }
+    let weapon = customWeapons[input];
 
     if (!weapon) {
       return interaction.editReply({ content: "Weapon not found." });
@@ -181,11 +118,11 @@ client.on(Events.InteractionCreate, async (interaction) => {
       .setTitle(weapon.name)
       .setThumbnail(weapon.image)
       .setDescription(
-        `__${weapon.rarity || "Legend"}__\n\n` +
+        `__${weapon.rarity}__\n\n` +
         `**<:rap:1500289824333234236> RAP:** ${weapon.rap}\n` +
         `**Value:** ${weapon.value}\n` +
-        `**Demand:** ${weapon.demand || "Unknown"}\n` +
-        `**Trend:** ${weapon.trend || "Unknown"}\n\n` +
+        `**Demand:** ${weapon.demand}\n` +
+        `**Trend:** ${weapon.trend}\n\n` +
         `────────────────────────────\n` +
         `*these values are from fame!*`
       );
@@ -223,15 +160,12 @@ client.on(Events.InteractionCreate, async (interaction) => {
 
         const image = res.data?.data?.[0]?.imageUrl;
 
-        if (!image) {
-          return interaction.editReply({ content: "Failed to load outfit." });
-        }
-
         return interaction.editReply({
           embeds: [
             new EmbedBuilder()
               .setColor(0x2b2d31)
               .setTitle(`${username}'s Outfit`)
+              .setURL(`https://www.roblox.com/users/${userId}/profile`)
               .setImage(image)
           ]
         });
@@ -245,22 +179,19 @@ client.on(Events.InteractionCreate, async (interaction) => {
 
         const image = res.data?.data?.[0]?.imageUrl;
 
-        if (!image) {
-          return interaction.editReply({ content: "Failed to load mugshot." });
-        }
-
         return interaction.editReply({
           embeds: [
             new EmbedBuilder()
               .setColor(0x2b2d31)
               .setTitle(`${username}'s Mugshot`)
+              .setURL(`https://www.roblox.com/users/${userId}/profile`)
               .setImage(image)
           ]
         });
       }
 
     } catch (err) {
-      console.error("ROBLOX ERROR:", err.message);
+      console.error(err.message);
       return interaction.editReply({
         content: "Failed to fetch Roblox data."
       });
@@ -268,5 +199,4 @@ client.on(Events.InteractionCreate, async (interaction) => {
   }
 });
 
-// START
 client.login(TOKEN);
