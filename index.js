@@ -16,12 +16,12 @@ const {
   AttachmentBuilder
 } = require("discord.js");
 
-// ---------------- WEB ----------------
+// WEB
 const app = express();
 app.get("/", (req, res) => res.send("Cálido running"));
 app.listen(process.env.PORT || 3000, "0.0.0.0");
 
-// ---------------- BOT ----------------
+// BOT
 const client = new Client({
   intents: [
     GatewayIntentBits.Guilds,
@@ -33,7 +33,7 @@ const client = new Client({
 const TOKEN = process.env.TOKEN;
 const CLIENT_ID = process.env.CLIENT_ID;
 
-// ---------------- COMMANDS ----------------
+// COMMANDS
 const commands = [
 
   new SlashCommandBuilder()
@@ -80,10 +80,9 @@ client.once("ready", () => {
   console.log("Cálido running");
 });
 
-// ---------------- HANDLER ----------------
+// HANDLER
 client.on(Events.InteractionCreate, async interaction => {
 
-  // ===== AUDIO EDIT =====
   if (interaction.isChatInputCommand() && interaction.commandName === "audio") {
     const file = interaction.options.getAttachment("file");
     const auto = interaction.options.getBoolean("auto");
@@ -108,24 +107,23 @@ client.on(Events.InteractionCreate, async interaction => {
         writer.on("error", j);
       });
 
-      // 🎧 FILTER SWITCH
       let filter;
 
       if (auto) {
-        // 🔥 STRONGER (LOUD + FULL)
+        // 🔥 STRONG VERSION (same as before, no TikTok label)
         filter = `
-          loudnorm=I=-12:TP=-1.5:LRA=8,
-          acompressor=threshold=-18dB:ratio=3:attack=20:release=200,
-          equalizer=f=100:width_type=o:width=2:g=3,
-          equalizer=f=3000:width_type=o:width=2:g=3,
-          equalizer=f=6000:width_type=o:width=2:g=3,
-          bass=g=5,
-          treble=g=2,
-          alimiter=limit=0.95,
-          volume=1.4
+          bass=g=18,
+          equalizer=f=90:width_type=o:width=2:g=12,
+          equalizer=f=250:width_type=o:width=2:g=-7,
+          equalizer=f=2000:width_type=o:width=2:g=9,
+          equalizer=f=6000:width_type=o:width=2:g=11,
+          treble=g=9,
+          acompressor=threshold=-28dB:ratio=7:attack=3:release=70,
+          alimiter=limit=0.9,
+          volume=2.3
         `.replace(/\s+/g, "");
       } else {
-        // 🎧 CLEAN NATURAL
+        // 🎧 CLEAN
         filter = `
           loudnorm=I=-14:TP=-1.5:LRA=10,
           acompressor=threshold=-20dB:ratio=2:attack=30:release=300,
@@ -155,7 +153,7 @@ client.on(Events.InteractionCreate, async interaction => {
     }
   }
 
-  // ===== BASSBOOST =====
+  // BASSBOOST
   if (interaction.isChatInputCommand() && interaction.commandName === "bassboost") {
     const file = interaction.options.getAttachment("file");
 
@@ -180,13 +178,9 @@ client.on(Events.InteractionCreate, async interaction => {
       });
 
       const filter = `
-        loudnorm=I=-13:TP=-1.5:LRA=9,
-        acompressor=threshold=-18dB:ratio=2.5:attack=25:release=250,
-        equalizer=f=80:width_type=o:width=2:g=4,
-        equalizer=f=120:width_type=o:width=2:g=3,
-        bass=g=5,
-        alimiter=limit=0.95,
-        volume=1.3
+        bass=g=10,
+        acompressor=threshold=-20dB:ratio=4,
+        volume=1.6
       `.replace(/\s+/g, "");
 
       const cmd = `ffmpeg -i "${input}" -af "${filter}" -preset ultrafast -b:a 192k "${output}" -y`;
@@ -205,52 +199,25 @@ client.on(Events.InteractionCreate, async interaction => {
     }
   }
 
-  // ===== ADD INTRO =====
+  // ADD
   if (interaction.isChatInputCommand() && interaction.commandName === "add") {
     await interaction.deferReply();
 
     const intro = interaction.options.getAttachment("intro");
     const main = interaction.options.getAttachment("main");
 
-    if (!intro.contentType?.startsWith("audio") || !main.contentType?.startsWith("audio")) {
-      return interaction.editReply("Both must be audio files.");
-    }
+    const cmd = `ffmpeg -i "${intro.url}" -i "${main.url}" -filter_complex "[0:a][1:a]concat=n=2:v=0:a=1[out]" -map "[out]" combined.mp3 -y`;
 
-    const introPath = "intro.mp3";
-    const mainPath = "main.mp3";
-    const output = "combined.mp3";
-
-    try {
-      const r1 = await axios({ url: intro.url, method: "GET", responseType: "stream" });
-      const w1 = fs.createWriteStream(introPath);
-      r1.data.pipe(w1);
-      await new Promise((r, j) => { w1.on("finish", r); w1.on("error", j); });
-
-      const r2 = await axios({ url: main.url, method: "GET", responseType: "stream" });
-      const w2 = fs.createWriteStream(mainPath);
-      r2.data.pipe(w2);
-      await new Promise((r, j) => { w2.on("finish", r); w2.on("error", j); });
-
-      const cmd = `ffmpeg -i "${introPath}" -i "${mainPath}" -filter_complex "[0:a][1:a]concat=n=2:v=0:a=1[out]" -map "[out]" -preset ultrafast "${output}" -y`;
-
-      exec(cmd, async () => {
-        await interaction.editReply({
-          files: [new AttachmentBuilder(output)]
-        });
-
-        fs.unlinkSync(introPath);
-        fs.unlinkSync(mainPath);
-        fs.unlinkSync(output);
+    exec(cmd, async () => {
+      await interaction.editReply({
+        files: [new AttachmentBuilder("combined.mp3")]
       });
-
-    } catch {
-      interaction.editReply("Error");
-    }
+    });
   }
 
 });
 
-// ---------------- !LIST ROLE SYSTEM ----------------
+// !LIST SYSTEM
 client.on("messageCreate", async (message) => {
   if (message.author.bot) return;
   if (!message.content.startsWith("!list")) return;
@@ -265,18 +232,13 @@ client.on("messageCreate", async (message) => {
   const target = message.mentions.members.first();
   if (!target) return message.reply("Mention a user.");
 
-  try {
-    await target.roles.add(PREMIUM_ROLE);
+  await target.roles.add(PREMIUM_ROLE);
 
-    await target.send(
-      `You have earned Cálido premium by ${message.author.tag}! You are now a premium user, enjoy the benefits babes x!`
-    );
+  await target.send(
+    `You have earned Cálido premium by ${message.author.tag}! You are now a premium user, enjoy the benefits babes x!`
+  );
 
-    message.reply(`${target.user.tag} is now premium.`);
-  } catch {
-    message.reply("Error.");
-  }
+  message.reply(`${target.user.tag} is now premium.`);
 });
 
-// ---------------- START ----------------
 client.login(TOKEN);
