@@ -37,22 +37,24 @@ const client = new Client({
 const TOKEN = process.env.TOKEN;
 const CLIENT_ID = process.env.CLIENT_ID;
 
-// cache file per user
 const fileCache = new Map();
 
 // ---------------- COMMAND ----------------
 const commands = [
   new SlashCommandBuilder()
     .setName("audio")
-    .setDescription("Advanced audio tools")
+    .setDescription("Audio tools")
     .addSubcommand(sub =>
       sub
         .setName("edit")
-        .setDescription("Edit audio with advanced controls")
+        .setDescription("Edit or auto bass boost")
         .addAttachmentOption(opt =>
+          opt.setName("file").setDescription("Upload audio").setRequired(true)
+        )
+        .addBooleanOption(opt =>
           opt
-            .setName("file")
-            .setDescription("Upload your audio")
+            .setName("auto")
+            .setDescription("Auto bass boost (no form)")
             .setRequired(true)
         )
     )
@@ -72,59 +74,126 @@ client.once("ready", () => {
 // ---------------- HANDLER ----------------
 client.on(Events.InteractionCreate, async interaction => {
 
-  // ===== OPEN MODAL =====
+  // ===== COMMAND =====
   if (
     interaction.isChatInputCommand() &&
-    interaction.commandName === "audio" &&
-    interaction.options.getSubcommand() === "edit"
+    interaction.commandName === "audio"
   ) {
-    const file = interaction.options.getAttachment("file");
+    const sub = interaction.options.getSubcommand();
 
-    if (!file.contentType || !file.contentType.startsWith("audio")) {
-      return interaction.reply({ content: "Upload a valid audio file." });
+    if (sub === "edit") {
+      const file = interaction.options.getAttachment("file");
+      const auto = interaction.options.getBoolean("auto");
+
+      if (!file.contentType || !file.contentType.startsWith("audio")) {
+        return interaction.reply({ content: "Upload a valid audio file." });
+      }
+
+      // ===== AUTO MODE =====
+      if (auto) {
+        await interaction.deferReply();
+
+        const originalName =
+          file.url.split("/").pop().split("?")[0] || "audio.mp3";
+
+        const inputPath = path.join(__dirname, "input_" + originalName);
+        const outputPath = path.join(__dirname, originalName);
+
+        try {
+          // download
+          const response = await axios({
+            url: file.url,
+            method: "GET",
+            responseType: "stream"
+          });
+
+          const writer = fs.createWriteStream(inputPath);
+          response.data.pipe(writer);
+
+          await new Promise((res, rej) => {
+            writer.on("finish", res);
+            writer.on("error", rej);
+          });
+
+          // 🔥 CLEAN BARBIE-STYLE BOOST (NO GLITCH)
+          const filter = `
+            bass=g=15,
+            equalizer=f=60:width_type=o:width=2:g=10,
+            equalizer=f=120:width_type=o:width=2:g=6,
+            volume=1.3
+          `.replace(/\s+/g, "");
+
+          const command = `ffmpeg -i "${inputPath}" -af "${filter}" -preset ultrafast -b:a 192k "${outputPath}" -y`;
+
+          exec(command, async (err) => {
+            if (err) {
+              console.error(err);
+              return interaction.editReply("Error processing audio.");
+            }
+
+            const embed = new EmbedBuilder()
+              .setColor(0x2b2d31)
+              .setTitle("Auto Bass Boost")
+              .setDescription("Applied Barbie-style bass boost");
+
+            await interaction.editReply({
+              embeds: [embed],
+              files: [new AttachmentBuilder(outputPath)]
+            });
+
+            fs.unlinkSync(inputPath);
+            fs.unlinkSync(outputPath);
+          });
+
+        } catch (err) {
+          console.error(err);
+          interaction.editReply("Failed to process file.");
+        }
+
+        return;
+      }
+
+      // ===== MANUAL MODE (MODAL) =====
+      fileCache.set(interaction.user.id, file.url);
+
+      const modal = new ModalBuilder()
+        .setCustomId("audioModal")
+        .setTitle("Audio Settings");
+
+      const volume = new TextInputBuilder()
+        .setCustomId("volume")
+        .setLabel("Volume (1.0 default)")
+        .setStyle(TextInputStyle.Short)
+        .setRequired(false);
+
+      const bass = new TextInputBuilder()
+        .setCustomId("bass")
+        .setLabel("Bass (0-15)")
+        .setStyle(TextInputStyle.Short)
+        .setRequired(false);
+
+      const treble = new TextInputBuilder()
+        .setCustomId("treble")
+        .setLabel("Treble (0-10)")
+        .setStyle(TextInputStyle.Short)
+        .setRequired(false);
+
+      modal.addComponents(
+        new ActionRowBuilder().addComponents(volume),
+        new ActionRowBuilder().addComponents(bass),
+        new ActionRowBuilder().addComponents(treble)
+      );
+
+      return interaction.showModal(modal);
     }
-
-    fileCache.set(interaction.user.id, file.url);
-
-    const modal = new ModalBuilder()
-      .setCustomId("audioEditModal")
-      .setTitle("Audio Mastering");
-
-    const volume = new TextInputBuilder()
-      .setCustomId("volume")
-      .setLabel("Volume (default 1.0)")
-      .setStyle(TextInputStyle.Short)
-      .setRequired(false);
-
-    const bass = new TextInputBuilder()
-      .setCustomId("bass")
-      .setLabel("Bass boost (0-15)")
-      .setStyle(TextInputStyle.Short)
-      .setRequired(false);
-
-    const treble = new TextInputBuilder()
-      .setCustomId("treble")
-      .setLabel("Treble boost (0-10)")
-      .setStyle(TextInputStyle.Short)
-      .setRequired(false);
-
-    modal.addComponents(
-      new ActionRowBuilder().addComponents(volume),
-      new ActionRowBuilder().addComponents(bass),
-      new ActionRowBuilder().addComponents(treble)
-    );
-
-    return interaction.showModal(modal);
   }
 
-  // ===== PROCESS AUDIO =====
-  if (interaction.isModalSubmit() && interaction.customId === "audioEditModal") {
+  // ===== MODAL =====
+  if (interaction.isModalSubmit() && interaction.customId === "audioModal") {
     await interaction.deferReply();
 
     const fileUrl = fileCache.get(interaction.user.id);
-    if (!fileUrl) {
-      return interaction.editReply("File expired. Run command again.");
-    }
+    if (!fileUrl) return interaction.editReply("Expired. Try again.");
 
     fileCache.delete(interaction.user.id);
 
@@ -132,14 +201,13 @@ client.on(Events.InteractionCreate, async interaction => {
     const bass = interaction.fields.getTextInputValue("bass") || "6";
     const treble = interaction.fields.getTextInputValue("treble") || "4";
 
+    const originalName =
+      fileUrl.split("/").pop().split("?")[0] || "audio.mp3";
+
+    const inputPath = path.join(__dirname, "input_" + originalName);
+    const outputPath = path.join(__dirname, originalName);
+
     try {
-      const originalName =
-        fileUrl.split("/").pop().split("?")[0] || "audio.mp3";
-
-      const inputPath = path.join(__dirname, "input_" + originalName);
-      const outputPath = path.join(__dirname, originalName);
-
-      // DOWNLOAD
       const response = await axios({
         url: fileUrl,
         method: "GET",
@@ -154,21 +222,14 @@ client.on(Events.InteractionCreate, async interaction => {
         writer.on("error", rej);
       });
 
-      // 🔥 ADVANCED AUDIO CHAIN
+      // 🔥 CLEAN + STABLE FILTER (NO GLITCH)
       const filter = `
-        highpass=f=30,
-        lowpass=f=18000,
         bass=g=${bass},
-        equalizer=f=120:width_type=o:width=2:g=3,
-        equalizer=f=300:width_type=o:width=2:g=-3,
-        equalizer=f=3000:width_type=o:width=2:g=2,
         treble=g=${treble},
-        acompressor=threshold=-18dB:ratio=3:attack=20:release=200,
-        alimiter=limit=0.9,
         volume=${volume}
       `.replace(/\s+/g, "");
 
-      const command = `ffmpeg -i "${inputPath}" -af "${filter}" -preset ultrafast -threads 2 -b:a 192k "${outputPath}" -y`;
+      const command = `ffmpeg -i "${inputPath}" -af "${filter}" -preset ultrafast -b:a 192k "${outputPath}" -y`;
 
       exec(command, async (err) => {
         if (err) {
@@ -178,10 +239,8 @@ client.on(Events.InteractionCreate, async interaction => {
 
         const embed = new EmbedBuilder()
           .setColor(0x2b2d31)
-          .setTitle("Audio Mastered")
-          .setDescription(
-            `Volume: ${volume}\nBass: ${bass}\nTreble: ${treble}`
-          );
+          .setTitle("Audio Edited")
+          .setDescription(`Volume: ${volume} | Bass: ${bass} | Treble: ${treble}`);
 
         await interaction.editReply({
           embeds: [embed],
@@ -194,7 +253,7 @@ client.on(Events.InteractionCreate, async interaction => {
 
     } catch (err) {
       console.error(err);
-      interaction.editReply("Failed to process audio.");
+      interaction.editReply("Failed to process file.");
     }
   }
 });
