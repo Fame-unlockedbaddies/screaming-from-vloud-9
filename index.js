@@ -46,6 +46,9 @@ const commands = [
         .addAttachmentOption(opt =>
           opt.setName("file").setDescription("Audio file").setRequired(true)
         )
+        .addBooleanOption(opt =>
+          opt.setName("auto").setDescription("Stronger sound").setRequired(true)
+        )
     ),
 
   new SlashCommandBuilder()
@@ -67,23 +70,23 @@ const commands = [
 
 ].map(c => c.toJSON());
 
-// REGISTER COMMANDS
+// REGISTER
 const rest = new REST({ version: "10" }).setToken(TOKEN);
 (async () => {
   await rest.put(Routes.applicationCommands(CLIENT_ID), { body: commands });
 })();
 
-// ---------------- READY ----------------
 client.once("ready", () => {
   console.log("Cálido running");
 });
 
-// ---------------- SLASH COMMANDS ----------------
+// ---------------- HANDLER ----------------
 client.on(Events.InteractionCreate, async interaction => {
 
   // ===== AUDIO EDIT =====
   if (interaction.isChatInputCommand() && interaction.commandName === "audio") {
     const file = interaction.options.getAttachment("file");
+    const auto = interaction.options.getBoolean("auto");
 
     if (!file.contentType?.startsWith("audio")) {
       return interaction.reply("Upload an audio file.");
@@ -105,17 +108,36 @@ client.on(Events.InteractionCreate, async interaction => {
         writer.on("error", j);
       });
 
-      const filter = `
-        loudnorm=I=-14:TP=-1.5:LRA=10,
-        acompressor=threshold=-20dB:ratio=2:attack=30:release=300,
-        equalizer=f=250:width_type=o:width=2:g=-2,
-        equalizer=f=3000:width_type=o:width=2:g=2,
-        equalizer=f=5000:width_type=o:width=2:g=2,
-        bass=g=3,
-        treble=g=1,
-        alimiter=limit=0.95,
-        volume=1.2
-      `.replace(/\s+/g, "");
+      // 🎧 FILTER SWITCH
+      let filter;
+
+      if (auto) {
+        // 🔥 STRONGER (LOUD + FULL)
+        filter = `
+          loudnorm=I=-12:TP=-1.5:LRA=8,
+          acompressor=threshold=-18dB:ratio=3:attack=20:release=200,
+          equalizer=f=100:width_type=o:width=2:g=3,
+          equalizer=f=3000:width_type=o:width=2:g=3,
+          equalizer=f=6000:width_type=o:width=2:g=3,
+          bass=g=5,
+          treble=g=2,
+          alimiter=limit=0.95,
+          volume=1.4
+        `.replace(/\s+/g, "");
+      } else {
+        // 🎧 CLEAN NATURAL
+        filter = `
+          loudnorm=I=-14:TP=-1.5:LRA=10,
+          acompressor=threshold=-20dB:ratio=2:attack=30:release=300,
+          equalizer=f=250:width_type=o:width=2:g=-2,
+          equalizer=f=3000:width_type=o:width=2:g=2,
+          equalizer=f=5000:width_type=o:width=2:g=2,
+          bass=g=3,
+          treble=g=1,
+          alimiter=limit=0.95,
+          volume=1.2
+        `.replace(/\s+/g, "");
+      }
 
       const cmd = `ffmpeg -i "${input}" -af "${filter}" -preset ultrafast -b:a 192k "${output}" -y`;
 
@@ -228,10 +250,9 @@ client.on(Events.InteractionCreate, async interaction => {
 
 });
 
-// ---------------- MESSAGE COMMAND (!list) ----------------
+// ---------------- !LIST ROLE SYSTEM ----------------
 client.on("messageCreate", async (message) => {
   if (message.author.bot) return;
-
   if (!message.content.startsWith("!list")) return;
 
   const REQUIRED_ROLE = "1500517540273590525";
@@ -252,8 +273,7 @@ client.on("messageCreate", async (message) => {
     );
 
     message.reply(`${target.user.tag} is now premium.`);
-  } catch (err) {
-    console.error(err);
+  } catch {
     message.reply("Error.");
   }
 });
