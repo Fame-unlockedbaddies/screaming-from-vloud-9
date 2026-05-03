@@ -32,13 +32,13 @@ const client = new Client({
 // MEMORY
 let weaponCache = {};
 
-// 🔥 CUSTOM WEAPONS (your override system)
+// 🔥 CUSTOM WEAPONS
 const customWeapons = {
   "glitter bomb": {
     name: "Glitter Bomb",
     rap: "145,000",
     value: "200,000",
-    image: "YOUR_IMAGE_URL_HERE" // <-- put your uploaded image link
+    image: "https://cdn.meowia.com/baddies/glitter-bomb.png"
   }
 };
 
@@ -47,6 +47,7 @@ const commands = [
   new SlashCommandBuilder()
     .setName("fame")
     .setDescription("Fame trading system")
+    .setDMPermission(true)
     .addSubcommand(sub =>
       sub
         .setName("weapon")
@@ -59,6 +60,7 @@ const commands = [
   new SlashCommandBuilder()
     .setName("roblox")
     .setDescription("Roblox tools")
+    .setDMPermission(true)
 
     .addSubcommand(sub =>
       sub
@@ -155,6 +157,8 @@ client.on(Events.InteractionCreate, async (interaction) => {
 
   // ===== FAME =====
   if (interaction.commandName === "fame") {
+    await interaction.deferReply();
+
     const input = interaction.options.getString("name").toLowerCase();
 
     let weapon = weaponCache[input];
@@ -165,19 +169,19 @@ client.on(Events.InteractionCreate, async (interaction) => {
       );
     }
 
-    // 🔥 CHECK CUSTOM WEAPONS FIRST
+    // 🔥 CUSTOM OVERRIDE
     if (customWeapons[input]) {
       weapon = customWeapons[input];
     }
 
     if (!weapon) {
-      return interaction.reply({ content: "Weapon not found." });
+      return interaction.editReply({ content: "Weapon not found." });
     }
 
     const embed = new EmbedBuilder()
       .setColor(0x2b2d31)
       .setTitle(weapon.name)
-      .setThumbnail(weapon.image) // ✅ medium/small image
+      .setThumbnail(weapon.image)
       .addFields(
         { name: "RAP", value: `${weapon.rap}`, inline: true },
         { name: "Value", value: `${weapon.value}`, inline: true }
@@ -185,13 +189,15 @@ client.on(Events.InteractionCreate, async (interaction) => {
       .setFooter({ text: "Fame • Live Data" })
       .setTimestamp();
 
-    return interaction.reply({ embeds: [embed] });
+    return interaction.editReply({ embeds: [embed] });
   }
 
   // ===== ROBLOX =====
   if (interaction.commandName === "roblox") {
     const sub = interaction.options.getSubcommand();
     const username = interaction.options.getString("username");
+
+    await interaction.deferReply();
 
     try {
       const userRes = await axios.post(
@@ -203,7 +209,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
       );
 
       if (!userRes.data.data?.length) {
-        return interaction.reply({ content: "Roblox user not found." });
+        return interaction.editReply({ content: "Roblox user not found." });
       }
 
       const user = userRes.data.data[0];
@@ -211,7 +217,6 @@ client.on(Events.InteractionCreate, async (interaction) => {
 
       let image;
 
-      // ===== OUTFIT =====
       if (sub === "outfit") {
         const res = await axios.get(
           `https://thumbnails.roblox.com/v1/users/avatar?userIds=${userId}&size=720x720&format=Png&isCircular=false`
@@ -220,7 +225,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
         image = res.data?.data?.[0]?.imageUrl;
 
         if (!image) {
-          return interaction.reply({
+          return interaction.editReply({
             content: "Could not load avatar outfit."
           });
         }
@@ -229,13 +234,11 @@ client.on(Events.InteractionCreate, async (interaction) => {
           .setColor(0x2b2d31)
           .setTitle(`${username}'s Outfit`)
           .setImage(image)
-          .setFooter({ text: "Fame • Roblox Outfit" })
           .setTimestamp();
 
-        return interaction.reply({ embeds: [embed] });
+        return interaction.editReply({ embeds: [embed] });
       }
 
-      // ===== MUG =====
       if (sub === "mug") {
         const res = await axios.get(
           `https://thumbnails.roblox.com/v1/users/avatar-headshot?userIds=${userId}&size=420x420&format=Png&isCircular=false`
@@ -244,7 +247,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
         image = res.data?.data?.[0]?.imageUrl;
 
         if (!image) {
-          return interaction.reply({
+          return interaction.editReply({
             content: "Could not load avatar mugshot."
           });
         }
@@ -253,16 +256,15 @@ client.on(Events.InteractionCreate, async (interaction) => {
           .setColor(0x2b2d31)
           .setTitle(`${username}'s Mugshot`)
           .setImage(image)
-          .setFooter({ text: "Fame • Roblox Mug" })
           .setTimestamp();
 
-        return interaction.reply({ embeds: [embed] });
+        return interaction.editReply({ embeds: [embed] });
       }
 
     } catch (err) {
       console.error("ROBLOX ERROR:", err.message);
 
-      return interaction.reply({
+      return interaction.editReply({
         content: "Failed to fetch Roblox data."
       });
     }
