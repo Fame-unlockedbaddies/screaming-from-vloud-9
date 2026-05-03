@@ -140,7 +140,7 @@ async function loadWeapons() {
     }
 
   } catch (err) {
-    console.error(err.message);
+    console.error("SCRAPER ERROR:", err.message);
   }
 }
 
@@ -215,38 +215,52 @@ client.on(Events.InteractionCreate, async (interaction) => {
 
       const userId = userRes.data.data[0].id;
 
+      // ===== OUTFIT =====
       if (sub === "outfit") {
         const res = await axios.get(
-          `https://thumbnails.roblox.com/v1/users/avatar?userIds=${userId}&size=720x720&format=Png`
+          `https://thumbnails.roblox.com/v1/users/avatar?userIds=${userId}&size=720x720&format=Png&isCircular=false`
         );
+
+        const image = res.data?.data?.[0]?.imageUrl;
+
+        if (!image) {
+          return interaction.editReply({ content: "Failed to load outfit." });
+        }
 
         return interaction.editReply({
           embeds: [
             new EmbedBuilder()
               .setColor(0x2b2d31)
               .setTitle(`${username}'s Outfit`)
-              .setImage(res.data.data[0].imageUrl)
+              .setImage(image)
           ]
         });
       }
 
+      // ===== MUGSHOT =====
       if (sub === "mug") {
         const res = await axios.get(
-          `https://thumbnails.roblox.com/v1/users/avatar-headshot?userIds=${userId}&size=420x420&format=Png`
+          `https://thumbnails.roblox.com/v1/users/avatar-headshot?userIds=${userId}&size=420x420&format=Png&isCircular=false`
         );
+
+        const image = res.data?.data?.[0]?.imageUrl;
+
+        if (!image) {
+          return interaction.editReply({ content: "Failed to load mugshot." });
+        }
 
         return interaction.editReply({
           embeds: [
             new EmbedBuilder()
               .setColor(0x2b2d31)
               .setTitle(`${username}'s Mugshot`)
-              .setImage(res.data.data[0].imageUrl)
+              .setImage(image)
           ]
         });
       }
 
     } catch (err) {
-      console.error(err.message);
+      console.error("ROBLOX ERROR:", err.message);
       return interaction.editReply({
         content: "Failed to fetch Roblox data."
       });
