@@ -47,14 +47,14 @@ const commands = [
     .addSubcommand(sub =>
       sub
         .setName("edit")
-        .setDescription("Edit or auto boost audio")
+        .setDescription("Edit or auto TikTok boost")
         .addAttachmentOption(opt =>
           opt.setName("file").setDescription("Upload audio").setRequired(true)
         )
         .addBooleanOption(opt =>
           opt
             .setName("auto")
-            .setDescription("Auto mix (bass + vocals boosted)")
+            .setDescription("Auto TikTok loud mix")
             .setRequired(true)
         )
     )
@@ -86,7 +86,7 @@ client.on(Events.InteractionCreate, async interaction => {
         return interaction.reply({ content: "Upload a valid audio file." });
       }
 
-      // ===== AUTO MODE (BEST MIX) =====
+      // ===== AUTO MODE (TIKTOK LOUD) =====
       if (auto) {
         await interaction.deferReply();
 
@@ -111,16 +111,17 @@ client.on(Events.InteractionCreate, async interaction => {
             writer.on("error", rej);
           });
 
-          // 🔥 PERFECT MIX: BASS + VOCALS BOOSTED
+          // 🔥 TIKTOK LOUD FILTER
           const filter = `
-            bass=g=12,
-            equalizer=f=120:width_type=o:width=2:g=8,
-            equalizer=f=300:width_type=o:width=2:g=-4,
-            equalizer=f=2500:width_type=o:width=2:g=7,
-            equalizer=f=5000:width_type=o:width=2:g=8,
-            treble=g=6,
-            acompressor=threshold=-20dB:ratio=5:attack=5:release=100,
-            volume=1.5
+            bass=g=15,
+            equalizer=f=100:width_type=o:width=2:g=10,
+            equalizer=f=250:width_type=o:width=2:g=-6,
+            equalizer=f=2000:width_type=o:width=2:g=8,
+            equalizer=f=5000:width_type=o:width=2:g=10,
+            treble=g=8,
+            acompressor=threshold=-25dB:ratio=6:attack=5:release=80,
+            alimiter=limit=0.95,
+            volume=2.0
           `.replace(/\s+/g, "");
 
           const command = `ffmpeg -i "${inputPath}" -af "${filter}" -preset ultrafast -b:a 192k "${outputPath}" -y`;
@@ -133,8 +134,8 @@ client.on(Events.InteractionCreate, async interaction => {
 
             const embed = new EmbedBuilder()
               .setColor(0x2b2d31)
-              .setTitle("Audio Boosted")
-              .setDescription("Bass + vocals enhanced (clean & loud)");
+              .setTitle("TikTok Loud Boost")
+              .setDescription("Extreme bass + loud vocals applied");
 
             await interaction.editReply({
               embeds: [embed],
