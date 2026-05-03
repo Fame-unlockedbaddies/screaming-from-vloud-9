@@ -17,8 +17,7 @@ const {
   EmbedBuilder,
   ButtonBuilder,
   ActionRowBuilder,
-  ButtonStyle,
-  StringSelectMenuBuilder
+  ButtonStyle
 } = require("discord.js");
 
 // CONFIG
@@ -51,49 +50,35 @@ const commands = [
     .addSubcommand(sub =>
       sub
         .setName("edit")
-        .setDescription("Improve audio quality")
+        .setDescription("Improve audio")
         .addAttachmentOption(o =>
-          o.setName("file")
-            .setDescription("Upload audio file")
-            .setRequired(true)
+          o.setName("file").setDescription("Audio file").setRequired(true)
         )
         .addBooleanOption(o =>
-          o.setName("auto")
-            .setDescription("Auto strong mode")
-            .setRequired(true)
+          o.setName("auto").setDescription("Auto mode").setRequired(true)
         )
         .addNumberOption(o =>
-          o.setName("volume")
-            .setDescription("Volume (1.0 - 3.0)")
-            .setMinValue(0.5)
-            .setMaxValue(3)
-            .setRequired(true)
+          o.setName("volume").setDescription("Volume").setMinValue(0.5).setMaxValue(3).setRequired(true)
         )
     ),
 
   // BASSBOOST
   new SlashCommandBuilder()
     .setName("bassboost")
-    .setDescription("Boost bass")
+    .setDescription("Bass boost")
     .addAttachmentOption(o =>
-      o.setName("file")
-        .setDescription("Upload audio file")
-        .setRequired(true)
+      o.setName("file").setDescription("Audio file").setRequired(true)
     ),
 
   // ADD INTRO
   new SlashCommandBuilder()
     .setName("add")
-    .setDescription("Add intro to audio")
+    .setDescription("Add intro")
     .addAttachmentOption(o =>
-      o.setName("intro")
-        .setDescription("Intro audio")
-        .setRequired(true)
+      o.setName("intro").setDescription("Intro audio").setRequired(true)
     )
     .addAttachmentOption(o =>
-      o.setName("main")
-        .setDescription("Main audio")
-        .setRequired(true)
+      o.setName("main").setDescription("Main audio").setRequired(true)
     ),
 
   // DOWNLOAD
@@ -103,46 +88,63 @@ const commands = [
     .addSubcommand(sub =>
       sub
         .setName("music")
-        .setDescription("Get info from link")
+        .setDescription("Get info")
         .addStringOption(o =>
-          o.setName("link")
-            .setDescription("YouTube/Spotify URL")
-            .setRequired(true)
+          o.setName("link").setDescription("URL").setRequired(true)
         )
     ),
 
-  // ROLE SYSTEM
+  // ROLE BUTTON SYSTEM (CUSTOM)
   new SlashCommandBuilder()
     .setName("set")
     .setDescription("Setup systems")
     .addSubcommand(sub =>
       sub
         .setName("role-reactions")
-        .setDescription("Create role menu")
+        .setDescription("Create role panel")
+
         .addStringOption(o =>
-          o.setName("title")
-            .setDescription("Panel title")
-            .setRequired(true)
+          o.setName("title").setDescription("Panel title").setRequired(true)
         )
         .addStringOption(o =>
-          o.setName("background")
-            .setDescription("Background image URL")
-            .setRequired(true)
+          o.setName("background").setDescription("Image URL").setRequired(true)
         )
+
+        // ROLE 1
+        .addRoleOption(o => o.setName("role1").setDescription("Role 1").setRequired(true))
+        .addStringOption(o => o.setName("emoji1").setDescription("Emoji").setRequired(true))
+        .addStringOption(o => o.setName("name1").setDescription("Button name").setRequired(true))
+
+        // ROLE 2
+        .addRoleOption(o => o.setName("role2").setDescription("Role 2"))
+        .addStringOption(o => o.setName("emoji2").setDescription("Emoji"))
+        .addStringOption(o => o.setName("name2").setDescription("Button name"))
+
+        // ROLE 3
+        .addRoleOption(o => o.setName("role3").setDescription("Role 3"))
+        .addStringOption(o => o.setName("emoji3").setDescription("Emoji"))
+        .addStringOption(o => o.setName("name3").setDescription("Button name"))
+
+        // ROLE 4
+        .addRoleOption(o => o.setName("role4").setDescription("Role 4"))
+        .addStringOption(o => o.setName("emoji4").setDescription("Emoji"))
+        .addStringOption(o => o.setName("name4").setDescription("Button name"))
+
+        // ROLE 5
+        .addRoleOption(o => o.setName("role5").setDescription("Role 5"))
+        .addStringOption(o => o.setName("emoji5").setDescription("Emoji"))
+        .addStringOption(o => o.setName("name5").setDescription("Button name"))
     )
 
 ].map(c => c.toJSON());
 
-// REGISTER (NO DUPLICATES)
+// REGISTER
 const rest = new REST({ version: "10" }).setToken(TOKEN);
-
 (async () => {
-  console.log("Registering commands...");
   await rest.put(
     Routes.applicationGuildCommands(CLIENT_ID, GUILD_ID),
     { body: commands }
   );
-  console.log("Commands ready");
 })();
 
 client.once("ready", () => console.log("Bot online"));
@@ -156,13 +158,9 @@ client.on(Events.InteractionCreate, async interaction => {
     const auto = interaction.options.getBoolean("auto");
     const volume = interaction.options.getNumber("volume");
 
-    if (!file.contentType?.startsWith("audio")) {
-      return interaction.reply("Upload a valid audio file.");
-    }
-
     await interaction.deferReply();
 
-    const name = file.url.split("/").pop().split("?")[0];
+    const name = file.url.split("/").pop();
     const input = "in_" + name;
     const output = name;
 
@@ -209,49 +207,49 @@ client.on(Events.InteractionCreate, async interaction => {
   // DOWNLOAD
   if (interaction.commandName === "download") {
     const link = interaction.options.getString("link");
-    await interaction.deferReply();
-
-    const id = link.split("v=")[1]?.split("&")[0] || link.split("/").pop();
 
     const embed = new EmbedBuilder()
       .setColor(0xFFD700)
       .setTitle("Music")
-      .setDescription(link)
-      .setImage(`https://img.youtube.com/vi/${id}/maxresdefault.jpg`);
+      .setDescription(link);
 
-    await interaction.editReply({ embeds: [embed] });
+    await interaction.reply({ embeds: [embed] });
   }
 
-  // ROLE SYSTEM (100 ROLES)
-  if (interaction.commandName === "set") {
+  // ROLE BUTTON PANEL
+  if (
+    interaction.commandName === "set" &&
+    interaction.options.getSubcommand() === "role-reactions"
+  ) {
 
     await interaction.deferReply({ ephemeral: true });
 
     const title = interaction.options.getString("title");
     const bg = interaction.options.getString("background");
 
-    const roles = interaction.guild.roles.cache
-      .filter(r => r.name !== "@everyone")
-      .map(r => r)
-      .slice(0, 100);
+    const roles = [];
 
-    const rows = [];
+    for (let i = 1; i <= 5; i++) {
+      const role = interaction.options.getRole(`role${i}`);
+      const emoji = interaction.options.getString(`emoji${i}`);
+      const name = interaction.options.getString(`name${i}`);
 
-    for (let i = 0; i < roles.length; i += 25) {
-      const chunk = roles.slice(i, i + 25);
-
-      const menu = new StringSelectMenuBuilder()
-        .setCustomId(`roles_${i}`)
-        .setPlaceholder(`Roles ${i + 1}-${i + chunk.length}`)
-        .setMinValues(0)
-        .setMaxValues(chunk.length)
-        .addOptions(chunk.map(role => ({
-          label: role.name,
-          value: role.id
-        })));
-
-      rows.push(new ActionRowBuilder().addComponents(menu));
+      if (role && emoji && name) {
+        roles.push({ role, emoji, name });
+      }
     }
+
+    const row = new ActionRowBuilder();
+
+    roles.forEach(r => {
+      row.addComponents(
+        new ButtonBuilder()
+          .setCustomId(`role_${r.role.id}`)
+          .setLabel(r.name)
+          .setEmoji(r.emoji)
+          .setStyle(ButtonStyle.Secondary)
+      );
+    });
 
     const embed = new EmbedBuilder()
       .setColor(0xFFD700)
@@ -260,31 +258,24 @@ client.on(Events.InteractionCreate, async interaction => {
 
     await interaction.channel.send({
       embeds: [embed],
-      components: rows
+      components: [row]
     });
 
-    await interaction.editReply("Done");
+    await interaction.editReply("Panel created");
   }
 
-  // ROLE SELECT
-  if (interaction.isStringSelectMenu()) {
+  // BUTTON ROLE HANDLER
+  if (interaction.isButton()) {
+    const roleId = interaction.customId.split("_")[1];
     const member = interaction.member;
-    const selected = interaction.values;
-    const all = interaction.component.options.map(o => o.value);
 
-    for (const roleId of all) {
-      if (member.roles.cache.has(roleId) && !selected.includes(roleId)) {
-        await member.roles.remove(roleId).catch(() => {});
-      }
+    if (member.roles.cache.has(roleId)) {
+      await member.roles.remove(roleId);
+      return interaction.reply({ content: "Removed role", ephemeral: true });
+    } else {
+      await member.roles.add(roleId);
+      return interaction.reply({ content: "Added role", ephemeral: true });
     }
-
-    for (const roleId of selected) {
-      if (!member.roles.cache.has(roleId)) {
-        await member.roles.add(roleId).catch(() => {});
-      }
-    }
-
-    await interaction.reply({ content: "Roles updated", ephemeral: true });
   }
 
 });
@@ -298,7 +289,7 @@ client.on("messageCreate", async message => {
   if (!user) return;
 
   await user.roles.add("1500517783480569936");
-  await user.send(`You have been given premium by ${message.author.tag}`);
+  await user.send(`You got premium from ${message.author.tag}`);
 });
 
 // WELCOME
