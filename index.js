@@ -37,6 +37,9 @@ const client = new Client({
 const TOKEN = process.env.TOKEN;
 const CLIENT_ID = process.env.CLIENT_ID;
 
+// store file temporarily per user
+const fileCache = new Map();
+
 // ---------------- COMMAND ----------------
 const commands = [
   new SlashCommandBuilder()
@@ -45,7 +48,13 @@ const commands = [
     .addSubcommand(sub =>
       sub
         .setName("edit")
-        .setDescription("Edit audio with full controls")
+        .setDescription("Edit audio with settings")
+        .addAttachmentOption(opt =>
+          opt
+            .setName("file")
+            .setDescription("Upload your audio first")
+            .setRequired(true)
+        )
     )
 ].map(c => c.toJSON());
 
@@ -63,44 +72,50 @@ client.once("ready", () => {
 // ---------------- HANDLER ----------------
 client.on(Events.InteractionCreate, async interaction => {
 
-  // ===== OPEN MODAL =====
+  // ===== STEP 1: COMMAND =====
   if (
     interaction.isChatInputCommand() &&
     interaction.commandName === "audio" &&
     interaction.options.getSubcommand() === "edit"
   ) {
+    const file = interaction.options.getAttachment("file");
+
+    if (!file.contentType || !file.contentType.startsWith("audio")) {
+      return interaction.reply({ content: "Upload a valid audio file." });
+    }
+
+    // store file for modal step
+    fileCache.set(interaction.user.id, file.url);
+
     const modal = new ModalBuilder()
       .setCustomId("audioEditModal")
-      .setTitle("Audio Editor");
-
-    const file = new TextInputBuilder()
-      .setCustomId("file")
-      .setLabel("Audio URL")
-      .setStyle(TextInputStyle.Short)
-      .setRequired(true);
+      .setTitle("Audio Settings");
 
     const volume = new TextInputBuilder()
       .setCustomId("volume")
-      .setLabel("Volume (1.0 = normal, 2.0 = loud)")
-      .setStyle(TextInputStyle.Short);
+      .setLabel("Volume (default 1.0)")
+      .setStyle(TextInputStyle.Short)
+      .setRequired(false);
 
     const pitch = new TextInputBuilder()
       .setCustomId("pitch")
-      .setLabel("Pitch (1.0 = normal, 1.2 = higher)")
-      .setStyle(TextInputStyle.Short);
+      .setLabel("Pitch (default 1.0)")
+      .setStyle(TextInputStyle.Short)
+      .setRequired(false);
 
     const bass = new TextInputBuilder()
       .setCustomId("bass")
-      .setLabel("Bass (0-20)")
-      .setStyle(TextInputStyle.Short);
+      .setLabel("Bass (default 0)")
+      .setStyle(TextInputStyle.Short)
+      .setRequired(false);
 
     const treble = new TextInputBuilder()
       .setCustomId("treble")
-      .setLabel("Treble (0-20)")
-      .setStyle(TextInputStyle.Short);
+      .setLabel("Treble (default 0)")
+      .setStyle(TextInputStyle.Short)
+      .setRequired(false);
 
     modal.addComponents(
-      new ActionRowBuilder().addComponents(file),
       new ActionRowBuilder().addComponents(volume),
       new ActionRowBuilder().addComponents(pitch),
       new ActionRowBuilder().addComponents(bass),
@@ -110,18 +125,25 @@ client.on(Events.InteractionCreate, async interaction => {
     return interaction.showModal(modal);
   }
 
-  // ===== HANDLE MODAL =====
+  // ===== STEP 2: MODAL =====
   if (interaction.isModalSubmit() && interaction.customId === "audioEditModal") {
     await interaction.deferReply();
 
-    const fileUrl = interaction.fields.getTextInputValue("file");
+    const fileUrl = fileCache.get(interaction.user.id);
+
+    if (!fileUrl) {
+      return interaction.editReply("File expired. Run the command again.");
+    }
+
+    fileCache.delete(interaction.user.id);
+
+    // defaults if empty
     const volume = interaction.fields.getTextInputValue("volume") || "1.0";
     const pitch = interaction.fields.getTextInputValue("pitch") || "1.0";
     const bass = interaction.fields.getTextInputValue("bass") || "0";
     const treble = interaction.fields.getTextInputValue("treble") || "0";
 
     try {
-      // Extract original filename
       const originalName = fileUrl.split("/").pop().split("?")[0] || "audio.mp3";
 
       const inputPath = path.join(__dirname, "input_" + originalName);
@@ -142,7 +164,7 @@ client.on(Events.InteractionCreate, async interaction => {
         writer.on("error", rej);
       });
 
-      // FILTER BUILD
+      // FILTER
       const filter = `
         volume=${volume},
         asetrate=44100*${pitch},
@@ -160,7 +182,7 @@ client.on(Events.InteractionCreate, async interaction => {
 
         const embed = new EmbedBuilder()
           .setColor(0x2b2d31)
-          .setTitle("Audio Processed")
+          .setTitle("Audio Edited")
           .setDescription(
             `Volume: ${volume}\nPitch: ${pitch}\nBass: ${bass}\nTreble: ${treble}`
           );
