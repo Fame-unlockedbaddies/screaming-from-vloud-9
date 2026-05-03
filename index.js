@@ -47,14 +47,14 @@ const commands = [
     .addSubcommand(sub =>
       sub
         .setName("edit")
-        .setDescription("Edit or auto bass boost")
+        .setDescription("Edit or auto vocal boost")
         .addAttachmentOption(opt =>
           opt.setName("file").setDescription("Upload audio").setRequired(true)
         )
         .addBooleanOption(opt =>
           opt
             .setName("auto")
-            .setDescription("Auto bass boost (no form)")
+            .setDescription("Auto vocal boost (no form)")
             .setRequired(true)
         )
     )
@@ -74,121 +74,120 @@ client.once("ready", () => {
 // ---------------- HANDLER ----------------
 client.on(Events.InteractionCreate, async interaction => {
 
-  // ===== COMMAND =====
-  if (
-    interaction.isChatInputCommand() &&
-    interaction.commandName === "audio"
-  ) {
-    const sub = interaction.options.getSubcommand();
+  if (!interaction.isChatInputCommand()) return;
 
-    if (sub === "edit") {
-      const file = interaction.options.getAttachment("file");
-      const auto = interaction.options.getBoolean("auto");
+  const sub = interaction.options.getSubcommand();
 
-      if (!file.contentType || !file.contentType.startsWith("audio")) {
-        return interaction.reply({ content: "Upload a valid audio file." });
-      }
+  // ===== AUDIO COMMAND =====
+  if (interaction.commandName === "audio" && sub === "edit") {
+    const file = interaction.options.getAttachment("file");
+    const auto = interaction.options.getBoolean("auto");
 
-      // ===== AUTO MODE =====
-      if (auto) {
-        await interaction.deferReply();
-
-        const originalName =
-          file.url.split("/").pop().split("?")[0] || "audio.mp3";
-
-        const inputPath = path.join(__dirname, "input_" + originalName);
-        const outputPath = path.join(__dirname, originalName);
-
-        try {
-          // download
-          const response = await axios({
-            url: file.url,
-            method: "GET",
-            responseType: "stream"
-          });
-
-          const writer = fs.createWriteStream(inputPath);
-          response.data.pipe(writer);
-
-          await new Promise((res, rej) => {
-            writer.on("finish", res);
-            writer.on("error", rej);
-          });
-
-          // 🔥 CLEAN BARBIE-STYLE BOOST (NO GLITCH)
-          const filter = `
-            bass=g=15,
-            equalizer=f=60:width_type=o:width=2:g=10,
-            equalizer=f=120:width_type=o:width=2:g=6,
-            volume=1.3
-          `.replace(/\s+/g, "");
-
-          const command = `ffmpeg -i "${inputPath}" -af "${filter}" -preset ultrafast -b:a 192k "${outputPath}" -y`;
-
-          exec(command, async (err) => {
-            if (err) {
-              console.error(err);
-              return interaction.editReply("Error processing audio.");
-            }
-
-            const embed = new EmbedBuilder()
-              .setColor(0x2b2d31)
-              .setTitle("Auto Bass Boost")
-              .setDescription("Applied Barbie-style bass boost");
-
-            await interaction.editReply({
-              embeds: [embed],
-              files: [new AttachmentBuilder(outputPath)]
-            });
-
-            fs.unlinkSync(inputPath);
-            fs.unlinkSync(outputPath);
-          });
-
-        } catch (err) {
-          console.error(err);
-          interaction.editReply("Failed to process file.");
-        }
-
-        return;
-      }
-
-      // ===== MANUAL MODE (MODAL) =====
-      fileCache.set(interaction.user.id, file.url);
-
-      const modal = new ModalBuilder()
-        .setCustomId("audioModal")
-        .setTitle("Audio Settings");
-
-      const volume = new TextInputBuilder()
-        .setCustomId("volume")
-        .setLabel("Volume (1.0 default)")
-        .setStyle(TextInputStyle.Short)
-        .setRequired(false);
-
-      const bass = new TextInputBuilder()
-        .setCustomId("bass")
-        .setLabel("Bass (0-15)")
-        .setStyle(TextInputStyle.Short)
-        .setRequired(false);
-
-      const treble = new TextInputBuilder()
-        .setCustomId("treble")
-        .setLabel("Treble (0-10)")
-        .setStyle(TextInputStyle.Short)
-        .setRequired(false);
-
-      modal.addComponents(
-        new ActionRowBuilder().addComponents(volume),
-        new ActionRowBuilder().addComponents(bass),
-        new ActionRowBuilder().addComponents(treble)
-      );
-
-      return interaction.showModal(modal);
+    if (!file.contentType || !file.contentType.startsWith("audio")) {
+      return interaction.reply({ content: "Upload a valid audio file." });
     }
+
+    // ===== AUTO VOCAL BOOST =====
+    if (auto) {
+      await interaction.deferReply();
+
+      const originalName =
+        file.url.split("/").pop().split("?")[0] || "audio.mp3";
+
+      const inputPath = path.join(__dirname, "input_" + originalName);
+      const outputPath = path.join(__dirname, originalName);
+
+      try {
+        const response = await axios({
+          url: file.url,
+          method: "GET",
+          responseType: "stream"
+        });
+
+        const writer = fs.createWriteStream(inputPath);
+        response.data.pipe(writer);
+
+        await new Promise((res, rej) => {
+          writer.on("finish", res);
+          writer.on("error", rej);
+        });
+
+        // 🔥 VOCAL BOOST FILTER (lyrics focus)
+        const filter = `
+          highpass=f=120,
+          equalizer=f=250:width_type=o:width=2:g=-4,
+          equalizer=f=2000:width_type=o:width=2:g=5,
+          equalizer=f=4000:width_type=o:width=2:g=6,
+          treble=g=5,
+          acompressor=threshold=-20dB:ratio=3:attack=15:release=150,
+          volume=1.2
+        `.replace(/\s+/g, "");
+
+        const command = `ffmpeg -i "${inputPath}" -af "${filter}" -preset ultrafast -b:a 192k "${outputPath}" -y`;
+
+        exec(command, async (err) => {
+          if (err) {
+            console.error(err);
+            return interaction.editReply("Error processing audio.");
+          }
+
+          const embed = new EmbedBuilder()
+            .setColor(0x2b2d31)
+            .setTitle("Vocal Boost Applied")
+            .setDescription("Lyrics enhanced, beats reduced");
+
+          await interaction.editReply({
+            embeds: [embed],
+            files: [new AttachmentBuilder(outputPath)]
+          });
+
+          fs.unlinkSync(inputPath);
+          fs.unlinkSync(outputPath);
+        });
+
+      } catch (err) {
+        console.error(err);
+        interaction.editReply("Failed to process file.");
+      }
+
+      return;
+    }
+
+    // ===== MANUAL MODE =====
+    fileCache.set(interaction.user.id, file.url);
+
+    const modal = new ModalBuilder()
+      .setCustomId("audioModal")
+      .setTitle("Manual Audio Settings");
+
+    const volume = new TextInputBuilder()
+      .setCustomId("volume")
+      .setLabel("Volume (1.0 default)")
+      .setStyle(TextInputStyle.Short)
+      .setRequired(false);
+
+    const bass = new TextInputBuilder()
+      .setCustomId("bass")
+      .setLabel("Bass (0-10)")
+      .setStyle(TextInputStyle.Short)
+      .setRequired(false);
+
+    const treble = new TextInputBuilder()
+      .setCustomId("treble")
+      .setLabel("Treble (0-10)")
+      .setStyle(TextInputStyle.Short)
+      .setRequired(false);
+
+    modal.addComponents(
+      new ActionRowBuilder().addComponents(volume),
+      new ActionRowBuilder().addComponents(bass),
+      new ActionRowBuilder().addComponents(treble)
+    );
+
+    return interaction.showModal(modal);
   }
 
-  // ===== MODAL =====
+  // ===== MODAL SUBMIT =====
   if (interaction.isModalSubmit() && interaction.customId === "audioModal") {
     await interaction.deferReply();
 
@@ -198,7 +197,7 @@ client.on(Events.InteractionCreate, async interaction => {
     fileCache.delete(interaction.user.id);
 
     const volume = interaction.fields.getTextInputValue("volume") || "1.0";
-    const bass = interaction.fields.getTextInputValue("bass") || "6";
+    const bass = interaction.fields.getTextInputValue("bass") || "4";
     const treble = interaction.fields.getTextInputValue("treble") || "4";
 
     const originalName =
@@ -222,7 +221,7 @@ client.on(Events.InteractionCreate, async interaction => {
         writer.on("error", rej);
       });
 
-      // 🔥 CLEAN + STABLE FILTER (NO GLITCH)
+      // 🔥 CLEAN BALANCED FILTER
       const filter = `
         bass=g=${bass},
         treble=g=${treble},
@@ -240,7 +239,9 @@ client.on(Events.InteractionCreate, async interaction => {
         const embed = new EmbedBuilder()
           .setColor(0x2b2d31)
           .setTitle("Audio Edited")
-          .setDescription(`Volume: ${volume} | Bass: ${bass} | Treble: ${treble}`);
+          .setDescription(
+            `Volume: ${volume} | Bass: ${bass} | Treble: ${treble}`
+          );
 
         await interaction.editReply({
           embeds: [embed],
