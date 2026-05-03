@@ -24,24 +24,21 @@ app.listen(PORT, () => console.log("Web server running"));
 const TOKEN = process.env.TOKEN;
 const CLIENT_ID = process.env.CLIENT_ID;
 
-// BOT
 const client = new Client({
   intents: [GatewayIntentBits.Guilds]
 });
 
-// MEMORY
 let weaponCache = {};
 
-// 🔥 CUSTOM WEAPON (Glitter Bomb EXACT VALUES)
+// 🔥 CUSTOM GLITTER BOMB (CORRECT VALUES)
 const customWeapons = {
   "glitter bomb": {
     name: "Glitter Bomb",
     image: "https://cdn.meowia.com/baddies/glitter-bomb.png",
 
     rarity: "Legend",
-    value: "650,000",
-    token: "345,000",
-    rap: "5,881",
+    value: "200,000",
+    rap: "145,000",
     demand: "Amazing",
     trend: "Raising"
   }
@@ -143,7 +140,6 @@ client.on(Events.InteractionCreate, async (interaction) => {
       );
     }
 
-    // 🔥 CUSTOM OVERRIDE
     if (customWeapons[input]) {
       weapon = customWeapons[input];
     }
@@ -152,7 +148,6 @@ client.on(Events.InteractionCreate, async (interaction) => {
       return interaction.editReply({ content: "Weapon not found." });
     }
 
-    // 🔥 EMBED STYLE YOU REQUESTED
     const embed = new EmbedBuilder()
       .setColor(0x2b2d31)
       .setTitle(weapon.name)
@@ -160,9 +155,8 @@ client.on(Events.InteractionCreate, async (interaction) => {
 
       .setDescription(
         `__${weapon.rarity || "Legend"}__\n\n` +
+        `**<:rap:1500289824333234236> RAP:** ${weapon.rap}\n` +
         `**Value:** ${weapon.value}\n` +
-        `**Token Value:** ${weapon.token || "Unknown"}\n` +
-        `**RAP:** ${weapon.rap}\n` +
         `**Demand:** ${weapon.demand || "Unknown"}\n` +
         `**Trend:** ${weapon.trend || "Unknown"}`
       )
@@ -173,5 +167,4 @@ client.on(Events.InteractionCreate, async (interaction) => {
   }
 });
 
-// START
 client.login(TOKEN);
