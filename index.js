@@ -13,7 +13,8 @@ const {
   REST,
   Routes,
   SlashCommandBuilder,
-  AttachmentBuilder
+  AttachmentBuilder,
+  EmbedBuilder
 } = require("discord.js");
 
 // WEB
@@ -36,6 +37,7 @@ const CLIENT_ID = process.env.CLIENT_ID;
 // COMMANDS
 const commands = [
 
+  // AUDIO EDIT
   new SlashCommandBuilder()
     .setName("audio")
     .setDescription("Edit audio")
@@ -58,6 +60,7 @@ const commands = [
         )
     ),
 
+  // BASSBOOST
   new SlashCommandBuilder()
     .setName("bassboost")
     .setDescription("Add bass to audio")
@@ -65,6 +68,7 @@ const commands = [
       opt.setName("file").setDescription("Audio file").setRequired(true)
     ),
 
+  // ADD INTRO
   new SlashCommandBuilder()
     .setName("add")
     .setDescription("Add intro to audio")
@@ -73,6 +77,19 @@ const commands = [
     )
     .addAttachmentOption(opt =>
       opt.setName("main").setDescription("Main audio").setRequired(true)
+    ),
+
+  // DOWNLOAD MUSIC
+  new SlashCommandBuilder()
+    .setName("download")
+    .setDescription("Get music info")
+    .addSubcommand(sub =>
+      sub
+        .setName("music")
+        .setDescription("Get info from a link")
+        .addStringOption(opt =>
+          opt.setName("link").setDescription("YouTube or Spotify link").setRequired(true)
+        )
     )
 
 ].map(c => c.toJSON());
@@ -90,6 +107,7 @@ client.once("ready", () => {
 // HANDLER
 client.on(Events.InteractionCreate, async interaction => {
 
+  // ================= AUDIO =================
   if (interaction.isChatInputCommand() && interaction.commandName === "audio") {
     const file = interaction.options.getAttachment("file");
     const auto = interaction.options.getBoolean("auto");
@@ -105,110 +123,81 @@ client.on(Events.InteractionCreate, async interaction => {
     const input = "in_" + name;
     const output = name;
 
-    try {
-      const res = await axios({ url: file.url, method: "GET", responseType: "stream" });
-      const writer = fs.createWriteStream(input);
-      res.data.pipe(writer);
-
-      await new Promise((r, j) => {
-        writer.on("finish", r);
-        writer.on("error", j);
-      });
-
-      let filter;
-
-      if (auto) {
-        // 🔥 STRONG AUTO (now respects volume)
-        filter = `
-          bass=g=18,
-          equalizer=f=90:width_type=o:width=2:g=12,
-          equalizer=f=250:width_type=o:width=2:g=-7,
-          equalizer=f=2000:width_type=o:width=2:g=9,
-          equalizer=f=6000:width_type=o:width=2:g=11,
-          treble=g=9,
-          acompressor=threshold=-28dB:ratio=7:attack=3:release=70,
-          alimiter=limit=0.9,
-          volume=${volume}
-        `.replace(/\s+/g, "");
-      } else {
-        // 🎧 CLEAN
-        filter = `
-          loudnorm=I=-14:TP=-1.5:LRA=10,
-          acompressor=threshold=-20dB:ratio=2:attack=30:release=300,
-          equalizer=f=250:width_type=o:width=2:g=-2,
-          equalizer=f=3000:width_type=o:width=2:g=2,
-          equalizer=f=5000:width_type=o:width=2:g=2,
-          bass=g=3,
-          treble=g=1,
-          alimiter=limit=0.95,
-          volume=${volume}
-        `.replace(/\s+/g, "");
-      }
-
-      const cmd = `ffmpeg -i "${input}" -af "${filter}" -preset ultrafast -b:a 192k "${output}" -y`;
-
-      exec(cmd, async () => {
-        await interaction.editReply({
-          files: [new AttachmentBuilder(output)]
-        });
-
-        fs.unlinkSync(input);
-        fs.unlinkSync(output);
-      });
-
-    } catch {
-      interaction.editReply("Failed");
-    }
-  }
-
-  // BASSBOOST
-  if (interaction.commandName === "bassboost") {
-    const file = interaction.options.getAttachment("file");
-
-    if (!file.contentType?.startsWith("audio")) {
-      return interaction.reply("Upload an audio file.");
-    }
-
-    await interaction.deferReply();
-
-    const name = file.url.split("/").pop().split("?")[0];
-    const input = "in_" + name;
-    const output = name;
-
     const res = await axios({ url: file.url, method: "GET", responseType: "stream" });
     const writer = fs.createWriteStream(input);
     res.data.pipe(writer);
 
     await new Promise(r => writer.on("finish", r));
 
-    const cmd = `ffmpeg -i "${input}" -af "bass=g=10,volume=1.6" "${output}" -y`;
+    let filter;
 
-    exec(cmd, async () => {
+    if (auto) {
+      filter = `
+        bass=g=18,
+        equalizer=f=90:width_type=o:width=2:g=12,
+        equalizer=f=250:width_type=o:width=2:g=-7,
+        equalizer=f=2000:width_type=o:width=2:g=9,
+        equalizer=f=6000:width_type=o:width=2:g=11,
+        treble=g=9,
+        acompressor=threshold=-28dB:ratio=7:attack=3:release=70,
+        alimiter=limit=0.9,
+        volume=${volume}
+      `.replace(/\s+/g, "");
+    } else {
+      filter = `
+        loudnorm=I=-14:TP=-1.5:LRA=10,
+        acompressor=threshold=-20dB:ratio=2,
+        bass=g=3,
+        volume=${volume}
+      `.replace(/\s+/g, "");
+    }
+
+    exec(`ffmpeg -i "${input}" -af "${filter}" "${output}" -y`, async () => {
       await interaction.editReply({ files: [new AttachmentBuilder(output)] });
       fs.unlinkSync(input);
       fs.unlinkSync(output);
     });
   }
 
-  // ADD
-  if (interaction.commandName === "add") {
+  // ================= DOWNLOAD =================
+  if (interaction.isChatInputCommand() && interaction.commandName === "download") {
+    const link = interaction.options.getString("link");
+
     await interaction.deferReply();
 
-    const intro = interaction.options.getAttachment("intro");
-    const main = interaction.options.getAttachment("main");
+    try {
+      // YOUTUBE
+      if (link.includes("youtube.com") || link.includes("youtu.be")) {
+        const id = link.split("v=")[1]?.split("&")[0] || link.split("/").pop();
 
-    const cmd = `ffmpeg -i "${intro.url}" -i "${main.url}" -filter_complex "[0:a][1:a]concat=n=2:v=0:a=1[out]" -map "[out]" combined.mp3 -y`;
+        const embed = new EmbedBuilder()
+          .setTitle("YouTube Video")
+          .setDescription(link)
+          .setImage(`https://img.youtube.com/vi/${id}/maxresdefault.jpg`);
 
-    exec(cmd, async () => {
-      await interaction.editReply({
-        files: [new AttachmentBuilder("combined.mp3")]
-      });
-    });
+        return interaction.editReply({ embeds: [embed] });
+      }
+
+      // SPOTIFY
+      if (link.includes("spotify.com")) {
+        const embed = new EmbedBuilder()
+          .setTitle("Spotify Track")
+          .setDescription(link)
+          .setThumbnail("https://upload.wikimedia.org/wikipedia/commons/8/84/Spotify_icon.svg");
+
+        return interaction.editReply({ embeds: [embed] });
+      }
+
+      interaction.editReply("Invalid link.");
+
+    } catch {
+      interaction.editReply("Error.");
+    }
   }
 
 });
 
-// !LIST SYSTEM
+// ================= !LIST =================
 client.on("messageCreate", async (message) => {
   if (message.author.bot) return;
   if (!message.content.startsWith("!list")) return;
@@ -222,6 +211,7 @@ client.on("messageCreate", async (message) => {
   if (!target) return;
 
   await target.roles.add(PREMIUM_ROLE);
+
   await target.send(
     `You have earned Cálido premium by ${message.author.tag}! You are now a premium user, enjoy the benefits babes x!`
   );
