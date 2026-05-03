@@ -180,16 +180,14 @@ client.on(Events.InteractionCreate, async (interaction) => {
       .setColor(0x2b2d31)
       .setTitle(weapon.name)
       .setThumbnail(weapon.image)
-
       .setDescription(
         `__${weapon.rarity || "Legend"}__\n\n` +
         `**<:rap:1500289824333234236> RAP:** ${weapon.rap}\n` +
         `**Value:** ${weapon.value}\n` +
         `**Demand:** ${weapon.demand || "Unknown"}\n` +
         `**Trend:** ${weapon.trend || "Unknown"}\n\n` +
-        "\n\n" +
-        "────────────────────────────\n" +
-        "*these values are from fame!*"
+        `────────────────────────────\n` +
+        `*these values are from fame!*`
       );
 
     return interaction.editReply({ embeds: [embed] });
@@ -222,12 +220,14 @@ client.on(Events.InteractionCreate, async (interaction) => {
           `https://thumbnails.roblox.com/v1/users/avatar?userIds=${userId}&size=720x720&format=Png`
         );
 
-        const embed = new EmbedBuilder()
-          .setColor(0x2b2d31)
-          .setTitle(`${username}'s Outfit`)
-          .setImage(res.data.data[0].imageUrl);
-
-        return interaction.editReply({ embeds: [embed] });
+        return interaction.editReply({
+          embeds: [
+            new EmbedBuilder()
+              .setColor(0x2b2d31)
+              .setTitle(`${username}'s Outfit`)
+              .setImage(res.data.data[0].imageUrl)
+          ]
+        });
       }
 
       if (sub === "mug") {
@@ -235,12 +235,14 @@ client.on(Events.InteractionCreate, async (interaction) => {
           `https://thumbnails.roblox.com/v1/users/avatar-headshot?userIds=${userId}&size=420x420&format=Png`
         );
 
-        const embed = new EmbedBuilder()
-          .setColor(0x2b2d31)
-          .setTitle(`${username}'s Mugshot`)
-          .setImage(res.data.data[0].imageUrl);
-
-        return interaction.editReply({ embeds: [embed] });
+        return interaction.editReply({
+          embeds: [
+            new EmbedBuilder()
+              .setColor(0x2b2d31)
+              .setTitle(`${username}'s Mugshot`)
+              .setImage(res.data.data[0].imageUrl)
+          ]
+        });
       }
 
     } catch (err) {
