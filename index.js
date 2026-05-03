@@ -14,19 +14,20 @@ const {
   REST,
   Routes,
   SlashCommandBuilder,
+  ModalBuilder,
+  TextInputBuilder,
+  TextInputStyle,
+  ActionRowBuilder,
   EmbedBuilder,
   AttachmentBuilder
 } = require("discord.js");
 
-// ---------------- WEB SERVER ----------------
+// ---------------- WEB ----------------
 const app = express();
 const PORT = process.env.PORT || 3000;
 
 app.get("/", (req, res) => res.send("Cálido running"));
-
-app.listen(PORT, "0.0.0.0", () => {
-  console.log(`Server running on ${PORT}`);
-});
+app.listen(PORT, "0.0.0.0");
 
 // ---------------- BOT ----------------
 const client = new Client({
@@ -36,38 +37,17 @@ const client = new Client({
 const TOKEN = process.env.TOKEN;
 const CLIENT_ID = process.env.CLIENT_ID;
 
-// ---------------- COMMANDS ----------------
+// ---------------- COMMAND ----------------
 const commands = [
   new SlashCommandBuilder()
-    .setName("make")
-    .setDescription("Create audio")
-    .addSubcommand(sub =>
-      sub
-        .setName("audio")
-        .setDescription("Generate simple audio")
-        .addStringOption(opt =>
-          opt
-            .setName("genre")
-            .setDescription("Genre (phonk, pop, rock)")
-            .setRequired(true)
-        )
-    ),
-
-  new SlashCommandBuilder()
     .setName("audio")
-    .setDescription("Audio tools")
+    .setDescription("Advanced audio tools")
     .addSubcommand(sub =>
       sub
-        .setName("bassboost")
-        .setDescription("Bass boost an audio file")
-        .addAttachmentOption(opt =>
-          opt
-            .setName("file")
-            .setDescription("Upload audio file")
-            .setRequired(true)
-        )
+        .setName("edit")
+        .setDescription("Edit audio with full controls")
     )
-].map(cmd => cmd.toJSON());
+].map(c => c.toJSON());
 
 const rest = new REST({ version: "10" }).setToken(TOKEN);
 
@@ -75,92 +55,81 @@ const rest = new REST({ version: "10" }).setToken(TOKEN);
   await rest.put(Routes.applicationCommands(CLIENT_ID), { body: commands });
 })();
 
-// ---------------- SIMPLE AUDIO GENERATOR ----------------
-function generateToneWav(filePath, genre) {
-  const sampleRate = 44100;
-  const duration = 5;
-  const samples = sampleRate * duration;
-
-  const buffer = Buffer.alloc(44 + samples * 2);
-
-  function writeString(offset, str) {
-    buffer.write(str, offset);
-  }
-
-  writeString(0, "RIFF");
-  buffer.writeUInt32LE(36 + samples * 2, 4);
-  writeString(8, "WAVE");
-  writeString(12, "fmt ");
-  buffer.writeUInt32LE(16, 16);
-  buffer.writeUInt16LE(1, 20);
-  buffer.writeUInt16LE(1, 22);
-  buffer.writeUInt32LE(sampleRate, 24);
-  buffer.writeUInt32LE(sampleRate * 2, 28);
-  buffer.writeUInt16LE(2, 32);
-  buffer.writeUInt16LE(16, 34);
-  writeString(36, "data");
-  buffer.writeUInt32LE(samples * 2, 40);
-
-  let baseFreq = 440;
-  if (genre.includes("phonk")) baseFreq = 180;
-  if (genre.includes("rock")) baseFreq = 520;
-  if (genre.includes("pop")) baseFreq = 660;
-
-  for (let i = 0; i < samples; i++) {
-    const t = i / sampleRate;
-    const freq = baseFreq + Math.sin(t * 4) * 80;
-    const sample = Math.sin(2 * Math.PI * freq * t);
-    buffer.writeInt16LE(sample * 32767, 44 + i * 2);
-  }
-
-  fs.writeFileSync(filePath, buffer);
-}
+// ---------------- READY ----------------
+client.once("ready", () => {
+  console.log(`Cálido online as ${client.user.tag}`);
+});
 
 // ---------------- HANDLER ----------------
 client.on(Events.InteractionCreate, async interaction => {
-  if (!interaction.isChatInputCommand()) return;
 
-  // ===== /make audio =====
+  // ===== OPEN MODAL =====
   if (
-    interaction.commandName === "make" &&
-    interaction.options.getSubcommand() === "audio"
+    interaction.isChatInputCommand() &&
+    interaction.commandName === "audio" &&
+    interaction.options.getSubcommand() === "edit"
   ) {
-    const genre = interaction.options.getString("genre");
+    const modal = new ModalBuilder()
+      .setCustomId("audioEditModal")
+      .setTitle("Audio Editor");
 
-    await interaction.deferReply();
+    const file = new TextInputBuilder()
+      .setCustomId("file")
+      .setLabel("Audio URL")
+      .setStyle(TextInputStyle.Short)
+      .setRequired(true);
 
-    const filePath = path.join(__dirname, "song.wav");
+    const volume = new TextInputBuilder()
+      .setCustomId("volume")
+      .setLabel("Volume (1.0 = normal, 2.0 = loud)")
+      .setStyle(TextInputStyle.Short);
 
-    generateToneWav(filePath, genre.toLowerCase());
+    const pitch = new TextInputBuilder()
+      .setCustomId("pitch")
+      .setLabel("Pitch (1.0 = normal, 1.2 = higher)")
+      .setStyle(TextInputStyle.Short);
 
-    await interaction.editReply({
-      content: `Generated ${genre} audio`,
-      files: [filePath]
-    });
+    const bass = new TextInputBuilder()
+      .setCustomId("bass")
+      .setLabel("Bass (0-20)")
+      .setStyle(TextInputStyle.Short);
 
-    fs.unlinkSync(filePath);
+    const treble = new TextInputBuilder()
+      .setCustomId("treble")
+      .setLabel("Treble (0-20)")
+      .setStyle(TextInputStyle.Short);
+
+    modal.addComponents(
+      new ActionRowBuilder().addComponents(file),
+      new ActionRowBuilder().addComponents(volume),
+      new ActionRowBuilder().addComponents(pitch),
+      new ActionRowBuilder().addComponents(bass),
+      new ActionRowBuilder().addComponents(treble)
+    );
+
+    return interaction.showModal(modal);
   }
 
-  // ===== /audio bassboost =====
-  if (
-    interaction.commandName === "audio" &&
-    interaction.options.getSubcommand() === "bassboost"
-  ) {
+  // ===== HANDLE MODAL =====
+  if (interaction.isModalSubmit() && interaction.customId === "audioEditModal") {
     await interaction.deferReply();
 
-    const file = interaction.options.getAttachment("file");
-
-    if (!file.contentType || !file.contentType.startsWith("audio")) {
-      return interaction.editReply("Upload a valid audio file.");
-    }
-
-    const inputPath = path.join(__dirname, "input.mp3");
-    const outputPath = path.join(__dirname, "boosted.mp3");
+    const fileUrl = interaction.fields.getTextInputValue("file");
+    const volume = interaction.fields.getTextInputValue("volume") || "1.0";
+    const pitch = interaction.fields.getTextInputValue("pitch") || "1.0";
+    const bass = interaction.fields.getTextInputValue("bass") || "0";
+    const treble = interaction.fields.getTextInputValue("treble") || "0";
 
     try {
-      // DOWNLOAD FILE
+      // Extract original filename
+      const originalName = fileUrl.split("/").pop().split("?")[0] || "audio.mp3";
+
+      const inputPath = path.join(__dirname, "input_" + originalName);
+      const outputPath = path.join(__dirname, originalName);
+
+      // DOWNLOAD
       const response = await axios({
-        url: file.url,
+        url: fileUrl,
         method: "GET",
         responseType: "stream"
       });
@@ -173,8 +142,15 @@ client.on(Events.InteractionCreate, async interaction => {
         writer.on("error", rej);
       });
 
-      // 🔥 REAL BASS BOOST USING FFMPEG
-      const command = `ffmpeg -i "${inputPath}" -af "bass=g=30,volume=1.8" "${outputPath}" -y`;
+      // FILTER BUILD
+      const filter = `
+        volume=${volume},
+        asetrate=44100*${pitch},
+        bass=g=${bass},
+        treble=g=${treble}
+      `.replace(/\s+/g, "");
+
+      const command = `ffmpeg -i "${inputPath}" -af "${filter}" "${outputPath}" -y`;
 
       exec(command, async (err) => {
         if (err) {
@@ -184,8 +160,10 @@ client.on(Events.InteractionCreate, async interaction => {
 
         const embed = new EmbedBuilder()
           .setColor(0x2b2d31)
-          .setTitle("Bass Boost Complete")
-          .setDescription("Your audio has been heavily bass boosted.");
+          .setTitle("Audio Processed")
+          .setDescription(
+            `Volume: ${volume}\nPitch: ${pitch}\nBass: ${bass}\nTreble: ${treble}`
+          );
 
         await interaction.editReply({
           embeds: [embed],
@@ -198,14 +176,9 @@ client.on(Events.InteractionCreate, async interaction => {
 
     } catch (err) {
       console.error(err);
-      interaction.editReply("Error processing file.");
+      interaction.editReply("Failed to process file.");
     }
   }
-});
-
-// ---------------- READY ----------------
-client.once("ready", () => {
-  console.log(`Cálido online as ${client.user.tag}`);
 });
 
 // ---------------- START ----------------
