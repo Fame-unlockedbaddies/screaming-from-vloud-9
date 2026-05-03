@@ -42,9 +42,6 @@ const customWeapons = {
   }
 };
 
-// 🖼️ RAP ICON IMAGE (UPLOAD YOUR IMAGE AND PUT LINK HERE)
-const RAP_ICON = "PASTE_YOUR_RAP_IMAGE_URL_HERE";
-
 // ---------------- COMMANDS ----------------
 const commands = [
   new SlashCommandBuilder()
@@ -67,7 +64,7 @@ const commands = [
     .addStringOption(opt =>
       opt
         .setName("emoji")
-        .setDescription("Paste the emoji (e.g. <:rap:123>)")
+        .setDescription("Paste emoji like <:rap:123>")
         .setRequired(true)
     ),
 
@@ -174,15 +171,13 @@ client.on(Events.InteractionCreate, async (interaction) => {
 
     if (!match) {
       return interaction.reply({
-        content: "That is not a valid custom emoji.",
+        content: "Invalid emoji.",
         ephemeral: true
       });
     }
 
-    const emojiId = match[1];
-
     return interaction.reply({
-      content: `Emoji ID: ${emojiId}`
+      content: `Emoji ID: ${match[1]}`
     });
   }
 
@@ -212,19 +207,18 @@ client.on(Events.InteractionCreate, async (interaction) => {
       .setColor(0x2b2d31)
       .setTitle(weapon.name)
       .setThumbnail(weapon.image)
-
-      // RAP ICON IMAGE
-      .setAuthor({
-        name: `RAP: ${weapon.rap}`,
-        iconURL: RAP_ICON
-      })
-
-      .addFields({
-        name: "Value",
-        value: `${weapon.value}`,
-        inline: true
-      })
-
+      .addFields(
+        {
+          name: "<:rap:1500289824333234236> RAP",
+          value: `${weapon.rap}`,
+          inline: true
+        },
+        {
+          name: "Value",
+          value: `${weapon.value}`,
+          inline: true
+        }
+      )
       .setFooter({ text: "Fame • Live Data" })
       .setTimestamp();
 
@@ -248,46 +242,40 @@ client.on(Events.InteractionCreate, async (interaction) => {
       );
 
       if (!userRes.data.data?.length) {
-        return interaction.editReply({ content: "Roblox user not found." });
+        return interaction.editReply({ content: "User not found." });
       }
 
       const userId = userRes.data.data[0].id;
 
-      let image;
-
       if (sub === "outfit") {
         const res = await axios.get(
-          `https://thumbnails.roblox.com/v1/users/avatar?userIds=${userId}&size=720x720&format=Png&isCircular=false`
+          `https://thumbnails.roblox.com/v1/users/avatar?userIds=${userId}&size=720x720&format=Png`
         );
 
-        image = res.data?.data?.[0]?.imageUrl;
-
-        const embed = new EmbedBuilder()
-          .setColor(0x2b2d31)
-          .setTitle(`${username}'s Outfit`)
-          .setImage(image)
-          .setTimestamp();
-
-        return interaction.editReply({ embeds: [embed] });
+        return interaction.editReply({
+          embeds: [
+            new EmbedBuilder()
+              .setTitle(`${username}'s Outfit`)
+              .setImage(res.data.data[0].imageUrl)
+          ]
+        });
       }
 
       if (sub === "mug") {
         const res = await axios.get(
-          `https://thumbnails.roblox.com/v1/users/avatar-headshot?userIds=${userId}&size=420x420&format=Png&isCircular=false`
+          `https://thumbnails.roblox.com/v1/users/avatar-headshot?userIds=${userId}&size=420x420&format=Png`
         );
 
-        image = res.data?.data?.[0]?.imageUrl;
-
-        const embed = new EmbedBuilder()
-          .setColor(0x2b2d31)
-          .setTitle(`${username}'s Mugshot`)
-          .setImage(image)
-          .setTimestamp();
-
-        return interaction.editReply({ embeds: [embed] });
+        return interaction.editReply({
+          embeds: [
+            new EmbedBuilder()
+              .setTitle(`${username}'s Mugshot`)
+              .setImage(res.data.data[0].imageUrl)
+          ]
+        });
       }
 
-    } catch (err) {
+    } catch {
       return interaction.editReply({
         content: "Failed to fetch Roblox data."
       });
@@ -295,5 +283,4 @@ client.on(Events.InteractionCreate, async (interaction) => {
   }
 });
 
-// START
 client.login(TOKEN);
