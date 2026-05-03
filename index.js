@@ -43,98 +43,64 @@ const client = new Client({
 // COMMANDS
 const commands = [
 
-  // AUDIO EDIT
   new SlashCommandBuilder()
     .setName("audio")
     .setDescription("Edit audio")
     .addSubcommand(sub =>
-      sub
-        .setName("edit")
+      sub.setName("edit")
         .setDescription("Improve audio")
         .addAttachmentOption(o =>
-          o.setName("file").setDescription("Audio file").setRequired(true)
-        )
+          o.setName("file").setDescription("Audio").setRequired(true))
         .addBooleanOption(o =>
-          o.setName("auto").setDescription("Auto mode").setRequired(true)
-        )
+          o.setName("auto").setDescription("Auto mode").setRequired(true))
         .addNumberOption(o =>
-          o.setName("volume").setDescription("Volume").setMinValue(0.5).setMaxValue(3).setRequired(true)
-        )
+          o.setName("volume").setDescription("Volume").setMinValue(0.5).setMaxValue(3).setRequired(true))
     ),
 
-  // BASSBOOST
   new SlashCommandBuilder()
     .setName("bassboost")
     .setDescription("Bass boost")
     .addAttachmentOption(o =>
-      o.setName("file").setDescription("Audio file").setRequired(true)
+      o.setName("file").setDescription("Audio").setRequired(true)
     ),
 
-  // ADD INTRO
   new SlashCommandBuilder()
     .setName("add")
     .setDescription("Add intro")
     .addAttachmentOption(o =>
-      o.setName("intro").setDescription("Intro audio").setRequired(true)
-    )
+      o.setName("intro").setDescription("Intro").setRequired(true))
     .addAttachmentOption(o =>
-      o.setName("main").setDescription("Main audio").setRequired(true)
-    ),
+      o.setName("main").setDescription("Main").setRequired(true)),
 
-  // DOWNLOAD
   new SlashCommandBuilder()
     .setName("download")
     .setDescription("Music info")
     .addSubcommand(sub =>
-      sub
-        .setName("music")
+      sub.setName("music")
         .setDescription("Get info")
         .addStringOption(o =>
-          o.setName("link").setDescription("URL").setRequired(true)
-        )
+          o.setName("link").setDescription("URL").setRequired(true))
     ),
 
-  // ROLE BUTTON SYSTEM (CUSTOM)
+  // 🔥 25 ROLE BUTTON SYSTEM
   new SlashCommandBuilder()
     .setName("set")
     .setDescription("Setup systems")
-    .addSubcommand(sub =>
-      sub
-        .setName("role-reactions")
+    .addSubcommand(sub => {
+      sub.setName("role-reactions")
         .setDescription("Create role panel")
+        .addStringOption(o => o.setName("title").setDescription("Title").setRequired(true))
+        .addStringOption(o => o.setName("background").setDescription("Image URL").setRequired(true));
 
-        .addStringOption(o =>
-          o.setName("title").setDescription("Panel title").setRequired(true)
-        )
-        .addStringOption(o =>
-          o.setName("background").setDescription("Image URL").setRequired(true)
-        )
+      // AUTO GENERATE 25 OPTIONS
+      for (let i = 1; i <= 25; i++) {
+        sub.addRoleOption(o => o.setName(`role${i}`).setDescription(`Role ${i}`));
+        sub.addStringOption(o => o.setName(`emoji${i}`).setDescription(`Emoji ${i}`));
+        sub.addStringOption(o => o.setName(`name${i}`).setDescription(`Button name ${i}`));
+      }
 
-        // ROLE 1
-        .addRoleOption(o => o.setName("role1").setDescription("Role 1").setRequired(true))
-        .addStringOption(o => o.setName("emoji1").setDescription("Emoji").setRequired(true))
-        .addStringOption(o => o.setName("name1").setDescription("Button name").setRequired(true))
-
-        // ROLE 2
-        .addRoleOption(o => o.setName("role2").setDescription("Role 2"))
-        .addStringOption(o => o.setName("emoji2").setDescription("Emoji"))
-        .addStringOption(o => o.setName("name2").setDescription("Button name"))
-
-        // ROLE 3
-        .addRoleOption(o => o.setName("role3").setDescription("Role 3"))
-        .addStringOption(o => o.setName("emoji3").setDescription("Emoji"))
-        .addStringOption(o => o.setName("name3").setDescription("Button name"))
-
-        // ROLE 4
-        .addRoleOption(o => o.setName("role4").setDescription("Role 4"))
-        .addStringOption(o => o.setName("emoji4").setDescription("Emoji"))
-        .addStringOption(o => o.setName("name4").setDescription("Button name"))
-
-        // ROLE 5
-        .addRoleOption(o => o.setName("role5").setDescription("Role 5"))
-        .addStringOption(o => o.setName("emoji5").setDescription("Emoji"))
-        .addStringOption(o => o.setName("name5").setDescription("Button name"))
-    )
+      return sub;
+    })
 
 ].map(c => c.toJSON());
 
@@ -216,11 +182,8 @@ client.on(Events.InteractionCreate, async interaction => {
     await interaction.reply({ embeds: [embed] });
   }
 
-  // ROLE BUTTON PANEL
-  if (
-    interaction.commandName === "set" &&
-    interaction.options.getSubcommand() === "role-reactions"
-  ) {
+  // 🔥 ROLE PANEL (25 BUTTONS)
+  if (interaction.commandName === "set") {
 
     await interaction.deferReply({ ephemeral: true });
 
@@ -229,7 +192,7 @@ client.on(Events.InteractionCreate, async interaction => {
 
     const roles = [];
 
-    for (let i = 1; i <= 5; i++) {
+    for (let i = 1; i <= 25; i++) {
       const role = interaction.options.getRole(`role${i}`);
       const emoji = interaction.options.getString(`emoji${i}`);
       const name = interaction.options.getString(`name${i}`);
@@ -239,9 +202,15 @@ client.on(Events.InteractionCreate, async interaction => {
       }
     }
 
-    const row = new ActionRowBuilder();
+    const rows = [];
+    let row = new ActionRowBuilder();
 
-    roles.forEach(r => {
+    roles.forEach((r, i) => {
+      if (row.components.length === 5) {
+        rows.push(row);
+        row = new ActionRowBuilder();
+      }
+
       row.addComponents(
         new ButtonBuilder()
           .setCustomId(`role_${r.role.id}`)
@@ -251,6 +220,8 @@ client.on(Events.InteractionCreate, async interaction => {
       );
     });
 
+    if (row.components.length > 0) rows.push(row);
+
     const embed = new EmbedBuilder()
       .setColor(0xFFD700)
       .setTitle(title)
@@ -258,13 +229,13 @@ client.on(Events.InteractionCreate, async interaction => {
 
     await interaction.channel.send({
       embeds: [embed],
-      components: [row]
+      components: rows
     });
 
     await interaction.editReply("Panel created");
   }
 
-  // BUTTON ROLE HANDLER
+  // BUTTON HANDLER
   if (interaction.isButton()) {
     const roleId = interaction.customId.split("_")[1];
     const member = interaction.member;
