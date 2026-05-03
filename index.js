@@ -38,7 +38,8 @@ const customWeapons = {
     name: "Glitter Bomb",
     rap: "145,000",
     value: "200,000",
-    image: "https://cdn.meowia.com/baddies/glitter-bomb.png"
+    image: "https://cdn.meowia.com/baddies/glitter-bomb.png",
+    rarity: "Legend"
   }
 };
 
@@ -59,40 +60,10 @@ const commands = [
 
   new SlashCommandBuilder()
     .setName("emojiid")
-    .setDescription("Get the ID of a custom emoji")
+    .setDescription("Get emoji ID")
     .setDMPermission(true)
     .addStringOption(opt =>
-      opt
-        .setName("emoji")
-        .setDescription("Paste emoji like <:rap:123>")
-        .setRequired(true)
-    ),
-
-  new SlashCommandBuilder()
-    .setName("roblox")
-    .setDescription("Roblox tools")
-    .setDMPermission(true)
-
-    .addSubcommand(sub =>
-      sub
-        .setName("outfit")
-        .setDescription("Get player's full avatar")
-        .addStringOption(opt =>
-          opt.setName("username")
-            .setDescription("Roblox username")
-            .setRequired(true)
-        )
-    )
-
-    .addSubcommand(sub =>
-      sub
-        .setName("mug")
-        .setDescription("Get player's headshot")
-        .addStringOption(opt =>
-          opt.setName("username")
-            .setDescription("Roblox username")
-            .setRequired(true)
-        )
+      opt.setName("emoji").setDescription("Paste emoji").setRequired(true)
     )
 ].map(c => c.toJSON());
 
@@ -127,7 +98,6 @@ async function loadWeapons() {
       const items =
         json?.props?.pageProps?.items ||
         json?.props?.pageProps?.data ||
-        json?.props?.pageProps?.props?.items ||
         json?.props?.pageProps?.inventory ||
         [];
 
@@ -138,18 +108,18 @@ async function loadWeapons() {
 
         weaponCache[item.name.toLowerCase()] = {
           name: item.name,
-          rap: item.rap?.toLocaleString?.() || item.rap?.toString() || "Unknown",
-          value: item.value?.toLocaleString?.() || item.value?.toString() || "Unknown",
-          image: item.image || item.icon || ""
+          rap: item.rap?.toLocaleString?.() || "Unknown",
+          value: item.value?.toLocaleString?.() || "Unknown",
+          image: item.image || item.icon || "",
+          rarity: item.rarity || ""
         };
       }
 
       page++;
     }
 
-    console.log("Weapons loaded:", Object.keys(weaponCache).length);
   } catch (err) {
-    console.error("SCRAPER ERROR:", err.message);
+    console.error(err.message);
   }
 }
 
@@ -166,19 +136,13 @@ client.on(Events.InteractionCreate, async (interaction) => {
   // ===== EMOJI ID =====
   if (interaction.commandName === "emojiid") {
     const input = interaction.options.getString("emoji");
-
     const match = input.match(/<?a?:\w+:(\d+)>?/);
 
     if (!match) {
-      return interaction.reply({
-        content: "Invalid emoji.",
-        ephemeral: true
-      });
+      return interaction.reply({ content: "Invalid emoji", ephemeral: true });
     }
 
-    return interaction.reply({
-      content: `Emoji ID: ${match[1]}`
-    });
+    return interaction.reply({ content: `Emoji ID: ${match[1]}` });
   }
 
   // ===== FAME =====
@@ -204,9 +168,17 @@ client.on(Events.InteractionCreate, async (interaction) => {
     }
 
     const embed = new EmbedBuilder()
-      .setColor(0x2b2d31)
+      .setColor(0xff4df0) // 🔥 Bloxiana-style color
+
+      // 🔥 TITLE
       .setTitle(weapon.name)
+
+      // 🔥 LEGEND UNDERLINED
+      .setDescription(`__${weapon.rarity || "Legend"}__`)
+
+      // 🔥 IMAGE (RIGHT SIDE)
       .setThumbnail(weapon.image)
+
       .addFields(
         {
           name: "<:rap:1500289824333234236> RAP",
@@ -219,68 +191,12 @@ client.on(Events.InteractionCreate, async (interaction) => {
           inline: true
         }
       )
-      .setFooter({ text: "Fame • Live Data" })
-      .setTimestamp();
+
+      .setFooter({ text: "Fame • Live Data" });
 
     return interaction.editReply({ embeds: [embed] });
   }
-
-  // ===== ROBLOX =====
-  if (interaction.commandName === "roblox") {
-    const sub = interaction.options.getSubcommand();
-    const username = interaction.options.getString("username");
-
-    await interaction.deferReply();
-
-    try {
-      const userRes = await axios.post(
-        "https://users.roblox.com/v1/usernames/users",
-        {
-          usernames: [username],
-          excludeBannedUsers: true
-        }
-      );
-
-      if (!userRes.data.data?.length) {
-        return interaction.editReply({ content: "User not found." });
-      }
-
-      const userId = userRes.data.data[0].id;
-
-      if (sub === "outfit") {
-        const res = await axios.get(
-          `https://thumbnails.roblox.com/v1/users/avatar?userIds=${userId}&size=720x720&format=Png`
-        );
-
-        return interaction.editReply({
-          embeds: [
-            new EmbedBuilder()
-              .setTitle(`${username}'s Outfit`)
-              .setImage(res.data.data[0].imageUrl)
-          ]
-        });
-      }
-
-      if (sub === "mug") {
-        const res = await axios.get(
-          `https://thumbnails.roblox.com/v1/users/avatar-headshot?userIds=${userId}&size=420x420&format=Png`
-        );
-
-        return interaction.editReply({
-          embeds: [
-            new EmbedBuilder()
-              .setTitle(`${username}'s Mugshot`)
-              .setImage(res.data.data[0].imageUrl)
-          ]
-        });
-      }
-
-    } catch {
-      return interaction.editReply({
-        content: "Failed to fetch Roblox data."
-      });
-    }
-  }
 });
 
+// START
 client.login(TOKEN);
