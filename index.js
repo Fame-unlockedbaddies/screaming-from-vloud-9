@@ -18,7 +18,6 @@ const {
   TextInputBuilder,
   TextInputStyle,
   ActionRowBuilder,
-  EmbedBuilder,
   AttachmentBuilder
 } = require("discord.js");
 
@@ -41,24 +40,21 @@ const fileCache = new Map();
 
 // ---------------- COMMANDS ----------------
 const commands = [
-
-  // AUDIO EDIT
   new SlashCommandBuilder()
     .setName("audio")
     .setDescription("Audio tools")
     .addSubcommand(sub =>
       sub
         .setName("edit")
-        .setDescription("Edit or auto TikTok boost")
+        .setDescription("Make audio loud (TikTok style)")
         .addAttachmentOption(opt =>
           opt.setName("file").setDescription("Upload audio").setRequired(true)
         )
         .addBooleanOption(opt =>
-          opt.setName("auto").setDescription("Auto loud TikTok mix").setRequired(true)
+          opt.setName("auto").setDescription("Auto loud mix").setRequired(true)
         )
     ),
 
-  // ADD INTRO
   new SlashCommandBuilder()
     .setName("add")
     .setDescription("Add intro audio to main audio")
@@ -71,28 +67,22 @@ const commands = [
 
 ].map(c => c.toJSON());
 
-// 🔥 FORCE REGISTER COMMANDS (FIXES /add NOT SHOWING)
 const rest = new REST({ version: "10" }).setToken(TOKEN);
 
+// REGISTER COMMANDS
 (async () => {
-  try {
-    console.log("Refreshing commands...");
-    await rest.put(Routes.applicationCommands(CLIENT_ID), { body: commands });
-    console.log("Commands loaded.");
-  } catch (err) {
-    console.error(err);
-  }
+  await rest.put(Routes.applicationCommands(CLIENT_ID), { body: commands });
 })();
 
 // ---------------- READY ----------------
 client.once("ready", () => {
-  console.log(`Cálido online as ${client.user.tag}`);
+  console.log(`Cálido online`);
 });
 
 // ---------------- HANDLER ----------------
 client.on(Events.InteractionCreate, async interaction => {
 
-  // ================= AUDIO =================
+  // ===== AUDIO COMMAND =====
   if (interaction.isChatInputCommand() && interaction.commandName === "audio") {
     const file = interaction.options.getAttachment("file");
     const auto = interaction.options.getBoolean("auto");
@@ -101,15 +91,15 @@ client.on(Events.InteractionCreate, async interaction => {
       return interaction.reply({ content: "Upload a valid audio file." });
     }
 
-    // ===== AUTO MODE (NEW TIKTOK LOUD) =====
     if (auto) {
       await interaction.deferReply();
 
       const name = file.url.split("/").pop().split("?")[0] || "audio.mp3";
-      const input = path.join(__dirname, "in_" + name);
-      const output = path.join(__dirname, name);
+      const input = "input_" + name;
+      const output = name;
 
       try {
+        // download
         const res = await axios({ url: file.url, method: "GET", responseType: "stream" });
         const writer = fs.createWriteStream(input);
         res.data.pipe(writer);
@@ -119,17 +109,18 @@ client.on(Events.InteractionCreate, async interaction => {
           writer.on("error", j);
         });
 
-        // 🔥 NEW MATCHING TIKTOK FILTER
+        // 🔥 FULL LOUD FILTER (ENTIRE SONG BOOSTED)
         const filter = `
-          bass=g=18,
-          equalizer=f=90:width_type=o:width=2:g=12,
-          equalizer=f=250:width_type=o:width=2:g=-7,
-          equalizer=f=2000:width_type=o:width=2:g=9,
-          equalizer=f=6000:width_type=o:width=2:g=11,
-          treble=g=9,
-          acompressor=threshold=-28dB:ratio=7:attack=3:release=70,
-          alimiter=limit=0.9,
-          volume=2.3
+          loudnorm=I=-5:TP=-1:LRA=4,
+          acompressor=threshold=-30dB:ratio=8:attack=5:release=50,
+          bass=g=14,
+          equalizer=f=120:width_type=o:width=2:g=8,
+          equalizer=f=300:width_type=o:width=2:g=-5,
+          equalizer=f=2500:width_type=o:width=2:g=6,
+          equalizer=f=6000:width_type=o:width=2:g=8,
+          treble=g=7,
+          alimiter=limit=0.95,
+          volume=2.2
         `.replace(/\s+/g, "");
 
         const cmd = `ffmpeg -i "${input}" -af "${filter}" -preset ultrafast -b:a 192k "${output}" -y`;
@@ -137,11 +128,11 @@ client.on(Events.InteractionCreate, async interaction => {
         exec(cmd, async (err) => {
           if (err) {
             console.error(err);
-            return interaction.editReply("Error processing.");
+            return interaction.editReply("Error processing audio.");
           }
 
           await interaction.editReply({
-            content: "TikTok loud audio ready",
+            content: "Fully loud TikTok-style audio ready",
             files: [new AttachmentBuilder(output)]
           });
 
@@ -156,35 +147,9 @@ client.on(Events.InteractionCreate, async interaction => {
 
       return;
     }
-
-    // ===== MANUAL =====
-    fileCache.set(interaction.user.id, file.url);
-
-    const modal = new ModalBuilder()
-      .setCustomId("audioModal")
-      .setTitle("Manual Audio");
-
-    const vol = new TextInputBuilder()
-      .setCustomId("volume")
-      .setLabel("Volume")
-      .setStyle(TextInputStyle.Short)
-      .setRequired(false);
-
-    const bass = new TextInputBuilder()
-      .setCustomId("bass")
-      .setLabel("Bass")
-      .setStyle(TextInputStyle.Short)
-      .setRequired(false);
-
-    modal.addComponents(
-      new ActionRowBuilder().addComponents(vol),
-      new ActionRowBuilder().addComponents(bass)
-    );
-
-    return interaction.showModal(modal);
   }
 
-  // ================= ADD =================
+  // ===== ADD COMMAND =====
   if (interaction.isChatInputCommand() && interaction.commandName === "add") {
     await interaction.deferReply();
 
@@ -214,7 +179,7 @@ client.on(Events.InteractionCreate, async interaction => {
 
       exec(cmd, async () => {
         await interaction.editReply({
-          content: "Combined audio ready",
+          content: "Audio combined",
           files: [new AttachmentBuilder(output)]
         });
 
