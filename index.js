@@ -32,14 +32,18 @@ const client = new Client({
 // MEMORY
 let weaponCache = {};
 
-// 🔥 CUSTOM WEAPONS
+// 🔥 CUSTOM WEAPON (Glitter Bomb EXACT VALUES)
 const customWeapons = {
   "glitter bomb": {
     name: "Glitter Bomb",
-    rap: "145,000",
-    value: "200,000",
     image: "https://cdn.meowia.com/baddies/glitter-bomb.png",
-    rarity: "Legend"
+
+    rarity: "Legend",
+    value: "650,000",
+    token: "345,000",
+    rap: "5,881",
+    demand: "Amazing",
+    trend: "Raising"
   }
 };
 
@@ -54,16 +58,10 @@ const commands = [
         .setName("weapon")
         .setDescription("Lookup weapon")
         .addStringOption(opt =>
-          opt.setName("name").setDescription("Weapon name").setRequired(true)
+          opt.setName("name")
+            .setDescription("Weapon name")
+            .setRequired(true)
         )
-    ),
-
-  new SlashCommandBuilder()
-    .setName("emojiid")
-    .setDescription("Get emoji ID")
-    .setDMPermission(true)
-    .addStringOption(opt =>
-      opt.setName("emoji").setDescription("Paste emoji").setRequired(true)
     )
 ].map(c => c.toJSON());
 
@@ -110,8 +108,7 @@ async function loadWeapons() {
           name: item.name,
           rap: item.rap?.toLocaleString?.() || "Unknown",
           value: item.value?.toLocaleString?.() || "Unknown",
-          image: item.image || item.icon || "",
-          rarity: item.rarity || ""
+          image: item.image || item.icon || ""
         };
       }
 
@@ -133,19 +130,6 @@ client.once("ready", async () => {
 client.on(Events.InteractionCreate, async (interaction) => {
   if (!interaction.isChatInputCommand()) return;
 
-  // ===== EMOJI ID =====
-  if (interaction.commandName === "emojiid") {
-    const input = interaction.options.getString("emoji");
-    const match = input.match(/<?a?:\w+:(\d+)>?/);
-
-    if (!match) {
-      return interaction.reply({ content: "Invalid emoji", ephemeral: true });
-    }
-
-    return interaction.reply({ content: `Emoji ID: ${match[1]}` });
-  }
-
-  // ===== FAME =====
   if (interaction.commandName === "fame") {
     await interaction.deferReply();
 
@@ -159,6 +143,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
       );
     }
 
+    // 🔥 CUSTOM OVERRIDE
     if (customWeapons[input]) {
       weapon = customWeapons[input];
     }
@@ -167,29 +152,19 @@ client.on(Events.InteractionCreate, async (interaction) => {
       return interaction.editReply({ content: "Weapon not found." });
     }
 
+    // 🔥 EMBED STYLE YOU REQUESTED
     const embed = new EmbedBuilder()
-      .setColor(0xff4df0) // 🔥 Bloxiana-style color
-
-      // 🔥 TITLE
+      .setColor(0x2b2d31)
       .setTitle(weapon.name)
-
-      // 🔥 LEGEND UNDERLINED
-      .setDescription(`__${weapon.rarity || "Legend"}__`)
-
-      // 🔥 IMAGE (RIGHT SIDE)
       .setThumbnail(weapon.image)
 
-      .addFields(
-        {
-          name: "<:rap:1500289824333234236> RAP",
-          value: `${weapon.rap}`,
-          inline: true
-        },
-        {
-          name: "Value",
-          value: `${weapon.value}`,
-          inline: true
-        }
+      .setDescription(
+        `__${weapon.rarity || "Legend"}__\n\n` +
+        `**Value:** ${weapon.value}\n` +
+        `**Token Value:** ${weapon.token || "Unknown"}\n` +
+        `**RAP:** ${weapon.rap}\n` +
+        `**Demand:** ${weapon.demand || "Unknown"}\n` +
+        `**Trend:** ${weapon.trend || "Unknown"}`
       )
 
       .setFooter({ text: "Fame • Live Data" });
