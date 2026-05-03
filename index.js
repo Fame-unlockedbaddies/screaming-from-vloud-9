@@ -182,10 +182,20 @@ client.on(Events.InteractionCreate, async (interaction) => {
       .setColor(0x2b2d31)
       .setTitle(weapon.name)
       .setThumbnail(weapon.image)
+
       .addFields(
-        { name: "RAP", value: `${weapon.rap}`, inline: true },
-        { name: "Value", value: `${weapon.value}`, inline: true }
+        {
+          name: "<:rap:1500288970528133131> RAP",
+          value: `${weapon.rap}`,
+          inline: true
+        },
+        {
+          name: "💰 Value",
+          value: `${weapon.value}`,
+          inline: true
+        }
       )
+
       .setFooter({ text: "Fame • Live Data" })
       .setTimestamp();
 
