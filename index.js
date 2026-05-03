@@ -39,8 +39,10 @@ const CLIENT_ID = process.env.CLIENT_ID;
 
 const fileCache = new Map();
 
-// ---------------- COMMAND ----------------
+// ---------------- COMMANDS ----------------
 const commands = [
+
+  // AUDIO EDIT
   new SlashCommandBuilder()
     .setName("audio")
     .setDescription("Audio tools")
@@ -52,18 +54,34 @@ const commands = [
           opt.setName("file").setDescription("Upload audio").setRequired(true)
         )
         .addBooleanOption(opt =>
-          opt
-            .setName("auto")
-            .setDescription("Auto TikTok loud mix")
-            .setRequired(true)
+          opt.setName("auto").setDescription("Auto loud TikTok mix").setRequired(true)
         )
+    ),
+
+  // ADD INTRO
+  new SlashCommandBuilder()
+    .setName("add")
+    .setDescription("Add intro audio to main audio")
+    .addAttachmentOption(opt =>
+      opt.setName("intro").setDescription("Intro audio").setRequired(true)
     )
+    .addAttachmentOption(opt =>
+      opt.setName("main").setDescription("Main audio").setRequired(true)
+    )
+
 ].map(c => c.toJSON());
 
+// 🔥 FORCE REGISTER COMMANDS (FIXES /add NOT SHOWING)
 const rest = new REST({ version: "10" }).setToken(TOKEN);
 
 (async () => {
-  await rest.put(Routes.applicationCommands(CLIENT_ID), { body: commands });
+  try {
+    console.log("Refreshing commands...");
+    await rest.put(Routes.applicationCommands(CLIENT_ID), { body: commands });
+    console.log("Commands loaded.");
+  } catch (err) {
+    console.error(err);
+  }
 })();
 
 // ---------------- READY ----------------
@@ -73,191 +91,143 @@ client.once("ready", () => {
 
 // ---------------- HANDLER ----------------
 client.on(Events.InteractionCreate, async interaction => {
-  if (!interaction.isChatInputCommand()) return;
 
-  if (interaction.commandName === "audio") {
-    const sub = interaction.options.getSubcommand();
+  // ================= AUDIO =================
+  if (interaction.isChatInputCommand() && interaction.commandName === "audio") {
+    const file = interaction.options.getAttachment("file");
+    const auto = interaction.options.getBoolean("auto");
 
-    if (sub === "edit") {
-      const file = interaction.options.getAttachment("file");
-      const auto = interaction.options.getBoolean("auto");
-
-      if (!file.contentType || !file.contentType.startsWith("audio")) {
-        return interaction.reply({ content: "Upload a valid audio file." });
-      }
-
-      // ===== AUTO MODE (TIKTOK LOUD) =====
-      if (auto) {
-        await interaction.deferReply();
-
-        const originalName =
-          file.url.split("/").pop().split("?")[0] || "audio.mp3";
-
-        const inputPath = path.join(__dirname, "input_" + originalName);
-        const outputPath = path.join(__dirname, originalName);
-
-        try {
-          const response = await axios({
-            url: file.url,
-            method: "GET",
-            responseType: "stream"
-          });
-
-          const writer = fs.createWriteStream(inputPath);
-          response.data.pipe(writer);
-
-          await new Promise((res, rej) => {
-            writer.on("finish", res);
-            writer.on("error", rej);
-          });
-
-          // 🔥 TIKTOK LOUD FILTER
-          const filter = `
-            bass=g=15,
-            equalizer=f=100:width_type=o:width=2:g=10,
-            equalizer=f=250:width_type=o:width=2:g=-6,
-            equalizer=f=2000:width_type=o:width=2:g=8,
-            equalizer=f=5000:width_type=o:width=2:g=10,
-            treble=g=8,
-            acompressor=threshold=-25dB:ratio=6:attack=5:release=80,
-            alimiter=limit=0.95,
-            volume=2.0
-          `.replace(/\s+/g, "");
-
-          const command = `ffmpeg -i "${inputPath}" -af "${filter}" -preset ultrafast -b:a 192k "${outputPath}" -y`;
-
-          exec(command, async (err) => {
-            if (err) {
-              console.error(err);
-              return interaction.editReply("Error processing audio.");
-            }
-
-            const embed = new EmbedBuilder()
-              .setColor(0x2b2d31)
-              .setTitle("TikTok Loud Boost")
-              .setDescription("Extreme bass + loud vocals applied");
-
-            await interaction.editReply({
-              embeds: [embed],
-              files: [new AttachmentBuilder(outputPath)]
-            });
-
-            fs.unlinkSync(inputPath);
-            fs.unlinkSync(outputPath);
-          });
-
-        } catch (err) {
-          console.error(err);
-          interaction.editReply("Failed to process file.");
-        }
-
-        return;
-      }
-
-      // ===== MANUAL MODE =====
-      fileCache.set(interaction.user.id, file.url);
-
-      const modal = new ModalBuilder()
-        .setCustomId("audioModal")
-        .setTitle("Manual Audio Settings");
-
-      const volume = new TextInputBuilder()
-        .setCustomId("volume")
-        .setLabel("Volume (1.0 default)")
-        .setStyle(TextInputStyle.Short)
-        .setRequired(false);
-
-      const bass = new TextInputBuilder()
-        .setCustomId("bass")
-        .setLabel("Bass (0-10)")
-        .setStyle(TextInputStyle.Short)
-        .setRequired(false);
-
-      const treble = new TextInputBuilder()
-        .setCustomId("treble")
-        .setLabel("Treble (0-10)")
-        .setStyle(TextInputStyle.Short)
-        .setRequired(false);
-
-      modal.addComponents(
-        new ActionRowBuilder().addComponents(volume),
-        new ActionRowBuilder().addComponents(bass),
-        new ActionRowBuilder().addComponents(treble)
-      );
-
-      return interaction.showModal(modal);
+    if (!file.contentType?.startsWith("audio")) {
+      return interaction.reply({ content: "Upload a valid audio file." });
     }
-  }
 
-  // ===== MODAL =====
-  if (interaction.isModalSubmit() && interaction.customId === "audioModal") {
-    await interaction.deferReply();
+    // ===== AUTO MODE (NEW TIKTOK LOUD) =====
+    if (auto) {
+      await interaction.deferReply();
 
-    const fileUrl = fileCache.get(interaction.user.id);
-    if (!fileUrl) return interaction.editReply("Expired. Try again.");
+      const name = file.url.split("/").pop().split("?")[0] || "audio.mp3";
+      const input = path.join(__dirname, "in_" + name);
+      const output = path.join(__dirname, name);
 
-    fileCache.delete(interaction.user.id);
+      try {
+        const res = await axios({ url: file.url, method: "GET", responseType: "stream" });
+        const writer = fs.createWriteStream(input);
+        res.data.pipe(writer);
 
-    const volume = interaction.fields.getTextInputValue("volume") || "1.0";
-    const bass = interaction.fields.getTextInputValue("bass") || "5";
-    const treble = interaction.fields.getTextInputValue("treble") || "5";
-
-    const originalName =
-      fileUrl.split("/").pop().split("?")[0] || "audio.mp3";
-
-    const inputPath = path.join(__dirname, "input_" + originalName);
-    const outputPath = path.join(__dirname, originalName);
-
-    try {
-      const response = await axios({
-        url: fileUrl,
-        method: "GET",
-        responseType: "stream"
-      });
-
-      const writer = fs.createWriteStream(inputPath);
-      response.data.pipe(writer);
-
-      await new Promise((res, rej) => {
-        writer.on("finish", res);
-        writer.on("error", rej);
-      });
-
-      const filter = `
-        bass=g=${bass},
-        treble=g=${treble},
-        volume=${volume}
-      `.replace(/\s+/g, "");
-
-      const command = `ffmpeg -i "${inputPath}" -af "${filter}" -preset ultrafast -b:a 192k "${outputPath}" -y`;
-
-      exec(command, async (err) => {
-        if (err) {
-          console.error(err);
-          return interaction.editReply("Error processing audio.");
-        }
-
-        const embed = new EmbedBuilder()
-          .setColor(0x2b2d31)
-          .setTitle("Audio Edited")
-          .setDescription(
-            `Volume: ${volume} | Bass: ${bass} | Treble: ${treble}`
-          );
-
-        await interaction.editReply({
-          embeds: [embed],
-          files: [new AttachmentBuilder(outputPath)]
+        await new Promise((r, j) => {
+          writer.on("finish", r);
+          writer.on("error", j);
         });
 
-        fs.unlinkSync(inputPath);
-        fs.unlinkSync(outputPath);
+        // 🔥 NEW MATCHING TIKTOK FILTER
+        const filter = `
+          bass=g=18,
+          equalizer=f=90:width_type=o:width=2:g=12,
+          equalizer=f=250:width_type=o:width=2:g=-7,
+          equalizer=f=2000:width_type=o:width=2:g=9,
+          equalizer=f=6000:width_type=o:width=2:g=11,
+          treble=g=9,
+          acompressor=threshold=-28dB:ratio=7:attack=3:release=70,
+          alimiter=limit=0.9,
+          volume=2.3
+        `.replace(/\s+/g, "");
+
+        const cmd = `ffmpeg -i "${input}" -af "${filter}" -preset ultrafast -b:a 192k "${output}" -y`;
+
+        exec(cmd, async (err) => {
+          if (err) {
+            console.error(err);
+            return interaction.editReply("Error processing.");
+          }
+
+          await interaction.editReply({
+            content: "TikTok loud audio ready",
+            files: [new AttachmentBuilder(output)]
+          });
+
+          fs.unlinkSync(input);
+          fs.unlinkSync(output);
+        });
+
+      } catch (e) {
+        console.error(e);
+        interaction.editReply("Failed.");
+      }
+
+      return;
+    }
+
+    // ===== MANUAL =====
+    fileCache.set(interaction.user.id, file.url);
+
+    const modal = new ModalBuilder()
+      .setCustomId("audioModal")
+      .setTitle("Manual Audio");
+
+    const vol = new TextInputBuilder()
+      .setCustomId("volume")
+      .setLabel("Volume")
+      .setStyle(TextInputStyle.Short)
+      .setRequired(false);
+
+    const bass = new TextInputBuilder()
+      .setCustomId("bass")
+      .setLabel("Bass")
+      .setStyle(TextInputStyle.Short)
+      .setRequired(false);
+
+    modal.addComponents(
+      new ActionRowBuilder().addComponents(vol),
+      new ActionRowBuilder().addComponents(bass)
+    );
+
+    return interaction.showModal(modal);
+  }
+
+  // ================= ADD =================
+  if (interaction.isChatInputCommand() && interaction.commandName === "add") {
+    await interaction.deferReply();
+
+    const intro = interaction.options.getAttachment("intro");
+    const main = interaction.options.getAttachment("main");
+
+    if (!intro.contentType?.startsWith("audio") || !main.contentType?.startsWith("audio")) {
+      return interaction.editReply("Both must be audio.");
+    }
+
+    const introPath = "intro.mp3";
+    const mainPath = "main.mp3";
+    const output = "combined.mp3";
+
+    try {
+      const r1 = await axios({ url: intro.url, method: "GET", responseType: "stream" });
+      const w1 = fs.createWriteStream(introPath);
+      r1.data.pipe(w1);
+      await new Promise((r, j) => { w1.on("finish", r); w1.on("error", j); });
+
+      const r2 = await axios({ url: main.url, method: "GET", responseType: "stream" });
+      const w2 = fs.createWriteStream(mainPath);
+      r2.data.pipe(w2);
+      await new Promise((r, j) => { w2.on("finish", r); w2.on("error", j); });
+
+      const cmd = `ffmpeg -i "${introPath}" -i "${mainPath}" -filter_complex "[0:a][1:a]concat=n=2:v=0:a=1[out]" -map "[out]" -preset ultrafast "${output}" -y`;
+
+      exec(cmd, async () => {
+        await interaction.editReply({
+          content: "Combined audio ready",
+          files: [new AttachmentBuilder(output)]
+        });
+
+        fs.unlinkSync(introPath);
+        fs.unlinkSync(mainPath);
+        fs.unlinkSync(output);
       });
 
-    } catch (err) {
-      console.error(err);
-      interaction.editReply("Failed to process file.");
+    } catch {
+      interaction.editReply("Error combining.");
     }
   }
+
 });
 
 // ---------------- START ----------------
