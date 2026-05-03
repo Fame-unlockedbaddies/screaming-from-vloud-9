@@ -20,14 +20,14 @@ const PORT = process.env.PORT || 3000;
 app.get("/", (req, res) => res.send("Bot is running."));
 app.listen(PORT, () => console.log("Web server running"));
 
+// ENV
 const TOKEN = process.env.TOKEN;
 const CLIENT_ID = process.env.CLIENT_ID;
 
+// BOT
 const client = new Client({
   intents: [GatewayIntentBits.Guilds]
 });
-
-let weaponCache = {};
 
 // 🔥 CUSTOM GLITTER BOMB
 const customWeapons = {
@@ -93,7 +93,7 @@ const rest = new REST({ version: "10" }).setToken(TOKEN);
 })();
 
 // ---------------- READY ----------------
-client.once("ready", async () => {
+client.once("ready", () => {
   console.log(`Logged in as ${client.user.tag}`);
 });
 
@@ -106,8 +106,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
     await interaction.deferReply();
 
     const input = interaction.options.getString("name").toLowerCase();
-
-    let weapon = customWeapons[input];
+    const weapon = customWeapons[input];
 
     if (!weapon) {
       return interaction.editReply({ content: "Weapon not found." });
@@ -138,6 +137,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
     await interaction.deferReply();
 
     try {
+      // USER LOOKUP
       const userRes = await axios.post(
         "https://users.roblox.com/v1/usernames/users",
         {
@@ -150,7 +150,9 @@ client.on(Events.InteractionCreate, async (interaction) => {
         return interaction.editReply({ content: "Roblox user not found." });
       }
 
-      const userId = userRes.data.data[0].id;
+      const user = userRes.data.data[0];
+      const userId = user.id;
+      const displayName = user.displayName || user.name;
 
       // ===== OUTFIT =====
       if (sub === "outfit") {
@@ -160,11 +162,15 @@ client.on(Events.InteractionCreate, async (interaction) => {
 
         const image = res.data?.data?.[0]?.imageUrl;
 
+        if (!image) {
+          return interaction.editReply({ content: "Failed to load outfit." });
+        }
+
         return interaction.editReply({
           embeds: [
             new EmbedBuilder()
               .setColor(0x2b2d31)
-              .setTitle(`${username}'s Outfit`)
+              .setTitle(`${displayName}'s Outfit`)
               .setURL(`https://www.roblox.com/users/${userId}/profile`)
               .setImage(image)
           ]
@@ -179,11 +185,15 @@ client.on(Events.InteractionCreate, async (interaction) => {
 
         const image = res.data?.data?.[0]?.imageUrl;
 
+        if (!image) {
+          return interaction.editReply({ content: "Failed to load mugshot." });
+        }
+
         return interaction.editReply({
           embeds: [
             new EmbedBuilder()
               .setColor(0x2b2d31)
-              .setTitle(`${username}'s Mugshot`)
+              .setTitle(`${displayName}'s Mugshot`)
               .setURL(`https://www.roblox.com/users/${userId}/profile`)
               .setImage(image)
           ]
@@ -191,7 +201,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
       }
 
     } catch (err) {
-      console.error(err.message);
+      console.error("ROBLOX ERROR:", err.message);
       return interaction.editReply({
         content: "Failed to fetch Roblox data."
       });
@@ -199,4 +209,5 @@ client.on(Events.InteractionCreate, async (interaction) => {
   }
 });
 
+// START
 client.login(TOKEN);
