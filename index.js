@@ -49,6 +49,13 @@ const commands = [
         .addBooleanOption(opt =>
           opt.setName("auto").setDescription("Stronger sound").setRequired(true)
         )
+        .addNumberOption(opt =>
+          opt.setName("volume")
+            .setDescription("Final loudness (1.0 - 3.0)")
+            .setMinValue(0.5)
+            .setMaxValue(3.0)
+            .setRequired(true)
+        )
     ),
 
   new SlashCommandBuilder()
@@ -86,6 +93,7 @@ client.on(Events.InteractionCreate, async interaction => {
   if (interaction.isChatInputCommand() && interaction.commandName === "audio") {
     const file = interaction.options.getAttachment("file");
     const auto = interaction.options.getBoolean("auto");
+    const volume = interaction.options.getNumber("volume");
 
     if (!file.contentType?.startsWith("audio")) {
       return interaction.reply("Upload an audio file.");
@@ -110,7 +118,7 @@ client.on(Events.InteractionCreate, async interaction => {
       let filter;
 
       if (auto) {
-        // 🔥 STRONG VERSION (same as before, no TikTok label)
+        // 🔥 STRONG AUTO (now respects volume)
         filter = `
           bass=g=18,
           equalizer=f=90:width_type=o:width=2:g=12,
@@ -120,7 +128,7 @@ client.on(Events.InteractionCreate, async interaction => {
           treble=g=9,
           acompressor=threshold=-28dB:ratio=7:attack=3:release=70,
           alimiter=limit=0.9,
-          volume=2.3
+          volume=${volume}
         `.replace(/\s+/g, "");
       } else {
         // 🎧 CLEAN
@@ -133,7 +141,7 @@ client.on(Events.InteractionCreate, async interaction => {
           bass=g=3,
           treble=g=1,
           alimiter=limit=0.95,
-          volume=1.2
+          volume=${volume}
         `.replace(/\s+/g, "");
       }
 
@@ -154,7 +162,7 @@ client.on(Events.InteractionCreate, async interaction => {
   }
 
   // BASSBOOST
-  if (interaction.isChatInputCommand() && interaction.commandName === "bassboost") {
+  if (interaction.commandName === "bassboost") {
     const file = interaction.options.getAttachment("file");
 
     if (!file.contentType?.startsWith("audio")) {
@@ -163,44 +171,27 @@ client.on(Events.InteractionCreate, async interaction => {
 
     await interaction.deferReply();
 
-    const name = file.url.split("/").pop().split("?")[0] || "audio.mp3";
+    const name = file.url.split("/").pop().split("?")[0];
     const input = "in_" + name;
     const output = name;
 
-    try {
-      const res = await axios({ url: file.url, method: "GET", responseType: "stream" });
-      const writer = fs.createWriteStream(input);
-      res.data.pipe(writer);
+    const res = await axios({ url: file.url, method: "GET", responseType: "stream" });
+    const writer = fs.createWriteStream(input);
+    res.data.pipe(writer);
 
-      await new Promise((r, j) => {
-        writer.on("finish", r);
-        writer.on("error", j);
-      });
+    await new Promise(r => writer.on("finish", r));
 
-      const filter = `
-        bass=g=10,
-        acompressor=threshold=-20dB:ratio=4,
-        volume=1.6
-      `.replace(/\s+/g, "");
+    const cmd = `ffmpeg -i "${input}" -af "bass=g=10,volume=1.6" "${output}" -y`;
 
-      const cmd = `ffmpeg -i "${input}" -af "${filter}" -preset ultrafast -b:a 192k "${output}" -y`;
-
-      exec(cmd, async () => {
-        await interaction.editReply({
-          files: [new AttachmentBuilder(output)]
-        });
-
-        fs.unlinkSync(input);
-        fs.unlinkSync(output);
-      });
-
-    } catch {
-      interaction.editReply("Failed");
-    }
+    exec(cmd, async () => {
+      await interaction.editReply({ files: [new AttachmentBuilder(output)] });
+      fs.unlinkSync(input);
+      fs.unlinkSync(output);
+    });
   }
 
   // ADD
-  if (interaction.isChatInputCommand() && interaction.commandName === "add") {
+  if (interaction.commandName === "add") {
     await interaction.deferReply();
 
     const intro = interaction.options.getAttachment("intro");
@@ -225,20 +216,15 @@ client.on("messageCreate", async (message) => {
   const REQUIRED_ROLE = "1500517540273590525";
   const PREMIUM_ROLE = "1500517783480569936";
 
-  if (!message.member.roles.cache.has(REQUIRED_ROLE)) {
-    return message.reply("You can't use this.");
-  }
+  if (!message.member.roles.cache.has(REQUIRED_ROLE)) return;
 
   const target = message.mentions.members.first();
-  if (!target) return message.reply("Mention a user.");
+  if (!target) return;
 
   await target.roles.add(PREMIUM_ROLE);
-
   await target.send(
     `You have earned Cálido premium by ${message.author.tag}! You are now a premium user, enjoy the benefits babes x!`
   );
-
-  message.reply(`${target.user.tag} is now premium.`);
 });
 
 client.login(TOKEN);
