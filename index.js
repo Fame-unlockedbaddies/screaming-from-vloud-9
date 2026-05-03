@@ -24,18 +24,18 @@ app.listen(PORT, () => console.log("Web server running"));
 const TOKEN = process.env.TOKEN;
 const CLIENT_ID = process.env.CLIENT_ID;
 
+// BOT
 const client = new Client({
   intents: [GatewayIntentBits.Guilds]
 });
 
 let weaponCache = {};
 
-// 🔥 CUSTOM GLITTER BOMB (CORRECT VALUES)
+// 🔥 CUSTOM GLITTER BOMB
 const customWeapons = {
   "glitter bomb": {
     name: "Glitter Bomb",
     image: "https://cdn.meowia.com/baddies/glitter-bomb.png",
-
     rarity: "Legend",
     value: "200,000",
     rap: "145,000",
@@ -158,10 +158,13 @@ client.on(Events.InteractionCreate, async (interaction) => {
         `**<:rap:1500289824333234236> RAP:** ${weapon.rap}\n` +
         `**Value:** ${weapon.value}\n` +
         `**Demand:** ${weapon.demand || "Unknown"}\n` +
-        `**Trend:** ${weapon.trend || "Unknown"}`
-      )
+        `**Trend:** ${weapon.trend || "Unknown"}\n\n` +
 
-      .setFooter({ text: "Fame • Live Data" });
+        "\n\n" + // 🔥 makes embed taller
+
+        "────────────────────────────\n" +
+        "*these values are from fame!*"
+      );
 
     return interaction.editReply({ embeds: [embed] });
   }
