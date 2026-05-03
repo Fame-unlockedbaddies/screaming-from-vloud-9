@@ -51,24 +51,50 @@ const commands = [
     .addSubcommand(sub =>
       sub
         .setName("edit")
-        .setDescription("Make audio sound better")
-        .addAttachmentOption(o => o.setName("file").setRequired(true))
-        .addBooleanOption(o => o.setName("auto").setRequired(true))
-        .addNumberOption(o => o.setName("volume").setMinValue(0.5).setMaxValue(3).setRequired(true))
+        .setDescription("Improve audio quality")
+        .addAttachmentOption(o =>
+          o.setName("file")
+            .setDescription("Upload audio file")
+            .setRequired(true)
+        )
+        .addBooleanOption(o =>
+          o.setName("auto")
+            .setDescription("Auto strong mode")
+            .setRequired(true)
+        )
+        .addNumberOption(o =>
+          o.setName("volume")
+            .setDescription("Volume (1.0 - 3.0)")
+            .setMinValue(0.5)
+            .setMaxValue(3)
+            .setRequired(true)
+        )
     ),
 
   // BASSBOOST
   new SlashCommandBuilder()
     .setName("bassboost")
-    .setDescription("Bass boost audio")
-    .addAttachmentOption(o => o.setName("file").setRequired(true)),
+    .setDescription("Boost bass")
+    .addAttachmentOption(o =>
+      o.setName("file")
+        .setDescription("Upload audio file")
+        .setRequired(true)
+    ),
 
   // ADD INTRO
   new SlashCommandBuilder()
     .setName("add")
     .setDescription("Add intro to audio")
-    .addAttachmentOption(o => o.setName("intro").setRequired(true))
-    .addAttachmentOption(o => o.setName("main").setRequired(true)),
+    .addAttachmentOption(o =>
+      o.setName("intro")
+        .setDescription("Intro audio")
+        .setRequired(true)
+    )
+    .addAttachmentOption(o =>
+      o.setName("main")
+        .setDescription("Main audio")
+        .setRequired(true)
+    ),
 
   // DOWNLOAD
   new SlashCommandBuilder()
@@ -78,26 +104,40 @@ const commands = [
       sub
         .setName("music")
         .setDescription("Get info from link")
-        .addStringOption(o => o.setName("link").setRequired(true))
+        .addStringOption(o =>
+          o.setName("link")
+            .setDescription("YouTube/Spotify URL")
+            .setRequired(true)
+        )
     ),
 
-  // ROLE SYSTEM (100)
+  // ROLE SYSTEM
   new SlashCommandBuilder()
     .setName("set")
     .setDescription("Setup systems")
     .addSubcommand(sub =>
       sub
         .setName("role-reactions")
-        .setDescription("Create role menu (100 roles)")
-        .addStringOption(o => o.setName("title").setRequired(true))
-        .addStringOption(o => o.setName("background").setRequired(true))
+        .setDescription("Create role menu")
+        .addStringOption(o =>
+          o.setName("title")
+            .setDescription("Panel title")
+            .setRequired(true)
+        )
+        .addStringOption(o =>
+          o.setName("background")
+            .setDescription("Background image URL")
+            .setRequired(true)
+        )
     )
 
 ].map(c => c.toJSON());
 
-// REGISTER (NO DUPES)
+// REGISTER (NO DUPLICATES)
 const rest = new REST({ version: "10" }).setToken(TOKEN);
+
 (async () => {
+  console.log("Registering commands...");
   await rest.put(
     Routes.applicationGuildCommands(CLIENT_ID, GUILD_ID),
     { body: commands }
@@ -116,9 +156,13 @@ client.on(Events.InteractionCreate, async interaction => {
     const auto = interaction.options.getBoolean("auto");
     const volume = interaction.options.getNumber("volume");
 
+    if (!file.contentType?.startsWith("audio")) {
+      return interaction.reply("Upload a valid audio file.");
+    }
+
     await interaction.deferReply();
 
-    const name = file.url.split("/").pop();
+    const name = file.url.split("/").pop().split("?")[0];
     const input = "in_" + name;
     const output = name;
 
@@ -175,10 +219,10 @@ client.on(Events.InteractionCreate, async interaction => {
       .setDescription(link)
       .setImage(`https://img.youtube.com/vi/${id}/maxresdefault.jpg`);
 
-    return interaction.editReply({ embeds: [embed] });
+    await interaction.editReply({ embeds: [embed] });
   }
 
-  // ROLE SYSTEM (100 DROPDOWN)
+  // ROLE SYSTEM (100 ROLES)
   if (interaction.commandName === "set") {
 
     await interaction.deferReply({ ephemeral: true });
@@ -192,6 +236,7 @@ client.on(Events.InteractionCreate, async interaction => {
       .slice(0, 100);
 
     const rows = [];
+
     for (let i = 0; i < roles.length; i += 25) {
       const chunk = roles.slice(i, i + 25);
 
@@ -221,7 +266,7 @@ client.on(Events.InteractionCreate, async interaction => {
     await interaction.editReply("Done");
   }
 
-  // HANDLE ROLE SELECT
+  // ROLE SELECT
   if (interaction.isStringSelectMenu()) {
     const member = interaction.member;
     const selected = interaction.values;
@@ -253,7 +298,7 @@ client.on("messageCreate", async message => {
   if (!user) return;
 
   await user.roles.add("1500517783480569936");
-  await user.send(`You have earned premium from ${message.author.tag}`);
+  await user.send(`You have been given premium by ${message.author.tag}`);
 });
 
 // WELCOME
