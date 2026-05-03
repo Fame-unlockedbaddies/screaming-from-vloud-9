@@ -59,6 +59,33 @@ const commands = [
             .setDescription("Weapon name")
             .setRequired(true)
         )
+    ),
+
+  new SlashCommandBuilder()
+    .setName("roblox")
+    .setDescription("Roblox tools")
+    .setDMPermission(true)
+
+    .addSubcommand(sub =>
+      sub
+        .setName("outfit")
+        .setDescription("Get player's full avatar")
+        .addStringOption(opt =>
+          opt.setName("username")
+            .setDescription("Roblox username")
+            .setRequired(true)
+        )
+    )
+
+    .addSubcommand(sub =>
+      sub
+        .setName("mug")
+        .setDescription("Get player's headshot")
+        .addStringOption(opt =>
+          opt.setName("username")
+            .setDescription("Roblox username")
+            .setRequired(true)
+        )
     )
 ].map(c => c.toJSON());
 
@@ -127,6 +154,7 @@ client.once("ready", async () => {
 client.on(Events.InteractionCreate, async (interaction) => {
   if (!interaction.isChatInputCommand()) return;
 
+  // ===== FAME =====
   if (interaction.commandName === "fame") {
     await interaction.deferReply();
 
@@ -159,15 +187,70 @@ client.on(Events.InteractionCreate, async (interaction) => {
         `**Value:** ${weapon.value}\n` +
         `**Demand:** ${weapon.demand || "Unknown"}\n` +
         `**Trend:** ${weapon.trend || "Unknown"}\n\n` +
-
-        "\n\n" + // 🔥 makes embed taller
-
+        "\n\n" +
         "────────────────────────────\n" +
         "*these values are from fame!*"
       );
 
     return interaction.editReply({ embeds: [embed] });
   }
+
+  // ===== ROBLOX =====
+  if (interaction.commandName === "roblox") {
+    const sub = interaction.options.getSubcommand();
+    const username = interaction.options.getString("username");
+
+    await interaction.deferReply();
+
+    try {
+      const userRes = await axios.post(
+        "https://users.roblox.com/v1/usernames/users",
+        {
+          usernames: [username],
+          excludeBannedUsers: true
+        }
+      );
+
+      if (!userRes.data.data?.length) {
+        return interaction.editReply({ content: "Roblox user not found." });
+      }
+
+      const userId = userRes.data.data[0].id;
+
+      if (sub === "outfit") {
+        const res = await axios.get(
+          `https://thumbnails.roblox.com/v1/users/avatar?userIds=${userId}&size=720x720&format=Png`
+        );
+
+        const embed = new EmbedBuilder()
+          .setColor(0x2b2d31)
+          .setTitle(`${username}'s Outfit`)
+          .setImage(res.data.data[0].imageUrl);
+
+        return interaction.editReply({ embeds: [embed] });
+      }
+
+      if (sub === "mug") {
+        const res = await axios.get(
+          `https://thumbnails.roblox.com/v1/users/avatar-headshot?userIds=${userId}&size=420x420&format=Png`
+        );
+
+        const embed = new EmbedBuilder()
+          .setColor(0x2b2d31)
+          .setTitle(`${username}'s Mugshot`)
+          .setImage(res.data.data[0].imageUrl);
+
+        return interaction.editReply({ embeds: [embed] });
+      }
+
+    } catch (err) {
+      console.error(err.message);
+      return interaction.editReply({
+        content: "Failed to fetch Roblox data."
+      });
+    }
+  }
 });
 
+// START
 client.login(TOKEN);
