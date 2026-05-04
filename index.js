@@ -33,15 +33,10 @@ const AUTO_ROLE = "1448796463491584060";
 const PROTECT_ROLE = "1497843975615283350";
 const MUTE_ROLE_ID = "1500698113965428756";
 
-console.log("TOKEN:", TOKEN ? "OK" : "MISSING");
-console.log("CLIENT_ID:", CLIENT_ID ? "OK" : "MISSING");
-
 // ================= EXPRESS =================
 const app = express();
 app.get("/", (req, res) => res.send("Bot running"));
-app.listen(process.env.PORT || 3000, () => {
-  console.log("Web server running");
-});
+app.listen(process.env.PORT || 3000);
 
 // ================= CLIENT =================
 const client = new Client({
@@ -96,25 +91,36 @@ const commands = [
 
 ].map(c => c.toJSON());
 
-// REGISTER COMMANDS (SAFE)
+// REGISTER COMMANDS
 const rest = new REST({ version: "10" }).setToken(TOKEN);
-
 (async () => {
   try {
-    console.log("Registering commands...");
-    await rest.put(
-      Routes.applicationGuildCommands(CLIENT_ID, GUILD_ID),
-      { body: commands }
-    );
+    await rest.put(Routes.applicationGuildCommands(CLIENT_ID, GUILD_ID), { body: commands });
     console.log("Commands registered");
   } catch (err) {
-    console.error("Register error:", err);
+    console.error(err);
   }
-})();
+});
 
 // ================= READY =================
 client.once("ready", () => {
   console.log(`✅ Logged in as ${client.user.tag}`);
+});
+
+// ================= TRANSLATION =================
+client.on("messageCreate", async msg => {
+  if (msg.author.bot || msg.content.length < 5) return;
+
+  try {
+    const res = await axios.get("https://api.mymemory.translated.net/get", {
+      params: { q: msg.content, langpair: "auto|en" }
+    });
+
+    const t = res.data.responseData.translatedText;
+    if (!t || t.toLowerCase() === msg.content.toLowerCase()) return;
+
+    msg.reply(`🌍 ${t}`);
+  } catch {}
 });
 
 // ================= PROTECTION =================
@@ -141,6 +147,7 @@ client.on("messageCreate", async msg => {
     protectedUsers.delete(user.id);
     msg.reply("Unprotected");
   }
+
 });
 
 // ================= AUTO UNMUTE =================
@@ -153,51 +160,22 @@ client.on("guildMemberUpdate", async (o, n) => {
   } catch {}
 });
 
-// ================= BAN PROTECT =================
+// ================= BAN / KICK PROTECT =================
 client.on("guildBanAdd", async ban => {
   if (!protectedUsers.has(ban.user.id)) return;
 
-  try {
-    await ban.guild.members.unban(ban.user.id);
+  await ban.guild.members.unban(ban.user.id);
+  const invite = await ban.guild.invites.create(ban.guild.channels.cache.first(), { maxUses: 1 });
 
-    const invite = await ban.guild.invites.create(
-      ban.guild.channels.cache.first(),
-      { maxUses: 1 }
-    );
-
-    await ban.user.send(`You were saved from a ban\nJoin: ${invite.url}`).catch(() => {});
-  } catch {}
+  ban.user.send(`Saved from ban\nJoin: ${invite.url}`).catch(() => {});
 });
 
-// ================= KICK PROTECT =================
 client.on("guildMemberRemove", async member => {
   if (!protectedUsers.has(member.id)) return;
 
-  try {
-    const invite = await member.guild.invites.create(
-      member.guild.channels.cache.first(),
-      { maxUses: 1 }
-    );
+  const invite = await member.guild.invites.create(member.guild.channels.cache.first(), { maxUses: 1 });
 
-    await member.user.send(`You were kicked but saved\nJoin: ${invite.url}`).catch(() => {});
-  } catch {}
-});
-
-// ================= TRANSLATE =================
-client.on("messageCreate", async msg => {
-  if (msg.author.bot) return;
-  if (msg.content.length < 5) return;
-
-  try {
-    const res = await axios.get("https://api.mymemory.translated.net/get", {
-      params: { q: msg.content, langpair: "auto|en" }
-    });
-
-    const t = res.data.responseData.translatedText;
-    if (!t || t.toLowerCase() === msg.content.toLowerCase()) return;
-
-    msg.reply(`🌍 ${t}`);
-  } catch {}
+  member.user.send(`Saved from kick\nJoin: ${invite.url}`).catch(() => {});
 });
 
 // ================= INTERACTIONS =================
@@ -208,9 +186,10 @@ client.on(Events.InteractionCreate, async i => {
   // DOWNLOAD
   if (i.commandName === "download") {
     await i.deferReply();
-    const url = i.options.getString("url");
 
-    exec(`yt-dlp -x --audio-format mp3 -o song.mp3 "${url}"`, async () => {
+    exec(`yt-dlp -x --audio-format mp3 -o song.mp3 "${i.options.getString("url")}"`, async err => {
+      if (err) return i.editReply("Download failed");
+
       await i.editReply({ files: ["song.mp3"] });
       fs.unlinkSync("song.mp3");
     });
@@ -228,11 +207,11 @@ client.on(Events.InteractionCreate, async i => {
     res.data.pipe(fs.createWriteStream("in.mp3"));
 
     setTimeout(() => {
-      const filter = auto
-        ? `bass=g=15,volume=${volume}`
-        : `volume=${volume}`;
+      const filter = auto ? `bass=g=15,volume=${volume}` : `volume=${volume}`;
 
-      exec(`ffmpeg -y -i in.mp3 -af "${filter}" out.mp3`, async () => {
+      exec(`ffmpeg -y -i in.mp3 -af "${filter}" out.mp3`, async err => {
+        if (err) return i.editReply("ffmpeg missing");
+
         await i.editReply({ files: ["out.mp3"] });
         fs.unlinkSync("in.mp3");
         fs.unlinkSync("out.mp3");
@@ -254,36 +233,29 @@ client.on(Events.InteractionCreate, async i => {
   // ROLE PANEL
   if (i.commandName === "role-reactions") {
 
-    const title = i.options.getString("title");
-    const bg = i.options.getString("background");
+    const embed = new EmbedBuilder()
+      .setColor(0xFFD700)
+      .setTitle(i.options.getString("title"))
+      .setImage(i.options.getString("background"));
 
-    const roles = [];
+    const row = new ActionRowBuilder();
 
     for (let x = 1; x <= 3; x++) {
       const role = i.options.getRole(`role${x}`);
       const emoji = i.options.getString(`emoji${x}`);
       const name = i.options.getString(`name${x}`);
 
-      if (role && name) roles.push({ role, emoji, name });
-    }
+      if (!role || !name) continue;
 
-    const row = new ActionRowBuilder();
-
-    for (const r of roles) {
       const btn = new ButtonBuilder()
-        .setCustomId(`role_${r.role.id}`)
-        .setLabel(r.name)
+        .setCustomId(`role_${role.id}`)
+        .setLabel(name)
         .setStyle(ButtonStyle.Secondary);
 
-      if (r.emoji) btn.setEmoji(r.emoji);
+      if (emoji) btn.setEmoji(emoji);
 
       row.addComponents(btn);
     }
-
-    const embed = new EmbedBuilder()
-      .setColor(0xFFD700)
-      .setTitle(title)
-      .setImage(bg);
 
     await i.channel.send({ embeds: [embed], components: [row] });
     await i.reply({ content: "done", ephemeral: true });
@@ -322,6 +294,4 @@ client.on("guildMemberAdd", async m => {
 });
 
 // ================= LOGIN =================
-client.login(TOKEN).catch(err => {
-  console.error("LOGIN FAILED:", err);
-});
+client.login(TOKEN).catch(console.error);
