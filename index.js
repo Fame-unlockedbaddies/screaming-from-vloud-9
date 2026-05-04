@@ -26,10 +26,13 @@ const TOKEN = process.env.TOKEN;
 const CLIENT_ID = process.env.CLIENT_ID;
 const GUILD_ID = "1428878035926388809";
 
-// WEB
+const WELCOME_CHANNEL = "1487287724674384032";
+const AUTO_ROLE = "1448796463491584060";
+
+// WEB SERVER (keeps bot alive)
 const app = express();
-app.get("/", (req, res) => res.send("Running"));
-app.listen(process.env.PORT || 3000, "0.0.0.0");
+app.get("/", (req, res) => res.send("Bot running"));
+app.listen(process.env.PORT || 3000);
 
 // BOT
 const client = new Client({
@@ -40,8 +43,22 @@ const client = new Client({
   ]
 });
 
-// COMMANDS
+
+// ================= COMMANDS =================
+
 const commands = [
+
+  // DOWNLOAD
+  new SlashCommandBuilder()
+    .setName("download")
+    .setDescription("Download music")
+    .addSubcommand(sub =>
+      sub.setName("music")
+        .setDescription("Download from YouTube or Spotify")
+        .addStringOption(o =>
+          o.setName("url").setDescription("Song URL").setRequired(true)
+        )
+    ),
 
   // AUDIO EDIT
   new SlashCommandBuilder()
@@ -49,19 +66,19 @@ const commands = [
     .setDescription("Edit audio")
     .addSubcommand(sub =>
       sub.setName("edit")
-        .setDescription("Improve audio")
+        .setDescription("Enhance audio")
         .addAttachmentOption(o =>
           o.setName("file").setDescription("Audio file").setRequired(true))
         .addBooleanOption(o =>
           o.setName("auto").setDescription("Auto enhance").setRequired(true))
         .addNumberOption(o =>
-          o.setName("volume").setDescription("Volume 0.5 - 3").setRequired(true))
+          o.setName("volume").setDescription("Volume (1-3)").setRequired(true))
     ),
 
   // BASSBOOST
   new SlashCommandBuilder()
     .setName("bassboost")
-    .setDescription("Make audio loud + bass boosted")
+    .setDescription("Boost bass + loud")
     .addAttachmentOption(o =>
       o.setName("file").setDescription("Audio file").setRequired(true)
     ),
@@ -80,10 +97,10 @@ const commands = [
     .setName("purge")
     .setDescription("Delete messages")
     .addSubcommand(sub =>
-      sub.setName("all").setDescription("Delete all messages")
+      sub.setName("all").setDescription("Clear channel")
     ),
 
-  // ROLE PANEL
+  // ROLE PANEL (7 max safe)
   new SlashCommandBuilder()
     .setName("set")
     .setDescription("Role panel")
@@ -106,11 +123,28 @@ const commands = [
         .addRoleOption(o => o.setName("role3").setDescription("Role 3"))
         .addStringOption(o => o.setName("emoji3").setDescription("Emoji 3"))
         .addStringOption(o => o.setName("name3").setDescription("Name 3"))
+
+        .addRoleOption(o => o.setName("role4").setDescription("Role 4"))
+        .addStringOption(o => o.setName("emoji4").setDescription("Emoji 4"))
+        .addStringOption(o => o.setName("name4").setDescription("Name 4"))
+
+        .addRoleOption(o => o.setName("role5").setDescription("Role 5"))
+        .addStringOption(o => o.setName("emoji5").setDescription("Emoji 5"))
+        .addStringOption(o => o.setName("name5").setDescription("Name 5"))
+
+        .addRoleOption(o => o.setName("role6").setDescription("Role 6"))
+        .addStringOption(o => o.setName("emoji6").setDescription("Emoji 6"))
+        .addStringOption(o => o.setName("name6").setDescription("Name 6"))
+
+        .addRoleOption(o => o.setName("role7").setDescription("Role 7"))
+        .addStringOption(o => o.setName("emoji7").setDescription("Emoji 7"))
+        .addStringOption(o => o.setName("name7").setDescription("Name 7"))
     )
 
 ].map(c => c.toJSON());
 
-// REGISTER
+
+// REGISTER COMMANDS
 const rest = new REST({ version: "10" }).setToken(TOKEN);
 (async () => {
   await rest.put(
@@ -121,88 +155,89 @@ const rest = new REST({ version: "10" }).setToken(TOKEN);
 
 client.once("ready", () => console.log("Bot ready"));
 
-// INTERACTIONS
+
+// ================= INTERACTIONS =================
+
 client.on(Events.InteractionCreate, async interaction => {
 
-  // AUDIO EDIT
-  if (interaction.isChatInputCommand() && interaction.commandName === "audio") {
+  // DOWNLOAD
+  if (interaction.commandName === "download") {
     await interaction.deferReply();
 
-    try {
-      const file = interaction.options.getAttachment("file");
-      const auto = interaction.options.getBoolean("auto");
-      const volume = interaction.options.getNumber("volume");
+    const url = interaction.options.getString("url");
+    const file = `song_${Date.now()}.mp3`;
 
-      const name = file.name;
-      const input = "input_" + name;
-      const output = name;
+    exec(`yt-dlp -x --audio-format mp3 --no-playlist -o "${file}" "${url}"`, async (err) => {
+      if (err) return interaction.editReply("Download failed");
 
-      const res = await axios({ url: file.url, method: "GET", responseType: "stream" });
-      const writer = fs.createWriteStream(input);
-      res.data.pipe(writer);
-      await new Promise(r => writer.on("finish", r));
-
-      const filter = auto
-        ? `bass=g=18,acompressor=threshold=-28dB:ratio=8,alimiter=limit=0.95,volume=${volume}`
-        : `loudnorm=I=-14,volume=${volume}`;
-
-      exec(`ffmpeg -y -i "${input}" -af "${filter}" "${output}"`, async (err) => {
-        if (err) return interaction.editReply("Error processing audio");
-
-        await interaction.editReply({
-          files: [new AttachmentBuilder(output)]
-        });
-
-        fs.unlinkSync(input);
-        fs.unlinkSync(output);
+      await interaction.editReply({
+        files: [new AttachmentBuilder(file)]
       });
 
-    } catch (e) {
-      interaction.editReply("Failed.");
-    }
+      fs.unlinkSync(file);
+    });
+  }
+
+  // AUDIO EDIT
+  if (interaction.commandName === "audio") {
+    await interaction.deferReply();
+
+    const file = interaction.options.getAttachment("file");
+    const auto = interaction.options.getBoolean("auto");
+    const volume = interaction.options.getNumber("volume");
+
+    const input = "input.mp3";
+    const output = "output.mp3";
+
+    const res = await axios({ url: file.url, method: "GET", responseType: "stream" });
+    const writer = fs.createWriteStream(input);
+    res.data.pipe(writer);
+
+    await new Promise(r => writer.on("finish", r));
+
+    const filter = auto
+      ? `bass=g=15,acompressor=threshold=-28dB:ratio=9,alimiter=limit=0.98,volume=${volume}`
+      : `loudnorm=I=-14,volume=${volume}`;
+
+    exec(`ffmpeg -y -i ${input} -af "${filter}" ${output}`, async () => {
+      await interaction.editReply({ files: [new AttachmentBuilder(output)] });
+      fs.unlinkSync(input);
+      fs.unlinkSync(output);
+    });
   }
 
   // BASSBOOST
   if (interaction.commandName === "bassboost") {
     await interaction.deferReply();
 
-    try {
-      const file = interaction.options.getAttachment("file");
-      const name = file.name;
+    const file = interaction.options.getAttachment("file");
+    const input = "bass_in.mp3";
+    const output = "bass_out.mp3";
 
-      exec(`ffmpeg -y -i "${file.url}" -af "bass=g=12,volume=1.8" "${name}"`, async (err) => {
-        if (err) return interaction.editReply("Error");
+    const res = await axios({ url: file.url, method: "GET", responseType: "stream" });
+    const writer = fs.createWriteStream(input);
+    res.data.pipe(writer);
 
-        await interaction.editReply({
-          files: [new AttachmentBuilder(name)]
-        });
+    await new Promise(r => writer.on("finish", r));
 
-        fs.unlinkSync(name);
-      });
-
-    } catch {
-      interaction.editReply("Failed.");
-    }
+    exec(`ffmpeg -y -i ${input} -af "bass=g=18,volume=2" ${output}`, async () => {
+      await interaction.editReply({ files: [new AttachmentBuilder(output)] });
+      fs.unlinkSync(input);
+      fs.unlinkSync(output);
+    });
   }
 
   // ADD INTRO
   if (interaction.commandName === "add") {
     await interaction.deferReply();
 
-    try {
-      const intro = interaction.options.getAttachment("intro");
-      const main = interaction.options.getAttachment("main");
+    const intro = interaction.options.getAttachment("intro");
+    const main = interaction.options.getAttachment("main");
 
-      exec(`ffmpeg -y -i "${intro.url}" -i "${main.url}" -filter_complex "[0:a][1:a]concat=n=2:v=0:a=1[out]" -map "[out]" output.mp3`, async () => {
-        await interaction.editReply({
-          files: [new AttachmentBuilder("output.mp3")]
-        });
-        fs.unlinkSync("output.mp3");
-      });
-
-    } catch {
-      interaction.editReply("Failed.");
-    }
+    exec(`ffmpeg -y -i "${intro.url}" -i "${main.url}" -filter_complex "[0:a][1:a]concat=n=2:v=0:a=1[out]" -map "[out]" output.mp3`, async () => {
+      await interaction.editReply({ files: [new AttachmentBuilder("output.mp3")] });
+      fs.unlinkSync("output.mp3");
+    });
   }
 
   // PURGE
@@ -213,13 +248,11 @@ client.on(Events.InteractionCreate, async interaction => {
 
     await interaction.reply({ content: "Clearing...", ephemeral: true });
 
-    const channel = interaction.channel;
-
     let fetched;
     do {
-      fetched = await channel.messages.fetch({ limit: 100 });
+      fetched = await interaction.channel.messages.fetch({ limit: 100 });
       const deletable = fetched.filter(m => Date.now() - m.createdTimestamp < 1209600000);
-      await channel.bulkDelete(deletable, true);
+      await interaction.channel.bulkDelete(deletable, true);
     } while (fetched.size >= 2);
   }
 
@@ -232,19 +265,23 @@ client.on(Events.InteractionCreate, async interaction => {
 
     const roles = [];
 
-    for (let i = 1; i <= 3; i++) {
+    for (let i = 1; i <= 7; i++) {
       const role = interaction.options.getRole(`role${i}`);
       const emoji = interaction.options.getString(`emoji${i}`);
       const name = interaction.options.getString(`name${i}`);
 
-      if (role && emoji && name) {
-        roles.push({ role, emoji, name });
-      }
+      if (role && emoji && name) roles.push({ role, emoji, name });
     }
 
-    const row = new ActionRowBuilder();
+    const rows = [];
+    let row = new ActionRowBuilder();
 
     roles.forEach(r => {
+      if (row.components.length === 5) {
+        rows.push(row);
+        row = new ActionRowBuilder();
+      }
+
       row.addComponents(
         new ButtonBuilder()
           .setCustomId(`role_${r.role.id}`)
@@ -254,16 +291,18 @@ client.on(Events.InteractionCreate, async interaction => {
       );
     });
 
+    if (row.components.length > 0) rows.push(row);
+
     const embed = new EmbedBuilder()
       .setColor(0xFFD700)
       .setTitle(title)
       .setImage(bg);
 
-    await interaction.channel.send({ embeds: [embed], components: [row] });
+    await interaction.channel.send({ embeds: [embed], components: rows });
     await interaction.editReply("Done");
   }
 
-  // BUTTONS
+  // BUTTON HANDLER
   if (interaction.isButton()) {
     const roleId = interaction.customId.split("_")[1];
     const member = interaction.member;
@@ -277,6 +316,29 @@ client.on(Events.InteractionCreate, async interaction => {
     }
   }
 
+});
+
+
+// ================= WELCOME =================
+
+const welcomed = new Set();
+
+client.on("guildMemberAdd", async member => {
+  if (welcomed.has(member.id)) return;
+  welcomed.add(member.id);
+
+  const channel = member.guild.channels.cache.get(WELCOME_CHANNEL);
+  if (!channel) return;
+
+  await member.roles.add(AUTO_ROLE).catch(() => {});
+
+  const embed = new EmbedBuilder()
+    .setColor(0xFFD700)
+    .setDescription(`Welcome <@${member.id}>!\nMember #${member.guild.memberCount}`)
+    .setThumbnail(member.user.displayAvatarURL({ dynamic: true }))
+    .setImage("https://media.tenor.com/3Z1u1pJqkP4AAAAC/karol-g-karol-ariescarey-latina-foreva.gif");
+
+  channel.send({ embeds: [embed] });
 });
 
 client.login(TOKEN);
