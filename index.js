@@ -4,9 +4,6 @@ process.on("uncaughtException", console.error);
 process.on("unhandledRejection", console.error);
 
 const express = require("express");
-const fs = require("fs");
-const axios = require("axios");
-const { exec } = require("child_process");
 
 const {
   Client,
@@ -26,13 +23,10 @@ const TOKEN = process.env.TOKEN;
 const CLIENT_ID = process.env.CLIENT_ID;
 const GUILD_ID = "1428878035926388809";
 
-const WELCOME_CHANNEL = "1487287724674384032";
 const AUTO_ROLE = "1448796463491584060";
+const WELCOME_CHANNEL = "1487287724674384032";
 
-const PROTECT_ROLE = "1497843975615283350";
-const MUTE_ROLE_ID = "1500698113965428756";
-
-// ================= KEEP ALIVE (RENDER) =================
+// ================= KEEP ALIVE =================
 const app = express();
 app.get("/", (req, res) => res.send("Bot running"));
 app.listen(process.env.PORT || 3000, () => {
@@ -43,52 +37,47 @@ app.listen(process.env.PORT || 3000, () => {
 const client = new Client({
   intents: [
     GatewayIntentBits.Guilds,
-    GatewayIntentBits.GuildMembers,
-    GatewayIntentBits.GuildMessages,
-    GatewayIntentBits.MessageContent
+    GatewayIntentBits.GuildMembers
   ]
 });
 
-const protectedUsers = new Set();
-
-// ================= COMMANDS =================
+// ================= COMMAND =================
 const commands = [
 
   new SlashCommandBuilder()
-    .setName("download")
-    .setDescription("Download music")
-    .addStringOption(o =>
-      o.setName("url").setDescription("Song URL").setRequired(true)
-    ),
+    .setName("rolepanel")
+    .setDescription("Create a role button panel")
 
-  new SlashCommandBuilder()
-    .setName("audio")
-    .setDescription("Enhance audio")
-    .addAttachmentOption(o =>
-      o.setName("file").setDescription("Audio").setRequired(true))
-    .addBooleanOption(o =>
-      o.setName("auto").setDescription("Auto").setRequired(true))
-    .addNumberOption(o =>
-      o.setName("volume").setDescription("1-3").setRequired(true)),
+    .addStringOption(o => o.setName("title").setDescription("Panel title").setRequired(true))
 
-  new SlashCommandBuilder()
-    .setName("purge")
-    .setDescription("Delete all messages"),
+    // 7 ROLE SLOTS
+    .addRoleOption(o => o.setName("role1").setDescription("Role 1"))
+    .addStringOption(o => o.setName("name1").setDescription("Label 1"))
+    .addStringOption(o => o.setName("emoji1").setDescription("Emoji 1"))
 
-  new SlashCommandBuilder()
-    .setName("role-reactions")
-    .setDescription("Create role panel")
-    .addStringOption(o => o.setName("title").setRequired(true))
-    .addStringOption(o => o.setName("background").setRequired(true))
-    .addRoleOption(o => o.setName("role1"))
-    .addStringOption(o => o.setName("emoji1"))
-    .addStringOption(o => o.setName("name1"))
-    .addRoleOption(o => o.setName("role2"))
-    .addStringOption(o => o.setName("emoji2"))
-    .addStringOption(o => o.setName("name2"))
-    .addRoleOption(o => o.setName("role3"))
-    .addStringOption(o => o.setName("emoji3"))
-    .addStringOption(o => o.setName("name3"))
+    .addRoleOption(o => o.setName("role2").setDescription("Role 2"))
+    .addStringOption(o => o.setName("name2").setDescription("Label 2"))
+    .addStringOption(o => o.setName("emoji2").setDescription("Emoji 2"))
+
+    .addRoleOption(o => o.setName("role3").setDescription("Role 3"))
+    .addStringOption(o => o.setName("name3").setDescription("Label 3"))
+    .addStringOption(o => o.setName("emoji3").setDescription("Emoji 3"))
+
+    .addRoleOption(o => o.setName("role4").setDescription("Role 4"))
+    .addStringOption(o => o.setName("name4").setDescription("Label 4"))
+    .addStringOption(o => o.setName("emoji4").setDescription("Emoji 4"))
+
+    .addRoleOption(o => o.setName("role5").setDescription("Role 5"))
+    .addStringOption(o => o.setName("name5").setDescription("Label 5"))
+    .addStringOption(o => o.setName("emoji5").setDescription("Emoji 5"))
+
+    .addRoleOption(o => o.setName("role6").setDescription("Role 6"))
+    .addStringOption(o => o.setName("name6").setDescription("Label 6"))
+    .addStringOption(o => o.setName("emoji6").setDescription("Emoji 6"))
+
+    .addRoleOption(o => o.setName("role7").setDescription("Role 7"))
+    .addStringOption(o => o.setName("name7").setDescription("Label 7"))
+    .addStringOption(o => o.setName("emoji7").setDescription("Emoji 7"))
 
 ].map(c => c.toJSON());
 
@@ -112,19 +101,14 @@ client.once("ready", () => {
   console.log(`✅ Logged in as ${client.user.tag}`);
 });
 
-// ================= ROLE BUTTON HANDLER =================
+// ================= INTERACTIONS =================
 client.on(Events.InteractionCreate, async i => {
 
-  // 🔘 BUTTONS FIRST (IMPORTANT FIX)
+  // ===== BUTTON HANDLER =====
   if (i.isButton()) {
-    const roleId = i.customId.split("_")[1];
+    const roleId = i.customId;
 
     try {
-      const role = i.guild.roles.cache.get(roleId);
-      if (!role) {
-        return i.reply({ content: "Role not found", ephemeral: true });
-      }
-
       if (i.member.roles.cache.has(roleId)) {
         await i.member.roles.remove(roleId);
         await i.reply({ content: "Role removed", ephemeral: true });
@@ -132,116 +116,70 @@ client.on(Events.InteractionCreate, async i => {
         await i.member.roles.add(roleId);
         await i.reply({ content: "Role added", ephemeral: true });
       }
-
     } catch (err) {
       console.error(err);
-      await i.reply({ content: "Failed (check role permissions)", ephemeral: true });
+      await i.reply({ content: "Failed (check permissions)", ephemeral: true });
     }
 
     return;
   }
 
-  // ================= SLASH COMMANDS =================
+  // ===== COMMANDS =====
   if (!i.isChatInputCommand()) return;
 
-  // DOWNLOAD
-  if (i.commandName === "download") {
-    await i.deferReply();
-
-    exec(`yt-dlp -x --audio-format mp3 -o song.mp3 "${i.options.getString("url")}"`, async err => {
-      if (err) return i.editReply("Download failed");
-
-      await i.editReply({ files: ["song.mp3"] });
-      fs.unlinkSync("song.mp3");
-    });
-  }
-
-  // AUDIO
-  if (i.commandName === "audio") {
-    await i.deferReply();
-
-    const file = i.options.getAttachment("file");
-    const auto = i.options.getBoolean("auto");
-    const volume = i.options.getNumber("volume");
-
-    const writer = fs.createWriteStream("in.mp3");
-    const res = await axios({ url: file.url, responseType: "stream" });
-
-    res.data.pipe(writer);
-
-    writer.on("finish", () => {
-      const filter = auto ? `bass=g=15,volume=${volume}` : `volume=${volume}`;
-
-      exec(`ffmpeg -y -i in.mp3 -af "${filter}" out.mp3`, async err => {
-        if (err) return i.editReply("ffmpeg missing");
-
-        await i.editReply({ files: ["out.mp3"] });
-
-        fs.unlinkSync("in.mp3");
-        fs.unlinkSync("out.mp3");
-      });
-    });
-  }
-
-  // PURGE
-  if (i.commandName === "purge") {
-    await i.reply({ content: "Clearing...", ephemeral: true });
-
-    let msgs;
-    do {
-      msgs = await i.channel.messages.fetch({ limit: 100 });
-      await i.channel.bulkDelete(msgs, true);
-    } while (msgs.size >= 2);
-  }
-
-  // ROLE PANEL
-  if (i.commandName === "role-reactions") {
+  if (i.commandName === "rolepanel") {
 
     const embed = new EmbedBuilder()
       .setColor(0xFFD700)
-      .setTitle(i.options.getString("title"))
-      .setImage(i.options.getString("background"));
+      .setTitle(i.options.getString("title"));
 
-    const row = new ActionRowBuilder();
+    const rows = [];
+    let currentRow = new ActionRowBuilder();
 
-    for (let x = 1; x <= 3; x++) {
+    for (let x = 1; x <= 7; x++) {
       const role = i.options.getRole(`role${x}`);
-      const emoji = i.options.getString(`emoji${x}`);
       const name = i.options.getString(`name${x}`);
+      const emoji = i.options.getString(`emoji${x}`);
 
       if (!role || !name) continue;
 
       const btn = new ButtonBuilder()
-        .setCustomId(`role_${role.id}`)
+        .setCustomId(role.id)
         .setLabel(name)
         .setStyle(ButtonStyle.Secondary);
 
       if (emoji) btn.setEmoji(emoji);
 
-      row.addComponents(btn);
+      currentRow.addComponents(btn);
+
+      // max 5 buttons per row
+      if (currentRow.components.length === 5) {
+        rows.push(currentRow);
+        currentRow = new ActionRowBuilder();
+      }
     }
 
-    await i.channel.send({ embeds: [embed], components: [row] });
-    await i.reply({ content: "done", ephemeral: true });
+    if (currentRow.components.length > 0) {
+      rows.push(currentRow);
+    }
+
+    await i.channel.send({ embeds: [embed], components: rows });
+    await i.reply({ content: "Panel created", ephemeral: true });
   }
 
 });
 
 // ================= AUTO ROLE =================
-client.on("guildMemberAdd", async m => {
-  try {
-    await m.roles.add(AUTO_ROLE);
-  } catch (e) {
-    console.error("Auto role failed:", e);
-  }
+client.on("guildMemberAdd", async member => {
+  await member.roles.add(AUTO_ROLE).catch(() => {});
 
-  const ch = m.guild.channels.cache.get(WELCOME_CHANNEL);
+  const ch = member.guild.channels.cache.get(WELCOME_CHANNEL);
   if (!ch) return;
 
   const embed = new EmbedBuilder()
     .setColor(0xFFD700)
-    .setDescription(`Welcome <@${m.id}> | Member #${m.guild.memberCount}`)
-    .setThumbnail(m.user.displayAvatarURL());
+    .setDescription(`Welcome <@${member.id}>`)
+    .setThumbnail(member.user.displayAvatarURL());
 
   ch.send({ embeds: [embed] });
 });
