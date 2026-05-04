@@ -9,7 +9,6 @@ const { exec } = require("child_process");
 const {
   Client,
   GatewayIntentBits,
-  Events,
   REST,
   Routes,
   SlashCommandBuilder,
@@ -17,10 +16,11 @@ const {
   ButtonBuilder,
   ActionRowBuilder,
   ButtonStyle,
+  Events,
   AuditLogEvent
 } = require("discord.js");
 
-// CONFIG
+// ================= CONFIG =================
 const TOKEN = process.env.TOKEN;
 const CLIENT_ID = process.env.CLIENT_ID;
 const GUILD_ID = "1428878035926388809";
@@ -31,6 +31,12 @@ const AUTO_ROLE = "1448796463491584060";
 const PROTECT_ROLE = "1497843975615283350";
 const MUTE_ROLE_ID = "1500698113965428756";
 
+// ================= EXPRESS =================
+const app = express();
+app.get("/", (req, res) => res.send("Bot running"));
+app.listen(process.env.PORT || 3000);
+
+// ================= CLIENT =================
 const client = new Client({
   intents: [
     GatewayIntentBits.Guilds,
@@ -41,11 +47,6 @@ const client = new Client({
 });
 
 const protectedUsers = new Set();
-
-// EXPRESS (keeps bot alive)
-const app = express();
-app.get("/", (req, res) => res.send("Bot running"));
-app.listen(3000);
 
 // ================= COMMANDS =================
 const commands = [
@@ -59,13 +60,13 @@ const commands = [
 
   new SlashCommandBuilder()
     .setName("audio")
-    .setDescription("Enhance audio")
+    .setDescription("Edit audio")
     .addAttachmentOption(o =>
       o.setName("file").setDescription("Audio").setRequired(true))
     .addBooleanOption(o =>
-      o.setName("auto").setDescription("Auto").setRequired(true))
+      o.setName("auto").setDescription("Auto enhance").setRequired(true))
     .addNumberOption(o =>
-      o.setName("volume").setDescription("1-3").setRequired(true)),
+      o.setName("volume").setDescription("Volume 1-3").setRequired(true)),
 
   new SlashCommandBuilder()
     .setName("purge")
@@ -76,57 +77,58 @@ const commands = [
     .setDescription("Create role panel")
     .addStringOption(o => o.setName("title").setDescription("Title").setRequired(true))
     .addStringOption(o => o.setName("background").setDescription("Image URL").setRequired(true))
-
     .addRoleOption(o => o.setName("role1").setDescription("Role"))
     .addStringOption(o => o.setName("emoji1").setDescription("Emoji"))
     .addStringOption(o => o.setName("name1").setDescription("Name"))
-
     .addRoleOption(o => o.setName("role2").setDescription("Role"))
     .addStringOption(o => o.setName("emoji2").setDescription("Emoji"))
     .addStringOption(o => o.setName("name2").setDescription("Name"))
-
     .addRoleOption(o => o.setName("role3").setDescription("Role"))
     .addStringOption(o => o.setName("emoji3").setDescription("Emoji"))
     .addStringOption(o => o.setName("name3").setDescription("Name"))
 
 ].map(c => c.toJSON());
 
-// REGISTER
+// REGISTER COMMANDS
 const rest = new REST({ version: "10" }).setToken(TOKEN);
 (async () => {
-  await rest.put(Routes.applicationGuildCommands(CLIENT_ID, GUILD_ID), { body: commands });
+  await rest.put(
+    Routes.applicationGuildCommands(CLIENT_ID, GUILD_ID),
+    { body: commands }
+  );
 })();
 
-client.once("ready", () => console.log("Bot ready"));
+client.once("ready", () => {
+  console.log(`Logged in as ${client.user.tag}`);
+});
 
 // ================= PROTECTION =================
-client.on("messageCreate", async message => {
+client.on("messageCreate", async msg => {
 
-  if (message.content.startsWith("!calido protect")) {
-    if (!message.member.roles.cache.has(PROTECT_ROLE)) return;
+  if (msg.content.startsWith("!calido protect")) {
+    if (!msg.member.roles.cache.has(PROTECT_ROLE)) return;
 
-    const user = message.mentions.members.first();
+    const user = msg.mentions.members.first();
     if (!user) return;
 
     protectedUsers.add(user.id);
-    message.channel.send(`<@${user.id}> is now protected`);
 
-    user.send(`You are protected by ${message.author.tag}`).catch(() => {});
+    msg.channel.send(`<@${user.id}> is now protected`);
+    user.send(`You are protected by ${msg.author.tag}`).catch(() => {});
   }
 
-  if (message.content.startsWith("!calido unprotect")) {
-    if (!message.member.roles.cache.has(PROTECT_ROLE)) return;
+  if (msg.content.startsWith("!calido unprotect")) {
+    if (!msg.member.roles.cache.has(PROTECT_ROLE)) return;
 
-    const user = message.mentions.users.first();
+    const user = msg.mentions.users.first();
     if (!user) return;
 
     protectedUsers.delete(user.id);
-    message.reply("Unprotected");
+    msg.reply("Unprotected");
   }
-
 });
 
-// UNMUTE
+// AUTO UNMUTE
 client.on("guildMemberUpdate", async (o, n) => {
   if (!protectedUsers.has(n.id)) return;
 
@@ -140,46 +142,43 @@ client.on("guildMemberUpdate", async (o, n) => {
 client.on("guildBanAdd", async ban => {
   if (!protectedUsers.has(ban.user.id)) return;
 
-  try {
-    await ban.guild.members.unban(ban.user.id);
+  await ban.guild.members.unban(ban.user.id);
 
-    const invite = await ban.guild.invites.create(
-      ban.guild.channels.cache.first(),
-      { maxUses: 1 }
-    );
+  const invite = await ban.guild.invites.create(
+    ban.guild.channels.cache.first(),
+    { maxUses: 1 }
+  );
 
-    await ban.user.send(`You were saved from a ban\nJoin back: ${invite.url}`).catch(() => {});
-  } catch {}
+  ban.user.send(`You were saved from a ban\nJoin: ${invite.url}`).catch(() => {});
 });
 
 // KICK PROTECT
 client.on("guildMemberRemove", async member => {
   if (!protectedUsers.has(member.id)) return;
 
-  try {
-    const invite = await member.guild.invites.create(
-      member.guild.channels.cache.first(),
-      { maxUses: 1 }
-    );
+  const invite = await member.guild.invites.create(
+    member.guild.channels.cache.first(),
+    { maxUses: 1 }
+  );
 
-    await member.user.send(`You were kicked but saved\nJoin back: ${invite.url}`).catch(() => {});
-  } catch {}
+  member.user.send(`You were kicked\nJoin: ${invite.url}`).catch(() => {});
 });
 
 // ================= TRANSLATE =================
-client.on("messageCreate", async message => {
-  if (message.author.bot) return;
-  if (message.content.length < 5) return;
+client.on("messageCreate", async msg => {
+  if (msg.author.bot) return;
+  if (msg.content.length < 5) return;
 
   try {
     const res = await axios.get("https://api.mymemory.translated.net/get", {
-      params: { q: message.content, langpair: "auto|en" }
+      params: { q: msg.content, langpair: "auto|en" }
     });
 
     const t = res.data.responseData.translatedText;
-    if (!t || t.toLowerCase() === message.content.toLowerCase()) return;
 
-    message.reply(`🌍 ${t}`);
+    if (!t || t.toLowerCase() === msg.content.toLowerCase()) return;
+
+    msg.reply(`🌍 ${t}`);
   } catch {}
 });
 
@@ -225,7 +224,7 @@ client.on(Events.InteractionCreate, async i => {
 
   // PURGE
   if (i.commandName === "purge") {
-    await i.reply({ content: "clearing...", ephemeral: true });
+    await i.reply({ content: "Clearing...", ephemeral: true });
 
     let msgs;
     do {
@@ -290,6 +289,7 @@ client.on(Events.InteractionCreate, async i => {
 
 // ================= WELCOME =================
 client.on("guildMemberAdd", async m => {
+
   const ch = m.guild.channels.cache.get(WELCOME_CHANNEL);
   if (!ch) return;
 
@@ -297,7 +297,7 @@ client.on("guildMemberAdd", async m => {
 
   const embed = new EmbedBuilder()
     .setColor(0xFFD700)
-    .setDescription(`welcome <@${m.id}> | member #${m.guild.memberCount}`)
+    .setDescription(`Welcome <@${m.id}> | Member #${m.guild.memberCount}`)
     .setThumbnail(m.user.displayAvatarURL())
     .setImage("https://media.tenor.com/3Z1u1pJqkP4AAAAC/karol-g-karol-ariescarey-latina-foreva.gif");
 
