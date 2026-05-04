@@ -29,9 +29,9 @@ const GUILD_ID = "1428878035926388809";
 const WELCOME_CHANNEL = "1487287724674384032";
 const AUTO_ROLE = "1448796463491584060";
 
-// WEB
+// WEB SERVER
 const app = express();
-app.get("/", (req, res) => res.send("Running"));
+app.get("/", (req, res) => res.send("Bot running"));
 app.listen(process.env.PORT || 3000);
 
 // BOT
@@ -60,7 +60,7 @@ const commands = [
         )
     ),
 
-  // AUDIO
+  // AUDIO EDIT
   new SlashCommandBuilder()
     .setName("audio")
     .setDescription("Edit audio")
@@ -86,11 +86,11 @@ const commands = [
   // ADD INTRO
   new SlashCommandBuilder()
     .setName("add")
-    .setDescription("Add intro")
+    .setDescription("Add intro to audio")
     .addAttachmentOption(o =>
-      o.setName("intro").setDescription("Intro").setRequired(true))
+      o.setName("intro").setDescription("Intro audio").setRequired(true))
     .addAttachmentOption(o =>
-      o.setName("main").setDescription("Main").setRequired(true)),
+      o.setName("main").setDescription("Main audio").setRequired(true)),
 
   // PURGE
   new SlashCommandBuilder()
@@ -144,7 +144,7 @@ const commands = [
 ].map(c => c.toJSON());
 
 
-// REGISTER
+// REGISTER COMMANDS
 const rest = new REST({ version: "10" }).setToken(TOKEN);
 (async () => {
   await rest.put(
@@ -160,8 +160,102 @@ client.once("ready", () => console.log("Bot ready"));
 
 client.on(Events.InteractionCreate, async interaction => {
 
-  // ================= ROLE PANEL (FIXED) =================
-  if (interaction.isChatInputCommand() && interaction.commandName === "set") {
+  // DOWNLOAD
+  if (interaction.isChatInputCommand() && interaction.commandName === "download") {
+    await interaction.deferReply();
+
+    const url = interaction.options.getString("url");
+    const file = `song_${Date.now()}.mp3`;
+
+    exec(`yt-dlp -x --audio-format mp3 --no-playlist -o "${file}" "${url}"`, async (err) => {
+      if (err) return interaction.editReply("Download failed");
+
+      await interaction.editReply({
+        files: [new AttachmentBuilder(file)]
+      });
+
+      fs.unlinkSync(file);
+    });
+  }
+
+  // AUDIO EDIT
+  if (interaction.commandName === "audio") {
+    await interaction.deferReply();
+
+    const file = interaction.options.getAttachment("file");
+    const auto = interaction.options.getBoolean("auto");
+    const volume = interaction.options.getNumber("volume");
+
+    const input = "input.mp3";
+    const output = "output.mp3";
+
+    const res = await axios({ url: file.url, method: "GET", responseType: "stream" });
+    const writer = fs.createWriteStream(input);
+    res.data.pipe(writer);
+    await new Promise(r => writer.on("finish", r));
+
+    const filter = auto
+      ? `bass=g=15,acompressor=threshold=-28dB:ratio=9,alimiter=limit=0.98,volume=${volume}`
+      : `loudnorm=I=-14,volume=${volume}`;
+
+    exec(`ffmpeg -y -i ${input} -af "${filter}" ${output}`, async () => {
+      await interaction.editReply({ files: [new AttachmentBuilder(output)] });
+      fs.unlinkSync(input);
+      fs.unlinkSync(output);
+    });
+  }
+
+  // BASSBOOST
+  if (interaction.commandName === "bassboost") {
+    await interaction.deferReply();
+
+    const file = interaction.options.getAttachment("file");
+    const input = "bass_in.mp3";
+    const output = "bass_out.mp3";
+
+    const res = await axios({ url: file.url, method: "GET", responseType: "stream" });
+    const writer = fs.createWriteStream(input);
+    res.data.pipe(writer);
+    await new Promise(r => writer.on("finish", r));
+
+    exec(`ffmpeg -y -i ${input} -af "bass=g=18,volume=2" ${output}`, async () => {
+      await interaction.editReply({ files: [new AttachmentBuilder(output)] });
+      fs.unlinkSync(input);
+      fs.unlinkSync(output);
+    });
+  }
+
+  // ADD INTRO
+  if (interaction.commandName === "add") {
+    await interaction.deferReply();
+
+    const intro = interaction.options.getAttachment("intro");
+    const main = interaction.options.getAttachment("main");
+
+    exec(`ffmpeg -y -i "${intro.url}" -i "${main.url}" -filter_complex "[0:a][1:a]concat=n=2:v=0:a=1[out]" -map "[out]" output.mp3`, async () => {
+      await interaction.editReply({ files: [new AttachmentBuilder("output.mp3")] });
+      fs.unlinkSync("output.mp3");
+    });
+  }
+
+  // PURGE
+  if (interaction.commandName === "purge") {
+    if (!interaction.member.permissions.has(PermissionsBitField.Flags.ManageMessages)) {
+      return interaction.reply({ content: "No permission", ephemeral: true });
+    }
+
+    await interaction.reply({ content: "Clearing...", ephemeral: true });
+
+    let fetched;
+    do {
+      fetched = await interaction.channel.messages.fetch({ limit: 100 });
+      const deletable = fetched.filter(m => Date.now() - m.createdTimestamp < 1209600000);
+      await interaction.channel.bulkDelete(deletable, true);
+    } while (fetched.size >= 2);
+  }
+
+  // ROLE PANEL (FINAL FIX)
+  if (interaction.commandName === "set") {
     try {
       const title = interaction.options.getString("title");
       const bg = interaction.options.getString("background");
@@ -183,7 +277,7 @@ client.on(Events.InteractionCreate, async interaction => {
       const rows = [];
       let row = new ActionRowBuilder();
 
-      roles.forEach(r => {
+      for (const r of roles) {
         if (row.components.length === 5) {
           rows.push(row);
           row = new ActionRowBuilder();
@@ -191,51 +285,63 @@ client.on(Events.InteractionCreate, async interaction => {
 
         const btn = new ButtonBuilder()
           .setCustomId(`role_${r.role.id}`)
-          .setLabel(r.name)
+          .setLabel(r.name.substring(0, 80))
           .setStyle(ButtonStyle.Secondary);
 
         if (r.emoji) {
-          try { btn.setEmoji(r.emoji); } catch {}
+          try { btn.setEmoji(r.emoji.trim().split(" ")[0]); } catch {}
         }
 
         row.addComponents(btn);
-      });
+      }
 
       if (row.components.length) rows.push(row);
 
       const embed = new EmbedBuilder()
         .setColor(0xFFD700)
-        .setTitle(title)
-        .setImage(bg);
+        .setTitle(title.substring(0, 256));
 
-      // SEND FIRST
+      if (bg && bg.startsWith("http")) embed.setImage(bg);
+
       await interaction.channel.send({
         embeds: [embed],
         components: rows
       });
 
-      // THEN reply
       await interaction.reply({
         content: "Panel created",
         ephemeral: true
       });
 
     } catch (err) {
-      console.error(err);
+      console.error("ROLE PANEL ERROR:", err);
+
       interaction.reply({
-        content: "Failed to send panel (check emoji/permissions)",
+        content: `Error: ${err.message}`,
         ephemeral: true
       });
     }
   }
 
-  // ===== KEEPING ALL OTHER COMMANDS EXACTLY AS BEFORE =====
-  // (download, audio, bassboost, add, purge — unchanged)
+  // BUTTON HANDLER
+  if (interaction.isButton()) {
+    const roleId = interaction.customId.split("_")[1];
+    const member = interaction.member;
+
+    if (member.roles.cache.has(roleId)) {
+      await member.roles.remove(roleId);
+      return interaction.reply({ content: "Removed", ephemeral: true });
+    } else {
+      await member.roles.add(roleId);
+      return interaction.reply({ content: "Added", ephemeral: true });
+    }
+  }
 
 });
 
 
 // ================= WELCOME =================
+
 const welcomed = new Set();
 
 client.on("guildMemberAdd", async member => {
