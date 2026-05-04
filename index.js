@@ -1,3 +1,5 @@
+console.log("BOOTING...");
+
 process.on("uncaughtException", console.error);
 process.on("unhandledRejection", console.error);
 
@@ -31,10 +33,15 @@ const AUTO_ROLE = "1448796463491584060";
 const PROTECT_ROLE = "1497843975615283350";
 const MUTE_ROLE_ID = "1500698113965428756";
 
+console.log("TOKEN:", TOKEN ? "OK" : "MISSING");
+console.log("CLIENT_ID:", CLIENT_ID ? "OK" : "MISSING");
+
 // ================= EXPRESS =================
 const app = express();
 app.get("/", (req, res) => res.send("Bot running"));
-app.listen(process.env.PORT || 3000);
+app.listen(process.env.PORT || 3000, () => {
+  console.log("Web server running");
+});
 
 // ================= CLIENT =================
 const client = new Client({
@@ -60,13 +67,13 @@ const commands = [
 
   new SlashCommandBuilder()
     .setName("audio")
-    .setDescription("Edit audio")
+    .setDescription("Enhance audio")
     .addAttachmentOption(o =>
       o.setName("file").setDescription("Audio").setRequired(true))
     .addBooleanOption(o =>
-      o.setName("auto").setDescription("Auto enhance").setRequired(true))
+      o.setName("auto").setDescription("Auto").setRequired(true))
     .addNumberOption(o =>
-      o.setName("volume").setDescription("Volume 1-3").setRequired(true)),
+      o.setName("volume").setDescription("1-3").setRequired(true)),
 
   new SlashCommandBuilder()
     .setName("purge")
@@ -89,17 +96,25 @@ const commands = [
 
 ].map(c => c.toJSON());
 
-// REGISTER COMMANDS
+// REGISTER COMMANDS (SAFE)
 const rest = new REST({ version: "10" }).setToken(TOKEN);
+
 (async () => {
-  await rest.put(
-    Routes.applicationGuildCommands(CLIENT_ID, GUILD_ID),
-    { body: commands }
-  );
+  try {
+    console.log("Registering commands...");
+    await rest.put(
+      Routes.applicationGuildCommands(CLIENT_ID, GUILD_ID),
+      { body: commands }
+    );
+    console.log("Commands registered");
+  } catch (err) {
+    console.error("Register error:", err);
+  }
 })();
 
+// ================= READY =================
 client.once("ready", () => {
-  console.log(`Logged in as ${client.user.tag}`);
+  console.log(`✅ Logged in as ${client.user.tag}`);
 });
 
 // ================= PROTECTION =================
@@ -112,8 +127,8 @@ client.on("messageCreate", async msg => {
     if (!user) return;
 
     protectedUsers.add(user.id);
-
     msg.channel.send(`<@${user.id}> is now protected`);
+
     user.send(`You are protected by ${msg.author.tag}`).catch(() => {});
   }
 
@@ -128,7 +143,7 @@ client.on("messageCreate", async msg => {
   }
 });
 
-// AUTO UNMUTE
+// ================= AUTO UNMUTE =================
 client.on("guildMemberUpdate", async (o, n) => {
   if (!protectedUsers.has(n.id)) return;
 
@@ -138,30 +153,34 @@ client.on("guildMemberUpdate", async (o, n) => {
   } catch {}
 });
 
-// BAN PROTECT
+// ================= BAN PROTECT =================
 client.on("guildBanAdd", async ban => {
   if (!protectedUsers.has(ban.user.id)) return;
 
-  await ban.guild.members.unban(ban.user.id);
+  try {
+    await ban.guild.members.unban(ban.user.id);
 
-  const invite = await ban.guild.invites.create(
-    ban.guild.channels.cache.first(),
-    { maxUses: 1 }
-  );
+    const invite = await ban.guild.invites.create(
+      ban.guild.channels.cache.first(),
+      { maxUses: 1 }
+    );
 
-  ban.user.send(`You were saved from a ban\nJoin: ${invite.url}`).catch(() => {});
+    await ban.user.send(`You were saved from a ban\nJoin: ${invite.url}`).catch(() => {});
+  } catch {}
 });
 
-// KICK PROTECT
+// ================= KICK PROTECT =================
 client.on("guildMemberRemove", async member => {
   if (!protectedUsers.has(member.id)) return;
 
-  const invite = await member.guild.invites.create(
-    member.guild.channels.cache.first(),
-    { maxUses: 1 }
-  );
+  try {
+    const invite = await member.guild.invites.create(
+      member.guild.channels.cache.first(),
+      { maxUses: 1 }
+    );
 
-  member.user.send(`You were kicked\nJoin: ${invite.url}`).catch(() => {});
+    await member.user.send(`You were kicked but saved\nJoin: ${invite.url}`).catch(() => {});
+  } catch {}
 });
 
 // ================= TRANSLATE =================
@@ -175,7 +194,6 @@ client.on("messageCreate", async msg => {
     });
 
     const t = res.data.responseData.translatedText;
-
     if (!t || t.toLowerCase() === msg.content.toLowerCase()) return;
 
     msg.reply(`🌍 ${t}`);
@@ -268,7 +286,6 @@ client.on(Events.InteractionCreate, async i => {
       .setImage(bg);
 
     await i.channel.send({ embeds: [embed], components: [row] });
-
     await i.reply({ content: "done", ephemeral: true });
   }
 
@@ -304,4 +321,7 @@ client.on("guildMemberAdd", async m => {
   ch.send({ embeds: [embed] });
 });
 
-client.login(TOKEN);
+// ================= LOGIN =================
+client.login(TOKEN).catch(err => {
+  console.error("LOGIN FAILED:", err);
+});
