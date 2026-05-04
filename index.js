@@ -15,7 +15,8 @@ const {
   ButtonBuilder,
   ActionRowBuilder,
   ButtonStyle,
-  Events
+  Events,
+  PermissionsBitField
 } = require("discord.js");
 
 // ================= CONFIG =================
@@ -50,7 +51,7 @@ const commands = [
 
     .addStringOption(o => o.setName("title").setDescription("Panel title").setRequired(true))
 
-    // 7 ROLE SLOTS
+    // 7 roles
     .addRoleOption(o => o.setName("role1").setDescription("Role 1"))
     .addStringOption(o => o.setName("name1").setDescription("Label 1"))
     .addStringOption(o => o.setName("emoji1").setDescription("Emoji 1"))
@@ -104,27 +105,60 @@ client.once("ready", () => {
 // ================= INTERACTIONS =================
 client.on(Events.InteractionCreate, async i => {
 
-  // ===== BUTTON HANDLER =====
+  // ===== BUTTON =====
   if (i.isButton()) {
     const roleId = i.customId;
+    const role = i.guild.roles.cache.get(roleId);
+
+    if (!role) {
+      return i.reply({ content: "❌ Role not found", ephemeral: true });
+    }
+
+    // 🔒 Permission checks
+    if (!i.guild.members.me.permissions.has(PermissionsBitField.Flags.ManageRoles)) {
+      return i.reply({
+        content: "❌ I don't have **Manage Roles** permission",
+        ephemeral: true
+      });
+    }
+
+    if (role.position >= i.guild.members.me.roles.highest.position) {
+      return i.reply({
+        content: `❌ I cannot manage ${role} (role is above me)`,
+        ephemeral: true
+      });
+    }
 
     try {
       if (i.member.roles.cache.has(roleId)) {
         await i.member.roles.remove(roleId);
-        await i.reply({ content: "Role removed", ephemeral: true });
+
+        await i.reply({
+          content: `➖ Removed role ${role} (${role.name})`,
+          ephemeral: true
+        });
+
       } else {
         await i.member.roles.add(roleId);
-        await i.reply({ content: "Role added", ephemeral: true });
+
+        await i.reply({
+          content: `✅ Added role ${role} (${role.name})`,
+          ephemeral: true
+        });
       }
+
     } catch (err) {
       console.error(err);
-      await i.reply({ content: "Failed (check permissions)", ephemeral: true });
+      await i.reply({
+        content: "❌ Unexpected error (check console)",
+        ephemeral: true
+      });
     }
 
     return;
   }
 
-  // ===== COMMANDS =====
+  // ===== COMMAND =====
   if (!i.isChatInputCommand()) return;
 
   if (i.commandName === "rolepanel") {
@@ -134,7 +168,7 @@ client.on(Events.InteractionCreate, async i => {
       .setTitle(i.options.getString("title"));
 
     const rows = [];
-    let currentRow = new ActionRowBuilder();
+    let row = new ActionRowBuilder();
 
     for (let x = 1; x <= 7; x++) {
       const role = i.options.getRole(`role${x}`);
@@ -150,21 +184,18 @@ client.on(Events.InteractionCreate, async i => {
 
       if (emoji) btn.setEmoji(emoji);
 
-      currentRow.addComponents(btn);
+      row.addComponents(btn);
 
-      // max 5 buttons per row
-      if (currentRow.components.length === 5) {
-        rows.push(currentRow);
-        currentRow = new ActionRowBuilder();
+      if (row.components.length === 5) {
+        rows.push(row);
+        row = new ActionRowBuilder();
       }
     }
 
-    if (currentRow.components.length > 0) {
-      rows.push(currentRow);
-    }
+    if (row.components.length > 0) rows.push(row);
 
     await i.channel.send({ embeds: [embed], components: rows });
-    await i.reply({ content: "Panel created", ephemeral: true });
+    await i.reply({ content: "✅ Panel created", ephemeral: true });
   }
 
 });
