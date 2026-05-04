@@ -41,7 +41,7 @@ const client = new Client({
 const commands = [
   new SlashCommandBuilder()
     .setName("rolepanel")
-    .setDescription("Single choice role panel")
+    .setDescription("Single-choice role panel")
     .addStringOption(o => o.setName("title").setRequired(true).setDescription("Title"))
 
     .addRoleOption(o => o.setName("role1").setDescription("Role 1"))
@@ -69,7 +69,9 @@ const commands = [
 // ================= REGISTER =================
 const rest = new REST({ version: "10" }).setToken(TOKEN);
 (async () => {
-  await rest.put(Routes.applicationGuildCommands(CLIENT_ID, GUILD_ID), { body: commands });
+  await rest.put(Routes.applicationGuildCommands(CLIENT_ID, GUILD_ID), {
+    body: commands
+  });
   console.log("Commands registered");
 })();
 
@@ -86,9 +88,14 @@ client.on(Events.InteractionCreate, async i => {
 
     await i.deferReply({ ephemeral: true });
 
+    // 🔥 SUPPORT OLD + NEW BUTTON IDs
+    const clickedRoleId = i.customId.startsWith("role_")
+      ? i.customId.split("_")[1]
+      : i.customId;
+
     const member = await i.guild.members.fetch(i.user.id);
 
-    // get ALL buttons from ALL rows
+    // 🔥 GET ALL BUTTONS FROM PANEL
     const allButtons = [];
     for (const row of i.message.components) {
       for (const btn of row.components) {
@@ -97,19 +104,26 @@ client.on(Events.InteractionCreate, async i => {
     }
 
     try {
-      // 🔥 REMOVE ALL PANEL ROLES
+      // 🔥 REMOVE ALL ROLES FROM PANEL
       for (const btn of allButtons) {
-        const rId = btn.customId;
+
+        const rId = btn.customId.startsWith("role_")
+          ? btn.customId.split("_")[1]
+          : btn.customId;
 
         if (member.roles.cache.has(rId)) {
-          await member.roles.remove(rId).catch(()=>{});
+          await member.roles.remove(rId).catch(() => {});
         }
       }
 
       // 🔥 ADD NEW ROLE
-      const role = await i.guild.roles.fetch(i.customId).catch(() => null);
+      const role = await i.guild.roles.fetch(clickedRoleId).catch(() => null);
 
       if (!role) return i.editReply("❌ Role not found");
+
+      if (!i.guild.members.me.permissions.has(PermissionsBitField.Flags.ManageRoles)) {
+        return i.editReply("❌ Missing Manage Roles");
+      }
 
       if (role.position >= i.guild.members.me.roles.highest.position) {
         return i.editReply("❌ Role too high");
@@ -117,7 +131,7 @@ client.on(Events.InteractionCreate, async i => {
 
       await member.roles.add(role.id);
 
-      return i.editReply(`✅ You selected ${role}`);
+      return i.editReply(`✅ You now have ${role}`);
 
     } catch (err) {
       console.error(err);
@@ -145,12 +159,11 @@ client.on(Events.InteractionCreate, async i => {
 
       row.addComponents(
         new ButtonBuilder()
-          .setCustomId(role.id)
+          .setCustomId(`role_${role.id}`) // 🔥 ALWAYS USE PREFIX NOW
           .setLabel(name)
           .setStyle(ButtonStyle.Secondary)
       );
 
-      // max 5 buttons per row
       if (row.components.length === 5) {
         rows.push(row);
         row = new ActionRowBuilder();
