@@ -48,45 +48,21 @@ const commands = [
   new SlashCommandBuilder()
     .setName("rolepanel")
     .setDescription("Create a role panel")
+
     .addStringOption(o => o.setName("title").setRequired(true).setDescription("Title"))
     .addStringOption(o => o.setName("banner").setDescription("Banner URL"))
 
-    .addRoleOption(o => o.setName("role1").setDescription("Role 1"))
-    .addStringOption(o => o.setName("name1").setDescription("Label 1"))
-    .addStringOption(o => o.setName("emoji1").setDescription("Emoji 1"))
-
-    .addRoleOption(o => o.setName("role2").setDescription("Role 2"))
-    .addStringOption(o => o.setName("name2").setDescription("Label 2"))
-    .addStringOption(o => o.setName("emoji2").setDescription("Emoji 2"))
-
-    .addRoleOption(o => o.setName("role3").setDescription("Role 3"))
-    .addStringOption(o => o.setName("name3").setDescription("Label 3"))
-    .addStringOption(o => o.setName("emoji3").setDescription("Emoji 3"))
-
-    .addRoleOption(o => o.setName("role4").setDescription("Role 4"))
-    .addStringOption(o => o.setName("name4").setDescription("Label 4"))
-    .addStringOption(o => o.setName("emoji4").setDescription("Emoji 4"))
-
-    .addRoleOption(o => o.setName("role5").setDescription("Role 5"))
-    .addStringOption(o => o.setName("name5").setDescription("Label 5"))
-    .addStringOption(o => o.setName("emoji5").setDescription("Emoji 5"))
-
-    .addRoleOption(o => o.setName("role6").setDescription("Role 6"))
-    .addStringOption(o => o.setName("name6").setDescription("Label 6"))
-    .addStringOption(o => o.setName("emoji6").setDescription("Emoji 6"))
-
-    .addRoleOption(o => o.setName("role7").setDescription("Role 7"))
-    .addStringOption(o => o.setName("name7").setDescription("Label 7"))
-    .addStringOption(o => o.setName("emoji7").setDescription("Emoji 7"))
+    ...[1,2,3,4,5,6,7].flatMap(n => [
+      new SlashCommandBuilder().addRoleOption(o => o.setName(`role${n}`).setDescription(`Role ${n}`)),
+      new SlashCommandBuilder().addStringOption(o => o.setName(`name${n}`).setDescription(`Label ${n}`)),
+      new SlashCommandBuilder().addStringOption(o => o.setName(`emoji${n}`).setDescription(`Emoji ${n}`))
+    ])
 ].map(c => c.toJSON());
 
 // ================= REGISTER =================
 const rest = new REST({ version: "10" }).setToken(TOKEN);
-
 (async () => {
-  await rest.put(Routes.applicationGuildCommands(CLIENT_ID, GUILD_ID), {
-    body: commands
-  });
+  await rest.put(Routes.applicationGuildCommands(CLIENT_ID, GUILD_ID), { body: commands });
   console.log("Commands registered");
 })();
 
@@ -95,37 +71,25 @@ client.once("ready", () => {
   console.log(`✅ Logged in as ${client.user.tag}`);
 });
 
-// ================= ROLE BUTTON =================
+// ================= ROLE SYSTEM =================
 client.on(Events.InteractionCreate, async i => {
 
   if (i.isButton()) {
-
-    const roleId = i.customId;
-    const role = i.guild.roles.cache.get(roleId);
+    const role = i.guild.roles.cache.get(i.customId);
 
     if (!role) return i.reply({ content: "❌ Role not found", ephemeral: true });
-
-    if (!i.guild.members.me.permissions.has(PermissionsBitField.Flags.ManageRoles)) {
-      return i.reply({ content: "❌ Missing Manage Roles", ephemeral: true });
-    }
 
     if (role.position >= i.guild.members.me.roles.highest.position) {
       return i.reply({ content: `❌ Can't manage ${role}`, ephemeral: true });
     }
 
-    try {
-      if (i.member.roles.cache.has(roleId)) {
-        await i.member.roles.remove(roleId);
-        i.reply({ content: `➖ Removed ${role}`, ephemeral: true });
-      } else {
-        await i.member.roles.add(roleId);
-        i.reply({ content: `✅ Added ${role}`, ephemeral: true });
-      }
-    } catch {
-      i.reply({ content: "❌ Role error", ephemeral: true });
+    if (i.member.roles.cache.has(role.id)) {
+      await i.member.roles.remove(role.id);
+      return i.reply({ content: `➖ Removed ${role}`, ephemeral: true });
+    } else {
+      await i.member.roles.add(role.id);
+      return i.reply({ content: `✅ Added ${role}`, ephemeral: true });
     }
-
-    return;
   }
 
   if (!i.isChatInputCommand()) return;
@@ -169,43 +133,90 @@ client.on(Events.InteractionCreate, async i => {
     await i.channel.send({ embeds: [embed], components: rows });
     await i.reply({ content: "✅ Panel created", ephemeral: true });
   }
-
 });
 
-// ================= SAFE TRANSLATION =================
-async function safeTranslate(text) {
+// ================= AUTO ROLE =================
+client.on("guildMemberAdd", async m => {
+  await m.roles.add(AUTO_ROLE).catch(()=>{});
+
+  const ch = m.guild.channels.cache.get(WELCOME_CHANNEL);
+  if (!ch) return;
+
+  ch.send(`Welcome <@${m.id}>`);
+});
+
+// ================= MODERATION =================
+function clean(t) {
+  return t.toLowerCase().replace(/[^a-z0-9]/g, "");
+}
+
+const badWords = ["fuck","shit","bitch","slut","whore","cunt","dick","pussy","asshole","dox","doxx"];
+const wordFilters = [/\bdoxx?(ing|ed)?\b/i, /\bho(e|es)?\b/i];
+const blockedLinks = ["grabify","iplogger","discord.gg","discord.com/invite"];
+
+// ================= TRANSLATION SYSTEM =================
+
+// 1️⃣ LibreTranslate
+async function libre(text) {
   try {
-    const res = await axios.get("https://api.mymemory.translated.net/get", {
-      params: { q: text, langpair: "en|en" }
+    const res = await axios.post("https://libretranslate.de/translate", {
+      q: text,
+      source: "auto",
+      target: "en",
+      format: "text"
     });
+    return res.data.translatedText;
+  } catch { return null; }
+}
 
-    let detected = res.data.responseData.detectedSourceLanguage;
-
-    // 🚫 FIX: block AUTO completely
-    if (!detected || detected.toLowerCase() === "auto") return null;
-    if (detected === "en") return null;
-
-    const res2 = await axios.get("https://api.mymemory.translated.net/get", {
-      params: { q: text, langpair: `${detected}|en` }
-    });
-
-    return res2.data.responseData.translatedText;
-
-  } catch {
-    return null;
-  }
+// 2️⃣ Google fallback
+async function google(text) {
+  try {
+    const res = await axios.get(
+      "https://translate.googleapis.com/translate_a/single",
+      {
+        params: {
+          client: "gtx",
+          sl: "auto",
+          tl: "en",
+          dt: "t",
+          q: text
+        }
+      }
+    );
+    return res.data[0].map(x => x[0]).join("");
+  } catch { return null; }
 }
 
 // ================= MESSAGE =================
 client.on("messageCreate", async msg => {
   if (msg.author.bot) return;
 
-  const text = msg.content;
+  const raw = msg.content;
+  const lowered = raw.toLowerCase();
+  const cleaned = clean(raw);
+
+  // filters
+  if (wordFilters.some(r => r.test(raw)) || badWords.some(w => cleaned.includes(w))) {
+    await msg.delete().catch(()=>{});
+    return msg.channel.send(`⚠️ ${msg.author}, not allowed.`)
+      .then(m => setTimeout(()=>m.delete(), 4000));
+  }
+
+  if (blockedLinks.some(l => lowered.includes(l))) {
+    await msg.delete().catch(()=>{});
+    return msg.channel.send(`🚫 ${msg.author}, links blocked.`)
+      .then(m => setTimeout(()=>m.delete(), 4000));
+  }
 
   // translation
-  if (!/^[\x00-\x7F]*$/.test(text) && text.length > 3) {
-    const t = await safeTranslate(text);
-    if (t && t.toLowerCase() !== text.toLowerCase()) {
+  if (raw.length > 3) {
+    let t = await libre(raw);
+    if (!t || t.toLowerCase() === raw.toLowerCase()) {
+      t = await google(raw);
+    }
+
+    if (t && t.toLowerCase() !== raw.toLowerCase()) {
       msg.reply(`🌍 ${t}`);
     }
   }
