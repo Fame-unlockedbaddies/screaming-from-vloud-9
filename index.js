@@ -56,15 +56,40 @@ const commands = [
     .addStringOption(o =>
       o.setName("banner").setDescription("Banner image URL"))
 
-    // 7 roles
-    ...Array.from({ length: 7 }, (_, i) => (i + 1)).flatMap(n => ([
-      new SlashCommandBuilder().addRoleOption(o =>
-        o.setName(`role${n}`).setDescription(`Role ${n}`)),
-      new SlashCommandBuilder().addStringOption(o =>
-        o.setName(`name${n}`).setDescription(`Label ${n}`)),
-      new SlashCommandBuilder().addStringOption(o =>
-        o.setName(`emoji${n}`).setDescription(`Emoji ${n}`))
-    ]))
+    // ===== ROLE 1 =====
+    .addRoleOption(o => o.setName("role1").setDescription("Role 1"))
+    .addStringOption(o => o.setName("name1").setDescription("Label 1"))
+    .addStringOption(o => o.setName("emoji1").setDescription("Emoji 1"))
+
+    // ===== ROLE 2 =====
+    .addRoleOption(o => o.setName("role2").setDescription("Role 2"))
+    .addStringOption(o => o.setName("name2").setDescription("Label 2"))
+    .addStringOption(o => o.setName("emoji2").setDescription("Emoji 2"))
+
+    // ===== ROLE 3 =====
+    .addRoleOption(o => o.setName("role3").setDescription("Role 3"))
+    .addStringOption(o => o.setName("name3").setDescription("Label 3"))
+    .addStringOption(o => o.setName("emoji3").setDescription("Emoji 3"))
+
+    // ===== ROLE 4 =====
+    .addRoleOption(o => o.setName("role4").setDescription("Role 4"))
+    .addStringOption(o => o.setName("name4").setDescription("Label 4"))
+    .addStringOption(o => o.setName("emoji4").setDescription("Emoji 4"))
+
+    // ===== ROLE 5 =====
+    .addRoleOption(o => o.setName("role5").setDescription("Role 5"))
+    .addStringOption(o => o.setName("name5").setDescription("Label 5"))
+    .addStringOption(o => o.setName("emoji5").setDescription("Emoji 5"))
+
+    // ===== ROLE 6 =====
+    .addRoleOption(o => o.setName("role6").setDescription("Role 6"))
+    .addStringOption(o => o.setName("name6").setDescription("Label 6"))
+    .addStringOption(o => o.setName("emoji6").setDescription("Emoji 6"))
+
+    // ===== ROLE 7 =====
+    .addRoleOption(o => o.setName("role7").setDescription("Role 7"))
+    .addStringOption(o => o.setName("name7").setDescription("Label 7"))
+    .addStringOption(o => o.setName("emoji7").setDescription("Emoji 7"))
 
 ].map(c => c.toJSON());
 
@@ -93,6 +118,7 @@ client.on(Events.InteractionCreate, async i => {
 
   // ===== BUTTON =====
   if (i.isButton()) {
+
     let roleId = i.customId.startsWith("role_")
       ? i.customId.split("_")[1]
       : i.customId;
@@ -170,75 +196,6 @@ client.on(Events.InteractionCreate, async i => {
     await i.reply({ content: "✅ Panel created", ephemeral: true });
   }
 
-});
-
-// ================= AUTO ROLE + WELCOME =================
-client.on("guildMemberAdd", async member => {
-  await member.roles.add(AUTO_ROLE).catch(() => {});
-
-  const ch = member.guild.channels.cache.get(WELCOME_CHANNEL);
-  if (!ch) return;
-
-  const embed = new EmbedBuilder()
-    .setColor(0xFFD700)
-    .setDescription(`Welcome <@${member.id}>`)
-    .setThumbnail(member.user.displayAvatarURL());
-
-  ch.send({ embeds: [embed] });
-});
-
-// ================= MODERATION + TRANSLATION =================
-
-const badWords = [
-  "fuck","shit","bitch","slut","whore","cunt","dick","pussy","asshole"
-];
-
-const blockedLinks = [
-  "grabify","iplogger","2no.co","discord.gg/","discord.com/invite"
-];
-
-function isEnglish(text) {
-  return /^[\x00-\x7F]*$/.test(text);
-}
-
-client.on("messageCreate", async msg => {
-  if (msg.author.bot) return;
-
-  const content = msg.content.toLowerCase();
-
-  // bad words
-  if (badWords.some(w => content.includes(w))) {
-    await msg.delete().catch(() => {});
-    const warn = await msg.channel.send(`⚠️ ${msg.author}, watch your language.`);
-    setTimeout(() => warn.delete().catch(() => {}), 4000);
-    return;
-  }
-
-  // blocked links
-  if (blockedLinks.some(l => content.includes(l))) {
-    await msg.delete().catch(() => {});
-    const warn = await msg.channel.send(`🚫 ${msg.author}, that link is not allowed.`);
-    setTimeout(() => warn.delete().catch(() => {}), 4000);
-    return;
-  }
-
-  // translation
-  if (!isEnglish(msg.content) && msg.content.length > 3) {
-    try {
-      const res = await axios.get("https://api.mymemory.translated.net/get", {
-        params: { q: msg.content, langpair: "auto|en" }
-      });
-
-      const t = res.data.responseData.translatedText;
-
-      if (t && t.toLowerCase() !== msg.content.toLowerCase()) {
-        msg.reply(`🌍 ${t}`);
-      }
-
-    } catch (e) {
-      console.error("Translate error:", e.message);
-    }
-  }
 });
 
 // ================= LOGIN =================
