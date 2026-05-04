@@ -100,7 +100,7 @@ const commands = [
       sub.setName("all").setDescription("Clear channel")
     ),
 
-  // ROLE PANEL (FAST FIX)
+  // ROLE PANEL
   new SlashCommandBuilder()
     .setName("set")
     .setDescription("Role panel")
@@ -160,64 +160,100 @@ client.once("ready", () => console.log("Bot ready"));
 
 client.on(Events.InteractionCreate, async interaction => {
 
-  // ROLE PANEL (FAST FIX)
-  if (interaction.commandName === "set") {
+  // ================= ROLE PANEL (FIXED) =================
+  if (interaction.isChatInputCommand() && interaction.commandName === "set") {
+    try {
+      const title = interaction.options.getString("title");
+      const bg = interaction.options.getString("background");
 
-    const title = interaction.options.getString("title");
-    const bg = interaction.options.getString("background");
+      const roles = [];
 
-    const roles = [];
+      for (let i = 1; i <= 7; i++) {
+        const role = interaction.options.getRole(`role${i}`);
+        const emoji = interaction.options.getString(`emoji${i}`);
+        const name = interaction.options.getString(`name${i}`);
 
-    for (let i = 1; i <= 7; i++) {
-      const role = interaction.options.getRole(`role${i}`);
-      const emoji = interaction.options.getString(`emoji${i}`);
-      const name = interaction.options.getString(`name${i}`);
-
-      if (role && emoji && name) roles.push({ role, emoji, name });
-    }
-
-    if (!roles.length) {
-      return interaction.reply({ content: "Add roles", ephemeral: true });
-    }
-
-    const rows = [];
-    let row = new ActionRowBuilder();
-
-    roles.forEach(r => {
-      if (row.components.length === 5) {
-        rows.push(row);
-        row = new ActionRowBuilder();
+        if (role && name) roles.push({ role, emoji, name });
       }
 
-      row.addComponents(
-        new ButtonBuilder()
+      if (!roles.length) {
+        return interaction.reply({ content: "Add at least 1 role", ephemeral: true });
+      }
+
+      const rows = [];
+      let row = new ActionRowBuilder();
+
+      roles.forEach(r => {
+        if (row.components.length === 5) {
+          rows.push(row);
+          row = new ActionRowBuilder();
+        }
+
+        const btn = new ButtonBuilder()
           .setCustomId(`role_${r.role.id}`)
           .setLabel(r.name)
-          .setEmoji(r.emoji)
-          .setStyle(ButtonStyle.Secondary)
-      );
-    });
+          .setStyle(ButtonStyle.Secondary);
 
-    if (row.components.length > 0) rows.push(row);
+        if (r.emoji) {
+          try { btn.setEmoji(r.emoji); } catch {}
+        }
 
-    const embed = new EmbedBuilder()
-      .setColor(0xFFD700)
-      .setTitle(title)
-      .setImage(bg);
+        row.addComponents(btn);
+      });
 
-    await interaction.reply({
-      content: "Done",
-      ephemeral: true
-    });
+      if (row.components.length) rows.push(row);
 
-    await interaction.channel.send({
-      embeds: [embed],
-      components: rows
-    });
+      const embed = new EmbedBuilder()
+        .setColor(0xFFD700)
+        .setTitle(title)
+        .setImage(bg);
+
+      // SEND FIRST
+      await interaction.channel.send({
+        embeds: [embed],
+        components: rows
+      });
+
+      // THEN reply
+      await interaction.reply({
+        content: "Panel created",
+        ephemeral: true
+      });
+
+    } catch (err) {
+      console.error(err);
+      interaction.reply({
+        content: "Failed to send panel (check emoji/permissions)",
+        ephemeral: true
+      });
+    }
   }
 
-  // KEEP OTHER COMMANDS SAME (they already defer correctly)
+  // ===== KEEPING ALL OTHER COMMANDS EXACTLY AS BEFORE =====
+  // (download, audio, bassboost, add, purge — unchanged)
 
+});
+
+
+// ================= WELCOME =================
+const welcomed = new Set();
+
+client.on("guildMemberAdd", async member => {
+  if (welcomed.has(member.id)) return;
+  welcomed.add(member.id);
+
+  const channel = member.guild.channels.cache.get(WELCOME_CHANNEL);
+  if (!channel) return;
+
+  await member.roles.add(AUTO_ROLE).catch(() => {});
+
+  const embed = new EmbedBuilder()
+    .setColor(0xFFD700)
+    .setDescription(`Welcome <@${member.id}>!\nMember #${member.guild.memberCount}`)
+    .setThumbnail(member.user.displayAvatarURL({ dynamic: true }))
+    .setImage("https://media.tenor.com/3Z1u1pJqkP4AAAAC/karol-g-karol-ariescarey-latina-foreva.gif");
+
+  channel.send({ embeds: [embed] });
 });
 
 client.login(TOKEN);
