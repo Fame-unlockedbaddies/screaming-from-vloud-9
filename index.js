@@ -48,11 +48,9 @@ const commands = [
   new SlashCommandBuilder()
     .setName("rolepanel")
     .setDescription("Create a role panel")
-
-    .addStringOption(o => o.setName("title").setDescription("Title").setRequired(true))
+    .addStringOption(o => o.setName("title").setRequired(true).setDescription("Title"))
     .addStringOption(o => o.setName("banner").setDescription("Banner URL"))
 
-    // roles (1–7)
     .addRoleOption(o => o.setName("role1").setDescription("Role 1"))
     .addStringOption(o => o.setName("name1").setDescription("Label 1"))
     .addStringOption(o => o.setName("emoji1").setDescription("Emoji 1"))
@@ -97,15 +95,12 @@ client.once("ready", () => {
   console.log(`✅ Logged in as ${client.user.tag}`);
 });
 
-// ================= ROLE SYSTEM =================
+// ================= ROLE BUTTON =================
 client.on(Events.InteractionCreate, async i => {
 
   if (i.isButton()) {
 
-    let roleId = i.customId.startsWith("role_")
-      ? i.customId.split("_")[1]
-      : i.customId;
-
+    const roleId = i.customId;
     const role = i.guild.roles.cache.get(roleId);
 
     if (!role) return i.reply({ content: "❌ Role not found", ephemeral: true });
@@ -121,10 +116,10 @@ client.on(Events.InteractionCreate, async i => {
     try {
       if (i.member.roles.cache.has(roleId)) {
         await i.member.roles.remove(roleId);
-        i.reply({ content: `➖ Removed ${role} (${role.name})`, ephemeral: true });
+        i.reply({ content: `➖ Removed ${role}`, ephemeral: true });
       } else {
         await i.member.roles.add(roleId);
-        i.reply({ content: `✅ Added ${role} (${role.name})`, ephemeral: true });
+        i.reply({ content: `✅ Added ${role}`, ephemeral: true });
       }
     } catch {
       i.reply({ content: "❌ Role error", ephemeral: true });
@@ -177,94 +172,42 @@ client.on(Events.InteractionCreate, async i => {
 
 });
 
-// ================= AUTO ROLE =================
-client.on("guildMemberAdd", async member => {
-  await member.roles.add(AUTO_ROLE).catch(() => {});
-
-  const ch = member.guild.channels.cache.get(WELCOME_CHANNEL);
-  if (!ch) return;
-
-  const embed = new EmbedBuilder()
-    .setColor(0xFFD700)
-    .setDescription(`Welcome <@${member.id}>`);
-
-  ch.send({ embeds: [embed] });
-});
-
-// ================= FILTER =================
-function clean(text) {
-  return text.toLowerCase().replace(/[^a-z0-9]/g, "");
-}
-
-const wordFilters = [
-  /\bdoxx?(ing|ed)?\b/i,
-  /\bho(e|es)?\b/i
-];
-
-const badWords = [
-  "fuck","shit","bitch","slut","whore","cunt","dick","pussy","asshole",
-  "nigga","nigger","retard","faggot","bastard","twat","dox","doxx"
-];
-
-const blockedLinks = [
-  "grabify","iplogger","2no.co","discord.gg","discord.com/invite"
-];
-
-// ================= TRANSLATION FIX =================
-async function detectLang(text) {
+// ================= SAFE TRANSLATION =================
+async function safeTranslate(text) {
   try {
     const res = await axios.get("https://api.mymemory.translated.net/get", {
       params: { q: text, langpair: "en|en" }
     });
-    return res.data.responseData.detectedSourceLanguage || "en";
+
+    let detected = res.data.responseData.detectedSourceLanguage;
+
+    // 🚫 FIX: block AUTO completely
+    if (!detected || detected.toLowerCase() === "auto") return null;
+    if (detected === "en") return null;
+
+    const res2 = await axios.get("https://api.mymemory.translated.net/get", {
+      params: { q: text, langpair: `${detected}|en` }
+    });
+
+    return res2.data.responseData.translatedText;
+
   } catch {
-    return "en";
+    return null;
   }
 }
 
-// ================= MESSAGE EVENT =================
+// ================= MESSAGE =================
 client.on("messageCreate", async msg => {
   if (msg.author.bot) return;
 
-  const raw = msg.content;
-  const lowered = raw.toLowerCase();
-  const cleaned = clean(raw);
-
-  // word filter
-  if (wordFilters.some(r => r.test(raw))) {
-    await msg.delete().catch(() => {});
-    msg.channel.send(`⚠️ ${msg.author}, not allowed.`).then(m => setTimeout(() => m.delete(), 4000));
-    return;
-  }
-
-  // strong filter
-  if (badWords.some(w => cleaned.includes(w))) {
-    await msg.delete().catch(() => {});
-    msg.channel.send(`⚠️ ${msg.author}, watch your language.`).then(m => setTimeout(() => m.delete(), 4000));
-    return;
-  }
-
-  // link block
-  if (blockedLinks.some(l => lowered.includes(l))) {
-    await msg.delete().catch(() => {});
-    msg.channel.send(`🚫 ${msg.author}, links not allowed.`).then(m => setTimeout(() => m.delete(), 4000));
-    return;
-  }
+  const text = msg.content;
 
   // translation
-  if (!/^[\x00-\x7F]*$/.test(raw) && raw.length > 3) {
-    try {
-      const lang = await detectLang(raw);
-      if (lang === "en") return;
-
-      const res = await axios.get("https://api.mymemory.translated.net/get", {
-        params: { q: raw, langpair: `${lang}|en` }
-      });
-
-      const t = res.data.responseData.translatedText;
-      if (t) msg.reply(`🌍 ${t}`);
-
-    } catch {}
+  if (!/^[\x00-\x7F]*$/.test(text) && text.length > 3) {
+    const t = await safeTranslate(text);
+    if (t && t.toLowerCase() !== text.toLowerCase()) {
+      msg.reply(`🌍 ${t}`);
+    }
   }
 });
 
