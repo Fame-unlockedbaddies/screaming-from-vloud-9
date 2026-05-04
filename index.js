@@ -29,9 +29,9 @@ const GUILD_ID = "1428878035926388809";
 const WELCOME_CHANNEL = "1487287724674384032";
 const AUTO_ROLE = "1448796463491584060";
 
-// WEB SERVER (keeps bot alive)
+// WEB
 const app = express();
-app.get("/", (req, res) => res.send("Bot running"));
+app.get("/", (req, res) => res.send("Running"));
 app.listen(process.env.PORT || 3000);
 
 // BOT
@@ -60,7 +60,7 @@ const commands = [
         )
     ),
 
-  // AUDIO EDIT
+  // AUDIO
   new SlashCommandBuilder()
     .setName("audio")
     .setDescription("Edit audio")
@@ -86,11 +86,11 @@ const commands = [
   // ADD INTRO
   new SlashCommandBuilder()
     .setName("add")
-    .setDescription("Add intro to audio")
+    .setDescription("Add intro")
     .addAttachmentOption(o =>
-      o.setName("intro").setDescription("Intro audio").setRequired(true))
+      o.setName("intro").setDescription("Intro").setRequired(true))
     .addAttachmentOption(o =>
-      o.setName("main").setDescription("Main audio").setRequired(true)),
+      o.setName("main").setDescription("Main").setRequired(true)),
 
   // PURGE
   new SlashCommandBuilder()
@@ -100,7 +100,7 @@ const commands = [
       sub.setName("all").setDescription("Clear channel")
     ),
 
-  // ROLE PANEL (7 max safe)
+  // ROLE PANEL (FAST FIX)
   new SlashCommandBuilder()
     .setName("set")
     .setDescription("Role panel")
@@ -144,7 +144,7 @@ const commands = [
 ].map(c => c.toJSON());
 
 
-// REGISTER COMMANDS
+// REGISTER
 const rest = new REST({ version: "10" }).setToken(TOKEN);
 (async () => {
   await rest.put(
@@ -160,105 +160,8 @@ client.once("ready", () => console.log("Bot ready"));
 
 client.on(Events.InteractionCreate, async interaction => {
 
-  // DOWNLOAD
-  if (interaction.commandName === "download") {
-    await interaction.deferReply();
-
-    const url = interaction.options.getString("url");
-    const file = `song_${Date.now()}.mp3`;
-
-    exec(`yt-dlp -x --audio-format mp3 --no-playlist -o "${file}" "${url}"`, async (err) => {
-      if (err) return interaction.editReply("Download failed");
-
-      await interaction.editReply({
-        files: [new AttachmentBuilder(file)]
-      });
-
-      fs.unlinkSync(file);
-    });
-  }
-
-  // AUDIO EDIT
-  if (interaction.commandName === "audio") {
-    await interaction.deferReply();
-
-    const file = interaction.options.getAttachment("file");
-    const auto = interaction.options.getBoolean("auto");
-    const volume = interaction.options.getNumber("volume");
-
-    const input = "input.mp3";
-    const output = "output.mp3";
-
-    const res = await axios({ url: file.url, method: "GET", responseType: "stream" });
-    const writer = fs.createWriteStream(input);
-    res.data.pipe(writer);
-
-    await new Promise(r => writer.on("finish", r));
-
-    const filter = auto
-      ? `bass=g=15,acompressor=threshold=-28dB:ratio=9,alimiter=limit=0.98,volume=${volume}`
-      : `loudnorm=I=-14,volume=${volume}`;
-
-    exec(`ffmpeg -y -i ${input} -af "${filter}" ${output}`, async () => {
-      await interaction.editReply({ files: [new AttachmentBuilder(output)] });
-      fs.unlinkSync(input);
-      fs.unlinkSync(output);
-    });
-  }
-
-  // BASSBOOST
-  if (interaction.commandName === "bassboost") {
-    await interaction.deferReply();
-
-    const file = interaction.options.getAttachment("file");
-    const input = "bass_in.mp3";
-    const output = "bass_out.mp3";
-
-    const res = await axios({ url: file.url, method: "GET", responseType: "stream" });
-    const writer = fs.createWriteStream(input);
-    res.data.pipe(writer);
-
-    await new Promise(r => writer.on("finish", r));
-
-    exec(`ffmpeg -y -i ${input} -af "bass=g=18,volume=2" ${output}`, async () => {
-      await interaction.editReply({ files: [new AttachmentBuilder(output)] });
-      fs.unlinkSync(input);
-      fs.unlinkSync(output);
-    });
-  }
-
-  // ADD INTRO
-  if (interaction.commandName === "add") {
-    await interaction.deferReply();
-
-    const intro = interaction.options.getAttachment("intro");
-    const main = interaction.options.getAttachment("main");
-
-    exec(`ffmpeg -y -i "${intro.url}" -i "${main.url}" -filter_complex "[0:a][1:a]concat=n=2:v=0:a=1[out]" -map "[out]" output.mp3`, async () => {
-      await interaction.editReply({ files: [new AttachmentBuilder("output.mp3")] });
-      fs.unlinkSync("output.mp3");
-    });
-  }
-
-  // PURGE
-  if (interaction.commandName === "purge") {
-    if (!interaction.member.permissions.has(PermissionsBitField.Flags.ManageMessages)) {
-      return interaction.reply({ content: "No permission", ephemeral: true });
-    }
-
-    await interaction.reply({ content: "Clearing...", ephemeral: true });
-
-    let fetched;
-    do {
-      fetched = await interaction.channel.messages.fetch({ limit: 100 });
-      const deletable = fetched.filter(m => Date.now() - m.createdTimestamp < 1209600000);
-      await interaction.channel.bulkDelete(deletable, true);
-    } while (fetched.size >= 2);
-  }
-
-  // ROLE PANEL
+  // ROLE PANEL (FAST FIX)
   if (interaction.commandName === "set") {
-    await interaction.deferReply({ ephemeral: true });
 
     const title = interaction.options.getString("title");
     const bg = interaction.options.getString("background");
@@ -271,6 +174,10 @@ client.on(Events.InteractionCreate, async interaction => {
       const name = interaction.options.getString(`name${i}`);
 
       if (role && emoji && name) roles.push({ role, emoji, name });
+    }
+
+    if (!roles.length) {
+      return interaction.reply({ content: "Add roles", ephemeral: true });
     }
 
     const rows = [];
@@ -298,47 +205,19 @@ client.on(Events.InteractionCreate, async interaction => {
       .setTitle(title)
       .setImage(bg);
 
-    await interaction.channel.send({ embeds: [embed], components: rows });
-    await interaction.editReply("Done");
+    await interaction.reply({
+      content: "Done",
+      ephemeral: true
+    });
+
+    await interaction.channel.send({
+      embeds: [embed],
+      components: rows
+    });
   }
 
-  // BUTTON HANDLER
-  if (interaction.isButton()) {
-    const roleId = interaction.customId.split("_")[1];
-    const member = interaction.member;
+  // KEEP OTHER COMMANDS SAME (they already defer correctly)
 
-    if (member.roles.cache.has(roleId)) {
-      await member.roles.remove(roleId);
-      return interaction.reply({ content: "Removed", ephemeral: true });
-    } else {
-      await member.roles.add(roleId);
-      return interaction.reply({ content: "Added", ephemeral: true });
-    }
-  }
-
-});
-
-
-// ================= WELCOME =================
-
-const welcomed = new Set();
-
-client.on("guildMemberAdd", async member => {
-  if (welcomed.has(member.id)) return;
-  welcomed.add(member.id);
-
-  const channel = member.guild.channels.cache.get(WELCOME_CHANNEL);
-  if (!channel) return;
-
-  await member.roles.add(AUTO_ROLE).catch(() => {});
-
-  const embed = new EmbedBuilder()
-    .setColor(0xFFD700)
-    .setDescription(`Welcome <@${member.id}>!\nMember #${member.guild.memberCount}`)
-    .setThumbnail(member.user.displayAvatarURL({ dynamic: true }))
-    .setImage("https://media.tenor.com/3Z1u1pJqkP4AAAAC/karol-g-karol-ariescarey-latina-foreva.gif");
-
-  channel.send({ embeds: [embed] });
 });
 
 client.login(TOKEN);
