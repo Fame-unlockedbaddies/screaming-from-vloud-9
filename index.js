@@ -45,67 +45,49 @@ const client = new Client({
 
 // ================= COMMAND =================
 const commands = [
-
   new SlashCommandBuilder()
     .setName("rolepanel")
-    .setDescription("Create a role panel with banner")
+    .setDescription("Create a role panel")
+    .addStringOption(o => o.setName("title").setRequired(true).setDescription("Title"))
+    .addStringOption(o => o.setName("banner").setDescription("Image URL"))
 
-    .addStringOption(o =>
-      o.setName("title").setDescription("Panel title").setRequired(true))
-
-    .addStringOption(o =>
-      o.setName("banner").setDescription("Banner image URL"))
-
-    // ===== ROLE 1 =====
     .addRoleOption(o => o.setName("role1").setDescription("Role 1"))
     .addStringOption(o => o.setName("name1").setDescription("Label 1"))
     .addStringOption(o => o.setName("emoji1").setDescription("Emoji 1"))
 
-    // ===== ROLE 2 =====
     .addRoleOption(o => o.setName("role2").setDescription("Role 2"))
     .addStringOption(o => o.setName("name2").setDescription("Label 2"))
     .addStringOption(o => o.setName("emoji2").setDescription("Emoji 2"))
 
-    // ===== ROLE 3 =====
     .addRoleOption(o => o.setName("role3").setDescription("Role 3"))
     .addStringOption(o => o.setName("name3").setDescription("Label 3"))
     .addStringOption(o => o.setName("emoji3").setDescription("Emoji 3"))
 
-    // ===== ROLE 4 =====
     .addRoleOption(o => o.setName("role4").setDescription("Role 4"))
     .addStringOption(o => o.setName("name4").setDescription("Label 4"))
     .addStringOption(o => o.setName("emoji4").setDescription("Emoji 4"))
 
-    // ===== ROLE 5 =====
     .addRoleOption(o => o.setName("role5").setDescription("Role 5"))
     .addStringOption(o => o.setName("name5").setDescription("Label 5"))
     .addStringOption(o => o.setName("emoji5").setDescription("Emoji 5"))
 
-    // ===== ROLE 6 =====
     .addRoleOption(o => o.setName("role6").setDescription("Role 6"))
     .addStringOption(o => o.setName("name6").setDescription("Label 6"))
     .addStringOption(o => o.setName("emoji6").setDescription("Emoji 6"))
 
-    // ===== ROLE 7 =====
     .addRoleOption(o => o.setName("role7").setDescription("Role 7"))
     .addStringOption(o => o.setName("name7").setDescription("Label 7"))
     .addStringOption(o => o.setName("emoji7").setDescription("Emoji 7"))
-
 ].map(c => c.toJSON());
 
 // ================= REGISTER =================
 const rest = new REST({ version: "10" }).setToken(TOKEN);
 
 (async () => {
-  try {
-    await rest.put(
-      Routes.applicationGuildCommands(CLIENT_ID, GUILD_ID),
-      { body: commands }
-    );
-    console.log("Commands registered");
-  } catch (err) {
-    console.error(err);
-  }
+  await rest.put(Routes.applicationGuildCommands(CLIENT_ID, GUILD_ID), {
+    body: commands
+  });
+  console.log("Commands registered");
 })();
 
 // ================= READY =================
@@ -113,89 +95,61 @@ client.once("ready", () => {
   console.log(`✅ Logged in as ${client.user.tag}`);
 });
 
-// ================= INTERACTIONS =================
-client.on(Events.InteractionCreate, async i => {
+// ================= STRONG FILTER =================
 
-  // ===== BUTTON =====
-  if (i.isButton()) {
+// normalize text (removes spaces, symbols)
+function clean(text) {
+  return text
+    .toLowerCase()
+    .replace(/[^a-z0-9]/g, ""); // remove symbols
+}
 
-    let roleId = i.customId.startsWith("role_")
-      ? i.customId.split("_")[1]
-      : i.customId;
+const badWords = [
+  "fuck","shit","bitch","slut","whore","cunt","dick","pussy","asshole",
+  "nigga","nigger","retard","faggot","hoe","bastard","twat"
+];
 
-    const role = i.guild.roles.cache.get(roleId);
+const blockedLinks = [
+  "grabify","iplogger","2no.co","discord.gg","discord.com/invite"
+];
 
-    if (!role) {
-      return i.reply({ content: "❌ Role not found", ephemeral: true });
-    }
+client.on("messageCreate", async msg => {
+  if (msg.author.bot) return;
 
-    if (!i.guild.members.me.permissions.has(PermissionsBitField.Flags.ManageRoles)) {
-      return i.reply({ content: "❌ Missing Manage Roles", ephemeral: true });
-    }
+  const raw = msg.content.toLowerCase();
+  const cleaned = clean(msg.content);
 
-    if (role.position >= i.guild.members.me.roles.highest.position) {
-      return i.reply({ content: `❌ Can't manage ${role}`, ephemeral: true });
-    }
-
-    try {
-      if (i.member.roles.cache.has(roleId)) {
-        await i.member.roles.remove(roleId);
-        await i.reply({ content: `➖ Removed ${role} (${role.name})`, ephemeral: true });
-      } else {
-        await i.member.roles.add(roleId);
-        await i.reply({ content: `✅ Added ${role} (${role.name})`, ephemeral: true });
-      }
-    } catch (err) {
-      console.error(err);
-      i.reply({ content: "❌ Error assigning role", ephemeral: true });
-    }
-
+  // ===== SWEAR FILTER =====
+  if (badWords.some(w => cleaned.includes(w))) {
+    await msg.delete().catch(() => {});
+    const warn = await msg.channel.send(`⚠️ ${msg.author}, watch your language.`);
+    setTimeout(() => warn.delete().catch(() => {}), 4000);
     return;
   }
 
-  if (!i.isChatInputCommand()) return;
-
-  // ===== ROLE PANEL =====
-  if (i.commandName === "rolepanel") {
-
-    const embed = new EmbedBuilder()
-      .setColor(0xFFD700)
-      .setTitle(i.options.getString("title"));
-
-    const banner = i.options.getString("banner");
-    if (banner) embed.setImage(banner);
-
-    const rows = [];
-    let row = new ActionRowBuilder();
-
-    for (let x = 1; x <= 7; x++) {
-      const role = i.options.getRole(`role${x}`);
-      const name = i.options.getString(`name${x}`);
-      const emoji = i.options.getString(`emoji${x}`);
-
-      if (!role || !name) continue;
-
-      const btn = new ButtonBuilder()
-        .setCustomId(role.id)
-        .setLabel(name)
-        .setStyle(ButtonStyle.Secondary);
-
-      if (emoji) btn.setEmoji(emoji);
-
-      row.addComponents(btn);
-
-      if (row.components.length === 5) {
-        rows.push(row);
-        row = new ActionRowBuilder();
-      }
-    }
-
-    if (row.components.length > 0) rows.push(row);
-
-    await i.channel.send({ embeds: [embed], components: rows });
-    await i.reply({ content: "✅ Panel created", ephemeral: true });
+  // ===== LINK BLOCK =====
+  if (blockedLinks.some(l => raw.includes(l))) {
+    await msg.delete().catch(() => {});
+    const warn = await msg.channel.send(`🚫 ${msg.author}, links not allowed.`);
+    setTimeout(() => warn.delete().catch(() => {}), 4000);
+    return;
   }
 
+  // ===== TRANSLATION =====
+  if (!/^[\x00-\x7F]*$/.test(msg.content) && msg.content.length > 3) {
+    try {
+      const res = await axios.get("https://api.mymemory.translated.net/get", {
+        params: { q: msg.content, langpair: "auto|en" }
+      });
+
+      const t = res.data.responseData.translatedText;
+
+      if (t && t.toLowerCase() !== msg.content.toLowerCase()) {
+        msg.reply(`🌍 ${t}`);
+      }
+
+    } catch {}
+  }
 });
 
 // ================= LOGIN =================
