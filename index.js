@@ -105,16 +105,28 @@ client.once("ready", () => {
 // ================= INTERACTIONS =================
 client.on(Events.InteractionCreate, async i => {
 
-  // ===== BUTTON =====
+  // ===== BUTTON HANDLER =====
   if (i.isButton()) {
-    const roleId = i.customId;
+
+    let roleId;
+
+    // ✅ SUPPORT OLD + NEW PANELS
+    if (i.customId.startsWith("role_")) {
+      roleId = i.customId.split("_")[1];
+    } else {
+      roleId = i.customId;
+    }
+
     const role = i.guild.roles.cache.get(roleId);
 
     if (!role) {
-      return i.reply({ content: "❌ Role not found", ephemeral: true });
+      return i.reply({
+        content: "❌ Role not found (it may have been deleted)",
+        ephemeral: true
+      });
     }
 
-    // 🔒 Permission checks
+    // 🔒 PERMISSION CHECKS
     if (!i.guild.members.me.permissions.has(PermissionsBitField.Flags.ManageRoles)) {
       return i.reply({
         content: "❌ I don't have **Manage Roles** permission",
@@ -124,25 +136,27 @@ client.on(Events.InteractionCreate, async i => {
 
     if (role.position >= i.guild.members.me.roles.highest.position) {
       return i.reply({
-        content: `❌ I cannot manage ${role} (role is above me)`,
+        content: `❌ I can't manage ${role} (move my role higher)`,
         ephemeral: true
       });
     }
 
     try {
       if (i.member.roles.cache.has(roleId)) {
+
         await i.member.roles.remove(roleId);
 
         await i.reply({
-          content: `➖ Removed role ${role} (${role.name})`,
+          content: `➖ Removed ${role} (${role.name})`,
           ephemeral: true
         });
 
       } else {
+
         await i.member.roles.add(roleId);
 
         await i.reply({
-          content: `✅ Added role ${role} (${role.name})`,
+          content: `✅ Added ${role} (${role.name})`,
           ephemeral: true
         });
       }
@@ -150,7 +164,7 @@ client.on(Events.InteractionCreate, async i => {
     } catch (err) {
       console.error(err);
       await i.reply({
-        content: "❌ Unexpected error (check console)",
+        content: "❌ Error assigning role (check console)",
         ephemeral: true
       });
     }
@@ -158,7 +172,7 @@ client.on(Events.InteractionCreate, async i => {
     return;
   }
 
-  // ===== COMMAND =====
+  // ===== SLASH COMMANDS =====
   if (!i.isChatInputCommand()) return;
 
   if (i.commandName === "rolepanel") {
@@ -178,7 +192,7 @@ client.on(Events.InteractionCreate, async i => {
       if (!role || !name) continue;
 
       const btn = new ButtonBuilder()
-        .setCustomId(role.id)
+        .setCustomId(role.id) // NEW format
         .setLabel(name)
         .setStyle(ButtonStyle.Secondary);
 
