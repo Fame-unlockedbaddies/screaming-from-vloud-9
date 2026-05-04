@@ -21,8 +21,7 @@ const {
   ButtonBuilder,
   ActionRowBuilder,
   ButtonStyle,
-  Events,
-  PermissionsBitField
+  Events
 } = require("discord.js");
 
 // ================= CONFIG =================
@@ -51,16 +50,18 @@ const client = new Client({
 // ================= COMMANDS =================
 const commands = [
 
+  // AUDIO MERGE
   new SlashCommandBuilder()
     .setName("add")
     .setDescription("Merge intro + main audio")
-    .addAttachmentOption(o => o.setName("intro").setRequired(true).setDescription("Intro"))
-    .addAttachmentOption(o => o.setName("main").setRequired(true).setDescription("Main")),
+    .addAttachmentOption(o => o.setName("intro").setRequired(true))
+    .addAttachmentOption(o => o.setName("main").setRequired(true)),
 
+  // ROLE PANEL
   new SlashCommandBuilder()
     .setName("rolepanel")
-    .setDescription("Single choice role panel")
-    .addStringOption(o => o.setName("title").setRequired(true).setDescription("Title"))
+    .setDescription("Single-choice roles")
+    .addStringOption(o => o.setName("title").setRequired(true))
 
     .addRoleOption(o => o.setName("role1"))
     .addStringOption(o => o.setName("name1"))
@@ -85,35 +86,28 @@ const commands = [
 
 ].map(c => c.toJSON());
 
-// ================= REGISTER =================
+// REGISTER
 const rest = new REST({ version: "10" }).setToken(TOKEN);
 (async () => {
   await rest.put(Routes.applicationGuildCommands(CLIENT_ID, GUILD_ID), { body: commands });
 })();
 
-// ================= READY =================
+// READY
 client.once("ready", () => {
   console.log(`✅ ${client.user.tag}`);
 });
 
-// ================= LANGUAGE CHECK =================
-function isRealLanguage(text) {
-  // must contain real words (not spam caps)
-  if (text.length < 5) return false;
-
-  // reject spam like HAHAHA / AAAAA
-  if (/^(.)\1+$/.test(text)) return false;
-
-  // must contain vowels + consonants
-  if (!/[aeiou]/i.test(text) || !/[bcdfghjklmnpqrstvwxyz]/i.test(text)) return false;
-
-  return true;
+// ================= SIMPLE SPAM FILTER =================
+function isSpam(text) {
+  if (text.length < 3) return true;
+  if (/^(.)\1{4,}$/i.test(text)) return true; // AAAAA
+  return false;
 }
 
 // ================= INTERACTIONS =================
 client.on(Events.InteractionCreate, async i => {
 
-  // ===== AUDIO =====
+  // AUDIO
   if (i.isChatInputCommand() && i.commandName === "add") {
 
     await i.deferReply();
@@ -144,13 +138,12 @@ client.on(Events.InteractionCreate, async i => {
       .mergeToFile(out);
   }
 
-  // ===== ROLE BUTTON =====
+  // ROLE BUTTON (1 ROLE ONLY)
   if (i.isButton()) {
 
     await i.deferReply({ ephemeral: true });
 
     const member = await i.guild.members.fetch(i.user.id);
-
     const buttons = i.message.components.flatMap(r => r.components);
 
     let removedRole = null;
@@ -169,22 +162,18 @@ client.on(Events.InteractionCreate, async i => {
 
     if (!role) return i.editReply("❌ Role not found");
 
-    if (role.position >= i.guild.members.me.roles.highest.position) {
-      return i.editReply("❌ Role too high");
-    }
-
     await member.roles.add(roleId);
 
     if (removedRole) {
       return i.editReply(
-        `🔄 Removed ${removedRole}\n✅ You now have ${role}\n\n⚠️ You can only have ONE role (you can't be 5 different ages)`
+        `🔄 Removed ${removedRole}\n✅ You now have ${role}\n⚠️ Only ONE role allowed`
       );
     }
 
     i.editReply(`✅ You now have ${role}`);
   }
 
-  // ===== ROLE PANEL =====
+  // ROLE PANEL
   if (i.isChatInputCommand() && i.commandName === "rolepanel") {
 
     const embed = new EmbedBuilder()
@@ -222,7 +211,7 @@ client.on(Events.InteractionCreate, async i => {
 });
 
 // ================= MODERATION + TRANSLATION =================
-const badWords = ["dox","doxx","doxxing","ho","fuck","shit","bitch","slut"];
+const badWords = ["dox","doxx","doxxing","ho","fuck","shit","bitch"];
 const badLinks = ["grabify","iplogger"];
 
 client.on("messageCreate", async msg => {
@@ -230,25 +219,33 @@ client.on("messageCreate", async msg => {
 
   const txt = msg.content.toLowerCase();
 
+  // BLOCK WORDS
   if (badWords.some(w => txt.includes(w))) {
     await msg.delete().catch(()=>{});
     return;
   }
 
+  // BLOCK LINKS
   if (badLinks.some(l => txt.includes(l))) {
     await msg.delete().catch(()=>{});
     return;
   }
 
-  // 🌍 TRANSLATE ONLY REAL LANGUAGE
-  if (!isRealLanguage(txt)) return;
+  // 🌍 TRANSLATE ANY LANGUAGE
+  if (isSpam(msg.content)) return;
 
   try {
-    const g = await axios.get("https://translate.googleapis.com/translate_a/single", {
-      params: { client:"gtx", sl:"auto", tl:"en", dt:"t", q:msg.content }
+    const res = await axios.get("https://translate.googleapis.com/translate_a/single", {
+      params: {
+        client: "gtx",
+        sl: "auto",
+        tl: "en",
+        dt: "t",
+        q: msg.content
+      }
     });
 
-    const translated = g.data[0].map(x=>x[0]).join("");
+    const translated = res.data[0].map(x => x[0]).join("");
 
     if (translated && translated.toLowerCase() !== txt) {
       msg.reply(`🌍 ${translated}`);
