@@ -18,8 +18,7 @@ const {
   ButtonBuilder,
   ActionRowBuilder,
   ButtonStyle,
-  Events,
-  AuditLogEvent
+  Events
 } = require("discord.js");
 
 // ================= CONFIG =================
@@ -33,10 +32,12 @@ const AUTO_ROLE = "1448796463491584060";
 const PROTECT_ROLE = "1497843975615283350";
 const MUTE_ROLE_ID = "1500698113965428756";
 
-// ================= EXPRESS =================
+// ================= KEEP ALIVE (RENDER) =================
 const app = express();
 app.get("/", (req, res) => res.send("Bot running"));
-app.listen(process.env.PORT || 3000);
+app.listen(process.env.PORT || 3000, () => {
+  console.log("Web server ready");
+});
 
 // ================= CLIENT =================
 const client = new Client({
@@ -77,110 +78,70 @@ const commands = [
   new SlashCommandBuilder()
     .setName("role-reactions")
     .setDescription("Create role panel")
-    .addStringOption(o => o.setName("title").setDescription("Title").setRequired(true))
-    .addStringOption(o => o.setName("background").setDescription("Image URL").setRequired(true))
-    .addRoleOption(o => o.setName("role1").setDescription("Role"))
-    .addStringOption(o => o.setName("emoji1").setDescription("Emoji"))
-    .addStringOption(o => o.setName("name1").setDescription("Name"))
-    .addRoleOption(o => o.setName("role2").setDescription("Role"))
-    .addStringOption(o => o.setName("emoji2").setDescription("Emoji"))
-    .addStringOption(o => o.setName("name2").setDescription("Name"))
-    .addRoleOption(o => o.setName("role3").setDescription("Role"))
-    .addStringOption(o => o.setName("emoji3").setDescription("Emoji"))
-    .addStringOption(o => o.setName("name3").setDescription("Name"))
+    .addStringOption(o => o.setName("title").setRequired(true))
+    .addStringOption(o => o.setName("background").setRequired(true))
+    .addRoleOption(o => o.setName("role1"))
+    .addStringOption(o => o.setName("emoji1"))
+    .addStringOption(o => o.setName("name1"))
+    .addRoleOption(o => o.setName("role2"))
+    .addStringOption(o => o.setName("emoji2"))
+    .addStringOption(o => o.setName("name2"))
+    .addRoleOption(o => o.setName("role3"))
+    .addStringOption(o => o.setName("emoji3"))
+    .addStringOption(o => o.setName("name3"))
 
 ].map(c => c.toJSON());
 
-// REGISTER COMMANDS
+// ================= REGISTER =================
 const rest = new REST({ version: "10" }).setToken(TOKEN);
+
 (async () => {
   try {
-    await rest.put(Routes.applicationGuildCommands(CLIENT_ID, GUILD_ID), { body: commands });
+    await rest.put(
+      Routes.applicationGuildCommands(CLIENT_ID, GUILD_ID),
+      { body: commands }
+    );
     console.log("Commands registered");
   } catch (err) {
     console.error(err);
   }
-});
+})();
 
 // ================= READY =================
 client.once("ready", () => {
   console.log(`✅ Logged in as ${client.user.tag}`);
 });
 
-// ================= TRANSLATION =================
-client.on("messageCreate", async msg => {
-  if (msg.author.bot || msg.content.length < 5) return;
-
-  try {
-    const res = await axios.get("https://api.mymemory.translated.net/get", {
-      params: { q: msg.content, langpair: "auto|en" }
-    });
-
-    const t = res.data.responseData.translatedText;
-    if (!t || t.toLowerCase() === msg.content.toLowerCase()) return;
-
-    msg.reply(`🌍 ${t}`);
-  } catch {}
-});
-
-// ================= PROTECTION =================
-client.on("messageCreate", async msg => {
-
-  if (msg.content.startsWith("!calido protect")) {
-    if (!msg.member.roles.cache.has(PROTECT_ROLE)) return;
-
-    const user = msg.mentions.members.first();
-    if (!user) return;
-
-    protectedUsers.add(user.id);
-    msg.channel.send(`<@${user.id}> is now protected`);
-
-    user.send(`You are protected by ${msg.author.tag}`).catch(() => {});
-  }
-
-  if (msg.content.startsWith("!calido unprotect")) {
-    if (!msg.member.roles.cache.has(PROTECT_ROLE)) return;
-
-    const user = msg.mentions.users.first();
-    if (!user) return;
-
-    protectedUsers.delete(user.id);
-    msg.reply("Unprotected");
-  }
-
-});
-
-// ================= AUTO UNMUTE =================
-client.on("guildMemberUpdate", async (o, n) => {
-  if (!protectedUsers.has(n.id)) return;
-
-  try {
-    if (n.communicationDisabledUntilTimestamp) await n.timeout(null);
-    if (n.roles.cache.has(MUTE_ROLE_ID)) await n.roles.remove(MUTE_ROLE_ID);
-  } catch {}
-});
-
-// ================= BAN / KICK PROTECT =================
-client.on("guildBanAdd", async ban => {
-  if (!protectedUsers.has(ban.user.id)) return;
-
-  await ban.guild.members.unban(ban.user.id);
-  const invite = await ban.guild.invites.create(ban.guild.channels.cache.first(), { maxUses: 1 });
-
-  ban.user.send(`Saved from ban\nJoin: ${invite.url}`).catch(() => {});
-});
-
-client.on("guildMemberRemove", async member => {
-  if (!protectedUsers.has(member.id)) return;
-
-  const invite = await member.guild.invites.create(member.guild.channels.cache.first(), { maxUses: 1 });
-
-  member.user.send(`Saved from kick\nJoin: ${invite.url}`).catch(() => {});
-});
-
-// ================= INTERACTIONS =================
+// ================= ROLE BUTTON HANDLER =================
 client.on(Events.InteractionCreate, async i => {
 
+  // 🔘 BUTTONS FIRST (IMPORTANT FIX)
+  if (i.isButton()) {
+    const roleId = i.customId.split("_")[1];
+
+    try {
+      const role = i.guild.roles.cache.get(roleId);
+      if (!role) {
+        return i.reply({ content: "Role not found", ephemeral: true });
+      }
+
+      if (i.member.roles.cache.has(roleId)) {
+        await i.member.roles.remove(roleId);
+        await i.reply({ content: "Role removed", ephemeral: true });
+      } else {
+        await i.member.roles.add(roleId);
+        await i.reply({ content: "Role added", ephemeral: true });
+      }
+
+    } catch (err) {
+      console.error(err);
+      await i.reply({ content: "Failed (check role permissions)", ephemeral: true });
+    }
+
+    return;
+  }
+
+  // ================= SLASH COMMANDS =================
   if (!i.isChatInputCommand()) return;
 
   // DOWNLOAD
@@ -203,20 +164,23 @@ client.on(Events.InteractionCreate, async i => {
     const auto = i.options.getBoolean("auto");
     const volume = i.options.getNumber("volume");
 
+    const writer = fs.createWriteStream("in.mp3");
     const res = await axios({ url: file.url, responseType: "stream" });
-    res.data.pipe(fs.createWriteStream("in.mp3"));
 
-    setTimeout(() => {
+    res.data.pipe(writer);
+
+    writer.on("finish", () => {
       const filter = auto ? `bass=g=15,volume=${volume}` : `volume=${volume}`;
 
       exec(`ffmpeg -y -i in.mp3 -af "${filter}" out.mp3`, async err => {
         if (err) return i.editReply("ffmpeg missing");
 
         await i.editReply({ files: ["out.mp3"] });
+
         fs.unlinkSync("in.mp3");
         fs.unlinkSync("out.mp3");
       });
-    }, 2000);
+    });
   }
 
   // PURGE
@@ -261,37 +225,26 @@ client.on(Events.InteractionCreate, async i => {
     await i.reply({ content: "done", ephemeral: true });
   }
 
-  // BUTTON ROLE
-  if (i.isButton()) {
-    const roleId = i.customId.split("_")[1];
-
-    if (i.member.roles.cache.has(roleId)) {
-      await i.member.roles.remove(roleId);
-      i.reply({ content: "removed", ephemeral: true });
-    } else {
-      await i.member.roles.add(roleId);
-      i.reply({ content: "added", ephemeral: true });
-    }
-  }
-
 });
 
-// ================= WELCOME =================
+// ================= AUTO ROLE =================
 client.on("guildMemberAdd", async m => {
+  try {
+    await m.roles.add(AUTO_ROLE);
+  } catch (e) {
+    console.error("Auto role failed:", e);
+  }
 
   const ch = m.guild.channels.cache.get(WELCOME_CHANNEL);
   if (!ch) return;
 
-  await m.roles.add(AUTO_ROLE).catch(() => {});
-
   const embed = new EmbedBuilder()
     .setColor(0xFFD700)
     .setDescription(`Welcome <@${m.id}> | Member #${m.guild.memberCount}`)
-    .setThumbnail(m.user.displayAvatarURL())
-    .setImage("https://media.tenor.com/3Z1u1pJqkP4AAAAC/karol-g-karol-ariescarey-latina-foreva.gif");
+    .setThumbnail(m.user.displayAvatarURL());
 
   ch.send({ embeds: [embed] });
 });
 
 // ================= LOGIN =================
-client.login(TOKEN).catch(console.error);
+client.login(TOKEN);
