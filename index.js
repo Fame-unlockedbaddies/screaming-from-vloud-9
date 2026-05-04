@@ -18,10 +18,11 @@ const {
   ButtonBuilder,
   ActionRowBuilder,
   ButtonStyle,
-  PermissionsBitField
+  PermissionsBitField,
+  AuditLogEvent
 } = require("discord.js");
 
-// CONFIG
+// ================= CONFIG =================
 const TOKEN = process.env.TOKEN;
 const CLIENT_ID = process.env.CLIENT_ID;
 const GUILD_ID = "1428878035926388809";
@@ -29,122 +30,116 @@ const GUILD_ID = "1428878035926388809";
 const WELCOME_CHANNEL = "1487287724674384032";
 const AUTO_ROLE = "1448796463491584060";
 
-// WEB SERVER
+const PROTECT_ROLE = "1497843975615283350";
+const MUTE_ROLE_ID = "1500698113965428756";
+
+// ================= WEB =================
 const app = express();
 app.get("/", (req, res) => res.send("Bot running"));
 app.listen(process.env.PORT || 3000);
 
-// BOT
+// ================= BOT =================
 const client = new Client({
   intents: [
     GatewayIntentBits.Guilds,
     GatewayIntentBits.GuildMembers,
-    GatewayIntentBits.GuildMessages
+    GatewayIntentBits.GuildMessages,
+    GatewayIntentBits.MessageContent
   ]
 });
 
+const protectedUsers = new Set();
 
 // ================= COMMANDS =================
-
 const commands = [
 
-  // DOWNLOAD
   new SlashCommandBuilder()
     .setName("download")
     .setDescription("Download music")
-    .addSubcommand(sub =>
-      sub.setName("music")
-        .setDescription("Download from YouTube or Spotify")
+    .addSubcommand(s =>
+      s.setName("music")
+        .setDescription("Download from link")
         .addStringOption(o =>
-          o.setName("url").setDescription("Song URL").setRequired(true)
-        )
+          o.setName("url").setDescription("Song URL").setRequired(true))
     ),
 
-  // AUDIO EDIT
   new SlashCommandBuilder()
     .setName("audio")
     .setDescription("Edit audio")
-    .addSubcommand(sub =>
-      sub.setName("edit")
+    .addSubcommand(s =>
+      s.setName("edit")
         .setDescription("Enhance audio")
         .addAttachmentOption(o =>
           o.setName("file").setDescription("Audio file").setRequired(true))
         .addBooleanOption(o =>
           o.setName("auto").setDescription("Auto enhance").setRequired(true))
         .addNumberOption(o =>
-          o.setName("volume").setDescription("Volume (1-3)").setRequired(true))
+          o.setName("volume").setDescription("Volume 1-3").setRequired(true))
     ),
 
-  // BASSBOOST
   new SlashCommandBuilder()
     .setName("bassboost")
-    .setDescription("Boost bass + loud")
+    .setDescription("Bass boost audio")
     .addAttachmentOption(o =>
-      o.setName("file").setDescription("Audio file").setRequired(true)
+      o.setName("file").setDescription("Audio").setRequired(true)
     ),
 
-  // ADD INTRO
   new SlashCommandBuilder()
     .setName("add")
-    .setDescription("Add intro to audio")
+    .setDescription("Add intro")
     .addAttachmentOption(o =>
-      o.setName("intro").setDescription("Intro audio").setRequired(true))
+      o.setName("intro").setDescription("Intro").setRequired(true))
     .addAttachmentOption(o =>
-      o.setName("main").setDescription("Main audio").setRequired(true)),
+      o.setName("main").setDescription("Main").setRequired(true)),
 
-  // PURGE
   new SlashCommandBuilder()
     .setName("purge")
     .setDescription("Delete messages")
-    .addSubcommand(sub =>
-      sub.setName("all").setDescription("Clear channel")
-    ),
+    .addSubcommand(s => s.setName("all").setDescription("Clear channel")),
 
-  // ROLE PANEL
   new SlashCommandBuilder()
     .setName("set")
     .setDescription("Role panel")
-    .addSubcommand(sub =>
-      sub.setName("role-reactions")
+    .addSubcommand(s =>
+      s.setName("role-reactions")
         .setDescription("Create panel")
         .addStringOption(o =>
           o.setName("title").setDescription("Title").setRequired(true))
         .addStringOption(o =>
           o.setName("background").setDescription("Image URL").setRequired(true))
 
-        .addRoleOption(o => o.setName("role1").setDescription("Role 1"))
-        .addStringOption(o => o.setName("emoji1").setDescription("Emoji 1"))
-        .addStringOption(o => o.setName("name1").setDescription("Name 1"))
+        .addRoleOption(o => o.setName("role1").setDescription("Role"))
+        .addStringOption(o => o.setName("emoji1").setDescription("Emoji"))
+        .addStringOption(o => o.setName("name1").setDescription("Name"))
 
-        .addRoleOption(o => o.setName("role2").setDescription("Role 2"))
-        .addStringOption(o => o.setName("emoji2").setDescription("Emoji 2"))
-        .addStringOption(o => o.setName("name2").setDescription("Name 2"))
+        .addRoleOption(o => o.setName("role2").setDescription("Role"))
+        .addStringOption(o => o.setName("emoji2").setDescription("Emoji"))
+        .addStringOption(o => o.setName("name2").setDescription("Name"))
 
-        .addRoleOption(o => o.setName("role3").setDescription("Role 3"))
-        .addStringOption(o => o.setName("emoji3").setDescription("Emoji 3"))
-        .addStringOption(o => o.setName("name3").setDescription("Name 3"))
+        .addRoleOption(o => o.setName("role3").setDescription("Role"))
+        .addStringOption(o => o.setName("emoji3").setDescription("Emoji"))
+        .addStringOption(o => o.setName("name3").setDescription("Name"))
 
-        .addRoleOption(o => o.setName("role4").setDescription("Role 4"))
-        .addStringOption(o => o.setName("emoji4").setDescription("Emoji 4"))
-        .addStringOption(o => o.setName("name4").setDescription("Name 4"))
+        .addRoleOption(o => o.setName("role4").setDescription("Role"))
+        .addStringOption(o => o.setName("emoji4").setDescription("Emoji"))
+        .addStringOption(o => o.setName("name4").setDescription("Name"))
 
-        .addRoleOption(o => o.setName("role5").setDescription("Role 5"))
-        .addStringOption(o => o.setName("emoji5").setDescription("Emoji 5"))
-        .addStringOption(o => o.setName("name5").setDescription("Name 5"))
+        .addRoleOption(o => o.setName("role5").setDescription("Role"))
+        .addStringOption(o => o.setName("emoji5").setDescription("Emoji"))
+        .addStringOption(o => o.setName("name5").setDescription("Name"))
 
-        .addRoleOption(o => o.setName("role6").setDescription("Role 6"))
-        .addStringOption(o => o.setName("emoji6").setDescription("Emoji 6"))
-        .addStringOption(o => o.setName("name6").setDescription("Name 6"))
+        .addRoleOption(o => o.setName("role6").setDescription("Role"))
+        .addStringOption(o => o.setName("emoji6").setDescription("Emoji"))
+        .addStringOption(o => o.setName("name6").setDescription("Name"))
 
-        .addRoleOption(o => o.setName("role7").setDescription("Role 7"))
-        .addStringOption(o => o.setName("emoji7").setDescription("Emoji 7"))
-        .addStringOption(o => o.setName("name7").setDescription("Name 7"))
+        .addRoleOption(o => o.setName("role7").setDescription("Role"))
+        .addStringOption(o => o.setName("emoji7").setDescription("Emoji"))
+        .addStringOption(o => o.setName("name7").setDescription("Name"))
     )
 
 ].map(c => c.toJSON());
 
-
-// REGISTER COMMANDS
+// REGISTER
 const rest = new REST({ version: "10" }).setToken(TOKEN);
 (async () => {
   await rest.put(
@@ -156,29 +151,116 @@ const rest = new REST({ version: "10" }).setToken(TOKEN);
 client.once("ready", () => console.log("Bot ready"));
 
 
-// ================= INTERACTIONS =================
+// ================= PROTECT COMMAND =================
+client.on("messageCreate", async message => {
+  if (!message.content.startsWith("!calido protect")) return;
 
+  if (!message.member.roles.cache.has(PROTECT_ROLE))
+    return message.reply("No permission");
+
+  const user = message.mentions.members.first();
+  if (!user) return message.reply("Tag someone");
+
+  protectedUsers.add(user.id);
+
+  message.channel.send(`<@${user.id}> you are being protected by me`);
+
+  user.send(`You are now being protected by calido by ${message.author.tag}`)
+    .catch(() => {});
+});
+
+
+// ================= AUTO UNMUTE =================
+client.on("guildMemberUpdate", async (oldM, newM) => {
+  if (!protectedUsers.has(newM.id)) return;
+
+  try {
+    if (newM.communicationDisabledUntilTimestamp) {
+      await newM.timeout(null);
+    }
+
+    if (newM.roles.cache.has(MUTE_ROLE_ID)) {
+      await newM.roles.remove(MUTE_ROLE_ID);
+    }
+
+  } catch (e) {
+    console.error("Protection error:", e);
+  }
+});
+
+
+// ================= ANTI BAN =================
+client.on("guildBanAdd", async ban => {
+  if (!protectedUsers.has(ban.user.id)) return;
+
+  try {
+    const logs = await ban.guild.fetchAuditLogs({
+      type: AuditLogEvent.MemberBanAdd,
+      limit: 1
+    });
+
+    const entry = logs.entries.first();
+    const executor = entry?.executor;
+
+    await ban.guild.members.unban(ban.user.id);
+
+    await ban.user.send(
+      `this person tried to ban you but you was saved with calido protection!\nmoderator: ${executor?.tag || "unknown"}`
+    ).catch(() => {});
+
+  } catch (err) {
+    console.error("Anti-ban error:", err);
+  }
+});
+
+
+// ================= ANTI KICK =================
+client.on("guildMemberRemove", async member => {
+  if (!protectedUsers.has(member.id)) return;
+
+  try {
+    const logs = await member.guild.fetchAuditLogs({
+      type: AuditLogEvent.MemberKick,
+      limit: 1
+    });
+
+    const entry = logs.entries.first();
+    if (!entry || entry.target.id !== member.id) return;
+
+    const executor = entry.executor;
+
+    const invite = await member.guild.invites.create(
+      member.guild.channels.cache.first(),
+      { maxUses: 1 }
+    );
+
+    await member.user.send(
+      `this person tried to kick you but you was saved with calido protection!\nmoderator: ${executor.tag}\nrejoin: ${invite.url}`
+    ).catch(() => {});
+
+  } catch (err) {
+    console.error("Anti-kick error:", err);
+  }
+});
+
+
+// ================= INTERACTIONS =================
 client.on(Events.InteractionCreate, async interaction => {
 
+  if (!interaction.isChatInputCommand()) return;
+
   // DOWNLOAD
-  if (interaction.isChatInputCommand() && interaction.commandName === "download") {
+  if (interaction.commandName === "download") {
     await interaction.deferReply();
-
     const url = interaction.options.getString("url");
-    const file = `song_${Date.now()}.mp3`;
 
-    exec(`yt-dlp -x --audio-format mp3 --no-playlist -o "${file}" "${url}"`, async (err) => {
-      if (err) return interaction.editReply("Download failed");
-
-      await interaction.editReply({
-        files: [new AttachmentBuilder(file)]
-      });
-
-      fs.unlinkSync(file);
+    exec(`yt-dlp -x --audio-format mp3 -o "song.mp3" "${url}"`, async () => {
+      await interaction.editReply({ files: ["song.mp3"] });
+      fs.unlinkSync("song.mp3");
     });
   }
 
-  // AUDIO EDIT
+  // AUDIO
   if (interaction.commandName === "audio") {
     await interaction.deferReply();
 
@@ -186,20 +268,19 @@ client.on(Events.InteractionCreate, async interaction => {
     const auto = interaction.options.getBoolean("auto");
     const volume = interaction.options.getNumber("volume");
 
-    const input = "input.mp3";
-    const output = "output.mp3";
+    const input = "in.mp3";
+    const output = "out.mp3";
 
-    const res = await axios({ url: file.url, method: "GET", responseType: "stream" });
-    const writer = fs.createWriteStream(input);
-    res.data.pipe(writer);
-    await new Promise(r => writer.on("finish", r));
+    const res = await axios({ url: file.url, responseType: "stream" });
+    res.data.pipe(fs.createWriteStream(input));
+    await new Promise(r => setTimeout(r, 2000));
 
     const filter = auto
       ? `bass=g=15,acompressor=threshold=-28dB:ratio=9,alimiter=limit=0.98,volume=${volume}`
       : `loudnorm=I=-14,volume=${volume}`;
 
     exec(`ffmpeg -y -i ${input} -af "${filter}" ${output}`, async () => {
-      await interaction.editReply({ files: [new AttachmentBuilder(output)] });
+      await interaction.editReply({ files: ["out.mp3"] });
       fs.unlinkSync(input);
       fs.unlinkSync(output);
     });
@@ -210,16 +291,15 @@ client.on(Events.InteractionCreate, async interaction => {
     await interaction.deferReply();
 
     const file = interaction.options.getAttachment("file");
-    const input = "bass_in.mp3";
-    const output = "bass_out.mp3";
+    const input = "b1.mp3";
+    const output = "b2.mp3";
 
-    const res = await axios({ url: file.url, method: "GET", responseType: "stream" });
-    const writer = fs.createWriteStream(input);
-    res.data.pipe(writer);
-    await new Promise(r => writer.on("finish", r));
+    const res = await axios({ url: file.url, responseType: "stream" });
+    res.data.pipe(fs.createWriteStream(input));
+    await new Promise(r => setTimeout(r, 2000));
 
     exec(`ffmpeg -y -i ${input} -af "bass=g=18,volume=2" ${output}`, async () => {
-      await interaction.editReply({ files: [new AttachmentBuilder(output)] });
+      await interaction.editReply({ files: ["b2.mp3"] });
       fs.unlinkSync(input);
       fs.unlinkSync(output);
     });
@@ -232,108 +312,80 @@ client.on(Events.InteractionCreate, async interaction => {
     const intro = interaction.options.getAttachment("intro");
     const main = interaction.options.getAttachment("main");
 
-    exec(`ffmpeg -y -i "${intro.url}" -i "${main.url}" -filter_complex "[0:a][1:a]concat=n=2:v=0:a=1[out]" -map "[out]" output.mp3`, async () => {
-      await interaction.editReply({ files: [new AttachmentBuilder("output.mp3")] });
-      fs.unlinkSync("output.mp3");
+    exec(`ffmpeg -y -i "${intro.url}" -i "${main.url}" -filter_complex "[0:a][1:a]concat=n=2:v=0:a=1[out]" -map "[out]" out.mp3`, async () => {
+      await interaction.editReply({ files: ["out.mp3"] });
+      fs.unlinkSync("out.mp3");
     });
   }
 
   // PURGE
   if (interaction.commandName === "purge") {
-    if (!interaction.member.permissions.has(PermissionsBitField.Flags.ManageMessages)) {
-      return interaction.reply({ content: "No permission", ephemeral: true });
-    }
-
     await interaction.reply({ content: "Clearing...", ephemeral: true });
 
-    let fetched;
+    let msgs;
     do {
-      fetched = await interaction.channel.messages.fetch({ limit: 100 });
-      const deletable = fetched.filter(m => Date.now() - m.createdTimestamp < 1209600000);
-      await interaction.channel.bulkDelete(deletable, true);
-    } while (fetched.size >= 2);
+      msgs = await interaction.channel.messages.fetch({ limit: 100 });
+      await interaction.channel.bulkDelete(msgs, true);
+    } while (msgs.size >= 2);
   }
 
-  // ROLE PANEL (FINAL FIX)
+  // ROLE PANEL
   if (interaction.commandName === "set") {
-    try {
-      const title = interaction.options.getString("title");
-      const bg = interaction.options.getString("background");
+    const title = interaction.options.getString("title");
+    const bg = interaction.options.getString("background");
 
-      const roles = [];
+    const roles = [];
 
-      for (let i = 1; i <= 7; i++) {
-        const role = interaction.options.getRole(`role${i}`);
-        const emoji = interaction.options.getString(`emoji${i}`);
-        const name = interaction.options.getString(`name${i}`);
-
-        if (role && name) roles.push({ role, emoji, name });
-      }
-
-      if (!roles.length) {
-        return interaction.reply({ content: "Add at least 1 role", ephemeral: true });
-      }
-
-      const rows = [];
-      let row = new ActionRowBuilder();
-
-      for (const r of roles) {
-        if (row.components.length === 5) {
-          rows.push(row);
-          row = new ActionRowBuilder();
-        }
-
-        const btn = new ButtonBuilder()
-          .setCustomId(`role_${r.role.id}`)
-          .setLabel(r.name.substring(0, 80))
-          .setStyle(ButtonStyle.Secondary);
-
-        if (r.emoji) {
-          try { btn.setEmoji(r.emoji.trim().split(" ")[0]); } catch {}
-        }
-
-        row.addComponents(btn);
-      }
-
-      if (row.components.length) rows.push(row);
-
-      const embed = new EmbedBuilder()
-        .setColor(0xFFD700)
-        .setTitle(title.substring(0, 256));
-
-      if (bg && bg.startsWith("http")) embed.setImage(bg);
-
-      await interaction.channel.send({
-        embeds: [embed],
-        components: rows
-      });
-
-      await interaction.reply({
-        content: "Panel created",
-        ephemeral: true
-      });
-
-    } catch (err) {
-      console.error("ROLE PANEL ERROR:", err);
-
-      interaction.reply({
-        content: `Error: ${err.message}`,
-        ephemeral: true
-      });
+    for (let i = 1; i <= 7; i++) {
+      const role = interaction.options.getRole(`role${i}`);
+      const emoji = interaction.options.getString(`emoji${i}`);
+      const name = interaction.options.getString(`name${i}`);
+      if (role && name) roles.push({ role, emoji, name });
     }
+
+    const rows = [];
+    let row = new ActionRowBuilder();
+
+    for (const r of roles) {
+      if (row.components.length === 5) {
+        rows.push(row);
+        row = new ActionRowBuilder();
+      }
+
+      const btn = new ButtonBuilder()
+        .setCustomId(`role_${r.role.id}`)
+        .setLabel(r.name)
+        .setStyle(ButtonStyle.Secondary);
+
+      if (r.emoji) {
+        try { btn.setEmoji(r.emoji.split(" ")[0]); } catch {}
+      }
+
+      row.addComponents(btn);
+    }
+
+    if (row.components.length) rows.push(row);
+
+    const embed = new EmbedBuilder()
+      .setColor(0xFFD700)
+      .setTitle(title)
+      .setImage(bg);
+
+    await interaction.channel.send({ embeds: [embed], components: rows });
+    await interaction.reply({ content: "Panel created", ephemeral: true });
   }
 
-  // BUTTON HANDLER
+  // BUTTON ROLE
   if (interaction.isButton()) {
     const roleId = interaction.customId.split("_")[1];
     const member = interaction.member;
 
     if (member.roles.cache.has(roleId)) {
       await member.roles.remove(roleId);
-      return interaction.reply({ content: "Removed", ephemeral: true });
+      interaction.reply({ content: "Removed", ephemeral: true });
     } else {
       await member.roles.add(roleId);
-      return interaction.reply({ content: "Added", ephemeral: true });
+      interaction.reply({ content: "Added", ephemeral: true });
     }
   }
 
@@ -341,13 +393,7 @@ client.on(Events.InteractionCreate, async interaction => {
 
 
 // ================= WELCOME =================
-
-const welcomed = new Set();
-
 client.on("guildMemberAdd", async member => {
-  if (welcomed.has(member.id)) return;
-  welcomed.add(member.id);
-
   const channel = member.guild.channels.cache.get(WELCOME_CHANNEL);
   if (!channel) return;
 
