@@ -50,64 +50,77 @@ const client = new Client({
 // ================= COMMANDS =================
 const commands = [
 
-  // AUDIO MERGE
+  // 🎧 AUDIO
   new SlashCommandBuilder()
     .setName("add")
     .setDescription("Merge intro + main audio")
-    .addAttachmentOption(o => o.setName("intro").setRequired(true))
-    .addAttachmentOption(o => o.setName("main").setRequired(true)),
+    .addAttachmentOption(o =>
+      o.setName("intro")
+       .setDescription("Intro audio file")
+       .setRequired(true))
+    .addAttachmentOption(o =>
+      o.setName("main")
+       .setDescription("Main audio file")
+       .setRequired(true)),
 
-  // ROLE PANEL
+  // 🎭 ROLE PANEL
   new SlashCommandBuilder()
     .setName("rolepanel")
-    .setDescription("Single-choice roles")
-    .addStringOption(o => o.setName("title").setRequired(true))
+    .setDescription("Create single-choice role panel")
+    .addStringOption(o =>
+      o.setName("title")
+       .setDescription("Panel title")
+       .setRequired(true))
 
-    .addRoleOption(o => o.setName("role1"))
-    .addStringOption(o => o.setName("name1"))
+    .addRoleOption(o => o.setName("role1").setDescription("Role 1"))
+    .addStringOption(o => o.setName("name1").setDescription("Label 1"))
 
-    .addRoleOption(o => o.setName("role2"))
-    .addStringOption(o => o.setName("name2"))
+    .addRoleOption(o => o.setName("role2").setDescription("Role 2"))
+    .addStringOption(o => o.setName("name2").setDescription("Label 2"))
 
-    .addRoleOption(o => o.setName("role3"))
-    .addStringOption(o => o.setName("name3"))
+    .addRoleOption(o => o.setName("role3").setDescription("Role 3"))
+    .addStringOption(o => o.setName("name3").setDescription("Label 3"))
 
-    .addRoleOption(o => o.setName("role4"))
-    .addStringOption(o => o.setName("name4"))
+    .addRoleOption(o => o.setName("role4").setDescription("Role 4"))
+    .addStringOption(o => o.setName("name4").setDescription("Label 4"))
 
-    .addRoleOption(o => o.setName("role5"))
-    .addStringOption(o => o.setName("name5"))
+    .addRoleOption(o => o.setName("role5").setDescription("Role 5"))
+    .addStringOption(o => o.setName("name5").setDescription("Label 5"))
 
-    .addRoleOption(o => o.setName("role6"))
-    .addStringOption(o => o.setName("name6"))
+    .addRoleOption(o => o.setName("role6").setDescription("Role 6"))
+    .addStringOption(o => o.setName("name6").setDescription("Label 6"))
 
-    .addRoleOption(o => o.setName("role7"))
-    .addStringOption(o => o.setName("name7"))
+    .addRoleOption(o => o.setName("role7").setDescription("Role 7"))
+    .addStringOption(o => o.setName("name7").setDescription("Label 7"))
 
 ].map(c => c.toJSON());
 
-// REGISTER
+// ================= REGISTER =================
 const rest = new REST({ version: "10" }).setToken(TOKEN);
 (async () => {
-  await rest.put(Routes.applicationGuildCommands(CLIENT_ID, GUILD_ID), { body: commands });
+  await rest.put(
+    Routes.applicationGuildCommands(CLIENT_ID, GUILD_ID),
+    { body: commands }
+  );
+  console.log("✅ Commands registered");
 })();
 
-// READY
+// ================= READY =================
 client.once("ready", () => {
-  console.log(`✅ ${client.user.tag}`);
+  console.log(`✅ Logged in as ${client.user.tag}`);
 });
 
-// ================= SIMPLE SPAM FILTER =================
+// ================= SPAM FILTER =================
 function isSpam(text) {
   if (text.length < 3) return true;
-  if (/^(.)\1{4,}$/i.test(text)) return true; // AAAAA
+  if (/^(.)\1{4,}$/i.test(text)) return true;
   return false;
 }
 
 // ================= INTERACTIONS =================
 client.on(Events.InteractionCreate, async i => {
 
-  // AUDIO
+  // 🎧 AUDIO
   if (i.isChatInputCommand() && i.commandName === "add") {
 
     await i.deferReply();
@@ -115,30 +128,35 @@ client.on(Events.InteractionCreate, async i => {
     const intro = i.options.getAttachment("intro");
     const main = i.options.getAttachment("main");
 
-    const introPath = "intro.mp3";
-    const mainPath = "main.mp3";
-    const out = "out.mp3";
+    try {
+      const introPath = "intro.mp3";
+      const mainPath = "main.mp3";
+      const out = "out.mp3";
 
-    const d1 = await axios({ url: intro.url, responseType: "stream" });
-    const d2 = await axios({ url: main.url, responseType: "stream" });
+      const d1 = await axios({ url: intro.url, responseType: "stream" });
+      const d2 = await axios({ url: main.url, responseType: "stream" });
 
-    await new Promise(r => d1.data.pipe(fs.createWriteStream(introPath)).on("finish", r));
-    await new Promise(r => d2.data.pipe(fs.createWriteStream(mainPath)).on("finish", r));
+      await new Promise(r => d1.data.pipe(fs.createWriteStream(introPath)).on("finish", r));
+      await new Promise(r => d2.data.pipe(fs.createWriteStream(mainPath)).on("finish", r));
 
-    ffmpeg()
-      .input(introPath)
-      .input(mainPath)
-      .on("end", async () => {
-        await i.editReply({ files: [out] });
-        fs.unlinkSync(introPath);
-        fs.unlinkSync(mainPath);
-        fs.unlinkSync(out);
-      })
-      .on("error", () => i.editReply("❌ audio failed"))
-      .mergeToFile(out);
+      ffmpeg()
+        .input(introPath)
+        .input(mainPath)
+        .on("end", async () => {
+          await i.editReply({ files: [out] });
+          fs.unlinkSync(introPath);
+          fs.unlinkSync(mainPath);
+          fs.unlinkSync(out);
+        })
+        .on("error", () => i.editReply("❌ Audio failed"))
+        .mergeToFile(out);
+
+    } catch {
+      i.editReply("❌ Failed");
+    }
   }
 
-  // ROLE BUTTON (1 ROLE ONLY)
+  // 🎭 ROLE BUTTON (1 ROLE ONLY)
   if (i.isButton()) {
 
     await i.deferReply({ ephemeral: true });
@@ -146,13 +164,13 @@ client.on(Events.InteractionCreate, async i => {
     const member = await i.guild.members.fetch(i.user.id);
     const buttons = i.message.components.flatMap(r => r.components);
 
-    let removedRole = null;
+    let removed = null;
 
     for (const btn of buttons) {
       const id = btn.customId.replace("role_", "");
 
       if (member.roles.cache.has(id)) {
-        removedRole = `<@&${id}>`;
+        removed = `<@&${id}>`;
         await member.roles.remove(id).catch(()=>{});
       }
     }
@@ -162,18 +180,20 @@ client.on(Events.InteractionCreate, async i => {
 
     if (!role) return i.editReply("❌ Role not found");
 
+    if (role.position >= i.guild.members.me.roles.highest.position) {
+      return i.editReply("❌ Role too high");
+    }
+
     await member.roles.add(roleId);
 
-    if (removedRole) {
-      return i.editReply(
-        `🔄 Removed ${removedRole}\n✅ You now have ${role}\n⚠️ Only ONE role allowed`
-      );
+    if (removed) {
+      return i.editReply(`🔄 Removed ${removed}\n✅ You now have ${role}\n⚠️ Only ONE role allowed`);
     }
 
     i.editReply(`✅ You now have ${role}`);
   }
 
-  // ROLE PANEL
+  // 🎭 ROLE PANEL
   if (i.isChatInputCommand() && i.commandName === "rolepanel") {
 
     const embed = new EmbedBuilder()
@@ -219,30 +239,21 @@ client.on("messageCreate", async msg => {
 
   const txt = msg.content.toLowerCase();
 
-  // BLOCK WORDS
   if (badWords.some(w => txt.includes(w))) {
     await msg.delete().catch(()=>{});
     return;
   }
 
-  // BLOCK LINKS
   if (badLinks.some(l => txt.includes(l))) {
     await msg.delete().catch(()=>{});
     return;
   }
 
-  // 🌍 TRANSLATE ANY LANGUAGE
   if (isSpam(msg.content)) return;
 
   try {
     const res = await axios.get("https://translate.googleapis.com/translate_a/single", {
-      params: {
-        client: "gtx",
-        sl: "auto",
-        tl: "en",
-        dt: "t",
-        q: msg.content
-      }
+      params: { client:"gtx", sl:"auto", tl:"en", dt:"t", q:msg.content }
     });
 
     const translated = res.data[0].map(x => x[0]).join("");
