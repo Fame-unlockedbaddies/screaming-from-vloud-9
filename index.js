@@ -6,7 +6,10 @@ process.on("unhandledRejection", console.error);
 const express = require("express");
 const fs = require("fs");
 const axios = require("axios");
-const { exec } = require("child_process");
+
+const ffmpeg = require("fluent-ffmpeg");
+const ffmpegPath = require("ffmpeg-static");
+ffmpeg.setFfmpegPath(ffmpegPath);
 
 const {
   Client,
@@ -52,14 +55,14 @@ const commands = [
   new SlashCommandBuilder()
     .setName("add")
     .setDescription("Merge intro + main audio")
-    .addAttachmentOption(o => o.setName("intro").setRequired(true).setDescription("Intro"))
-    .addAttachmentOption(o => o.setName("main").setRequired(true).setDescription("Main")),
+    .addAttachmentOption(o => o.setName("intro").setRequired(true).setDescription("Intro audio"))
+    .addAttachmentOption(o => o.setName("main").setRequired(true).setDescription("Main audio")),
 
   // 🎭 ROLE PANEL
   new SlashCommandBuilder()
     .setName("rolepanel")
     .setDescription("Single-choice role panel")
-    .addStringOption(o => o.setName("title").setRequired(true).setDescription("Title"))
+    .addStringOption(o => o.setName("title").setRequired(true).setDescription("Panel title"))
 
     .addRoleOption(o => o.setName("role1").setDescription("Role 1"))
     .addStringOption(o => o.setName("name1").setDescription("Label 1"))
@@ -96,7 +99,7 @@ client.once("ready", () => {
   console.log(`✅ Logged in as ${client.user.tag}`);
 });
 
-// ================= AUDIO COMMAND =================
+// ================= INTERACTIONS =================
 client.on(Events.InteractionCreate, async i => {
 
   // ===== AUDIO =====
@@ -118,15 +121,17 @@ client.on(Events.InteractionCreate, async i => {
       await new Promise(r => d1.data.pipe(fs.createWriteStream(introPath)).on("finish", r));
       await new Promise(r => d2.data.pipe(fs.createWriteStream(mainPath)).on("finish", r));
 
-      exec(`ffmpeg -y -i ${introPath} -i ${mainPath} -filter_complex "[0:a][1:a]concat=n=2:v=0:a=1[out]" -map "[out]" ${out}`, async err => {
-        if (err) return i.editReply("❌ ffmpeg error");
-
-        await i.editReply({ files: [out] });
-
-        fs.unlinkSync(introPath);
-        fs.unlinkSync(mainPath);
-        fs.unlinkSync(out);
-      });
+      ffmpeg()
+        .input(introPath)
+        .input(mainPath)
+        .on("end", async () => {
+          await i.editReply({ files: [out] });
+          fs.unlinkSync(introPath);
+          fs.unlinkSync(mainPath);
+          fs.unlinkSync(out);
+        })
+        .on("error", () => i.editReply("❌ FFmpeg failed"))
+        .mergeToFile(out);
 
     } catch {
       i.editReply("❌ Failed");
@@ -140,16 +145,13 @@ client.on(Events.InteractionCreate, async i => {
 
     const member = await i.guild.members.fetch(i.user.id);
 
-    // get ALL buttons
-    const allButtons = [];
+    const buttons = [];
     for (const row of i.message.components) {
-      for (const btn of row.components) {
-        allButtons.push(btn);
-      }
+      for (const btn of row.components) buttons.push(btn);
     }
 
-    // remove all roles
-    for (const btn of allButtons) {
+    // remove all roles from panel
+    for (const btn of buttons) {
       const id = btn.customId.startsWith("role_")
         ? btn.customId.split("_")[1]
         : btn.customId;
@@ -214,8 +216,8 @@ client.on(Events.InteractionCreate, async i => {
 });
 
 // ================= MODERATION =================
-const badWords = ["dox","doxx","ho","fuck","shit","bitch"];
-const blockedLinks = ["grabify","iplogger","discord.gg"];
+const badWords = ["dox","doxx","doxxing","ho","fuck","shit","bitch","slut","wtf","stfu"];
+const badLinks = ["grabify","iplogger","discord.gg"];
 
 client.on("messageCreate", async msg => {
   if (msg.author.bot) return;
@@ -224,47 +226,44 @@ client.on("messageCreate", async msg => {
 
   if (badWords.some(w => txt.includes(w))) {
     await msg.delete().catch(()=>{});
-    return msg.channel.send(`⚠️ ${msg.author} not allowed`).then(m=>setTimeout(()=>m.delete(),4000));
+    return msg.channel.send(`⚠️ ${msg.author} language not allowed`).then(m=>setTimeout(()=>m.delete(),4000));
   }
 
-  if (blockedLinks.some(l => txt.includes(l))) {
+  if (badLinks.some(l => txt.includes(l))) {
     await msg.delete().catch(()=>{});
     return msg.channel.send(`🚫 ${msg.author} links blocked`).then(m=>setTimeout(()=>m.delete(),4000));
   }
 
-  // ===== TRANSLATE =====
-  if (txt.length > 3) {
+  // ===== TRANSLATION =====
+  try {
+    let t;
+
+    // Libre
     try {
-      let t;
-
-      // Libre
-      try {
-        const r = await axios.post("https://libretranslate.de/translate", {
-          q: msg.content,
-          source: "auto",
-          target: "en"
-        });
-        t = r.data.translatedText;
-      } catch {}
-
-      // Google fallback
-      if (!t || t.toLowerCase() === txt) {
-        const g = await axios.get("https://translate.googleapis.com/translate_a/single", {
-          params: { client:"gtx", sl:"auto", tl:"en", dt:"t", q:msg.content }
-        });
-        t = g.data[0].map(x=>x[0]).join("");
-      }
-
-      if (t && t.toLowerCase() !== txt) {
-        msg.reply(`🌍 ${t}`);
-      }
-
+      const r = await axios.post("https://libretranslate.de/translate", {
+        q: msg.content,
+        source: "auto",
+        target: "en"
+      });
+      t = r.data.translatedText;
     } catch {}
-  }
 
+    // Google fallback
+    if (!t || t.toLowerCase() === txt) {
+      const g = await axios.get("https://translate.googleapis.com/translate_a/single", {
+        params: { client:"gtx", sl:"auto", tl:"en", dt:"t", q:msg.content }
+      });
+      t = g.data[0].map(x=>x[0]).join("");
+    }
+
+    if (t && t.toLowerCase() !== txt) {
+      msg.reply(`🌍 ${t}`);
+    }
+
+  } catch {}
 });
 
-// ================= AUTO ROLE =================
+// ================= WELCOME =================
 client.on("guildMemberAdd", async m => {
   await m.roles.add(AUTO_ROLE).catch(()=>{});
   const ch = m.guild.channels.cache.get(WELCOME_CHANNEL);
