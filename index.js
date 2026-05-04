@@ -51,39 +51,37 @@ const client = new Client({
 // ================= COMMANDS =================
 const commands = [
 
-  // 🎧 AUDIO MERGE
   new SlashCommandBuilder()
     .setName("add")
     .setDescription("Merge intro + main audio")
-    .addAttachmentOption(o => o.setName("intro").setRequired(true).setDescription("Intro audio"))
-    .addAttachmentOption(o => o.setName("main").setRequired(true).setDescription("Main audio")),
+    .addAttachmentOption(o => o.setName("intro").setRequired(true).setDescription("Intro"))
+    .addAttachmentOption(o => o.setName("main").setRequired(true).setDescription("Main")),
 
-  // 🎭 ROLE PANEL
   new SlashCommandBuilder()
     .setName("rolepanel")
-    .setDescription("Single-choice role panel")
-    .addStringOption(o => o.setName("title").setRequired(true).setDescription("Panel title"))
+    .setDescription("Single choice role panel")
+    .addStringOption(o => o.setName("title").setRequired(true).setDescription("Title"))
 
-    .addRoleOption(o => o.setName("role1").setDescription("Role 1"))
-    .addStringOption(o => o.setName("name1").setDescription("Label 1"))
+    .addRoleOption(o => o.setName("role1"))
+    .addStringOption(o => o.setName("name1"))
 
-    .addRoleOption(o => o.setName("role2").setDescription("Role 2"))
-    .addStringOption(o => o.setName("name2").setDescription("Label 2"))
+    .addRoleOption(o => o.setName("role2"))
+    .addStringOption(o => o.setName("name2"))
 
-    .addRoleOption(o => o.setName("role3").setDescription("Role 3"))
-    .addStringOption(o => o.setName("name3").setDescription("Label 3"))
+    .addRoleOption(o => o.setName("role3"))
+    .addStringOption(o => o.setName("name3"))
 
-    .addRoleOption(o => o.setName("role4").setDescription("Role 4"))
-    .addStringOption(o => o.setName("name4").setDescription("Label 4"))
+    .addRoleOption(o => o.setName("role4"))
+    .addStringOption(o => o.setName("name4"))
 
-    .addRoleOption(o => o.setName("role5").setDescription("Role 5"))
-    .addStringOption(o => o.setName("name5").setDescription("Label 5"))
+    .addRoleOption(o => o.setName("role5"))
+    .addStringOption(o => o.setName("name5"))
 
-    .addRoleOption(o => o.setName("role6").setDescription("Role 6"))
-    .addStringOption(o => o.setName("name6").setDescription("Label 6"))
+    .addRoleOption(o => o.setName("role6"))
+    .addStringOption(o => o.setName("name6"))
 
-    .addRoleOption(o => o.setName("role7").setDescription("Role 7"))
-    .addStringOption(o => o.setName("name7").setDescription("Label 7"))
+    .addRoleOption(o => o.setName("role7"))
+    .addStringOption(o => o.setName("name7"))
 
 ].map(c => c.toJSON());
 
@@ -91,13 +89,26 @@ const commands = [
 const rest = new REST({ version: "10" }).setToken(TOKEN);
 (async () => {
   await rest.put(Routes.applicationGuildCommands(CLIENT_ID, GUILD_ID), { body: commands });
-  console.log("Commands registered");
 })();
 
 // ================= READY =================
 client.once("ready", () => {
-  console.log(`✅ Logged in as ${client.user.tag}`);
+  console.log(`✅ ${client.user.tag}`);
 });
+
+// ================= LANGUAGE CHECK =================
+function isRealLanguage(text) {
+  // must contain real words (not spam caps)
+  if (text.length < 5) return false;
+
+  // reject spam like HAHAHA / AAAAA
+  if (/^(.)\1+$/.test(text)) return false;
+
+  // must contain vowels + consonants
+  if (!/[aeiou]/i.test(text) || !/[bcdfghjklmnpqrstvwxyz]/i.test(text)) return false;
+
+  return true;
+}
 
 // ================= INTERACTIONS =================
 client.on(Events.InteractionCreate, async i => {
@@ -110,32 +121,27 @@ client.on(Events.InteractionCreate, async i => {
     const intro = i.options.getAttachment("intro");
     const main = i.options.getAttachment("main");
 
-    try {
-      const introPath = "intro.mp3";
-      const mainPath = "main.mp3";
-      const out = "out.mp3";
+    const introPath = "intro.mp3";
+    const mainPath = "main.mp3";
+    const out = "out.mp3";
 
-      const d1 = await axios({ url: intro.url, responseType: "stream" });
-      const d2 = await axios({ url: main.url, responseType: "stream" });
+    const d1 = await axios({ url: intro.url, responseType: "stream" });
+    const d2 = await axios({ url: main.url, responseType: "stream" });
 
-      await new Promise(r => d1.data.pipe(fs.createWriteStream(introPath)).on("finish", r));
-      await new Promise(r => d2.data.pipe(fs.createWriteStream(mainPath)).on("finish", r));
+    await new Promise(r => d1.data.pipe(fs.createWriteStream(introPath)).on("finish", r));
+    await new Promise(r => d2.data.pipe(fs.createWriteStream(mainPath)).on("finish", r));
 
-      ffmpeg()
-        .input(introPath)
-        .input(mainPath)
-        .on("end", async () => {
-          await i.editReply({ files: [out] });
-          fs.unlinkSync(introPath);
-          fs.unlinkSync(mainPath);
-          fs.unlinkSync(out);
-        })
-        .on("error", () => i.editReply("❌ FFmpeg failed"))
-        .mergeToFile(out);
-
-    } catch {
-      i.editReply("❌ Failed");
-    }
+    ffmpeg()
+      .input(introPath)
+      .input(mainPath)
+      .on("end", async () => {
+        await i.editReply({ files: [out] });
+        fs.unlinkSync(introPath);
+        fs.unlinkSync(mainPath);
+        fs.unlinkSync(out);
+      })
+      .on("error", () => i.editReply("❌ audio failed"))
+      .mergeToFile(out);
   }
 
   // ===== ROLE BUTTON =====
@@ -145,26 +151,20 @@ client.on(Events.InteractionCreate, async i => {
 
     const member = await i.guild.members.fetch(i.user.id);
 
-    const buttons = [];
-    for (const row of i.message.components) {
-      for (const btn of row.components) buttons.push(btn);
-    }
+    const buttons = i.message.components.flatMap(r => r.components);
 
-    // remove all roles from panel
+    let removedRole = null;
+
     for (const btn of buttons) {
-      const id = btn.customId.startsWith("role_")
-        ? btn.customId.split("_")[1]
-        : btn.customId;
+      const id = btn.customId.replace("role_", "");
 
       if (member.roles.cache.has(id)) {
+        removedRole = `<@&${id}>`;
         await member.roles.remove(id).catch(()=>{});
       }
     }
 
-    const roleId = i.customId.startsWith("role_")
-      ? i.customId.split("_")[1]
-      : i.customId;
-
+    const roleId = i.customId.replace("role_", "");
     const role = await i.guild.roles.fetch(roleId).catch(()=>null);
 
     if (!role) return i.editReply("❌ Role not found");
@@ -174,6 +174,12 @@ client.on(Events.InteractionCreate, async i => {
     }
 
     await member.roles.add(roleId);
+
+    if (removedRole) {
+      return i.editReply(
+        `🔄 Removed ${removedRole}\n✅ You now have ${role}\n\n⚠️ You can only have ONE role (you can't be 5 different ages)`
+      );
+    }
 
     i.editReply(`✅ You now have ${role}`);
   }
@@ -215,9 +221,9 @@ client.on(Events.InteractionCreate, async i => {
 
 });
 
-// ================= MODERATION =================
-const badWords = ["dox","doxx","doxxing","ho","fuck","shit","bitch","slut","wtf","stfu"];
-const badLinks = ["grabify","iplogger","discord.gg"];
+// ================= MODERATION + TRANSLATION =================
+const badWords = ["dox","doxx","doxxing","ho","fuck","shit","bitch","slut"];
+const badLinks = ["grabify","iplogger"];
 
 client.on("messageCreate", async msg => {
   if (msg.author.bot) return;
@@ -226,38 +232,26 @@ client.on("messageCreate", async msg => {
 
   if (badWords.some(w => txt.includes(w))) {
     await msg.delete().catch(()=>{});
-    return msg.channel.send(`⚠️ ${msg.author} language not allowed`).then(m=>setTimeout(()=>m.delete(),4000));
+    return;
   }
 
   if (badLinks.some(l => txt.includes(l))) {
     await msg.delete().catch(()=>{});
-    return msg.channel.send(`🚫 ${msg.author} links blocked`).then(m=>setTimeout(()=>m.delete(),4000));
+    return;
   }
 
-  // ===== TRANSLATION =====
+  // 🌍 TRANSLATE ONLY REAL LANGUAGE
+  if (!isRealLanguage(txt)) return;
+
   try {
-    let t;
+    const g = await axios.get("https://translate.googleapis.com/translate_a/single", {
+      params: { client:"gtx", sl:"auto", tl:"en", dt:"t", q:msg.content }
+    });
 
-    // Libre
-    try {
-      const r = await axios.post("https://libretranslate.de/translate", {
-        q: msg.content,
-        source: "auto",
-        target: "en"
-      });
-      t = r.data.translatedText;
-    } catch {}
+    const translated = g.data[0].map(x=>x[0]).join("");
 
-    // Google fallback
-    if (!t || t.toLowerCase() === txt) {
-      const g = await axios.get("https://translate.googleapis.com/translate_a/single", {
-        params: { client:"gtx", sl:"auto", tl:"en", dt:"t", q:msg.content }
-      });
-      t = g.data[0].map(x=>x[0]).join("");
-    }
-
-    if (t && t.toLowerCase() !== txt) {
-      msg.reply(`🌍 ${t}`);
+    if (translated && translated.toLowerCase() !== txt) {
+      msg.reply(`🌍 ${translated}`);
     }
 
   } catch {}
