@@ -24,7 +24,7 @@ const TOKEN = process.env.TOKEN;
 const CLIENT_ID = process.env.CLIENT_ID;
 const GUILD_ID = "1428878035926388809";
 
-// ================= KEEP ALIVE =================
+// ================= SERVER =================
 const app = express();
 app.get("/", (req, res) => res.send("Bot running"));
 app.listen(process.env.PORT || 3000);
@@ -33,8 +33,7 @@ app.listen(process.env.PORT || 3000);
 const client = new Client({
   intents: [
     GatewayIntentBits.Guilds,
-    GatewayIntentBits.GuildMembers,
-    GatewayIntentBits.GuildMessages
+    GatewayIntentBits.GuildMembers
   ]
 });
 
@@ -42,9 +41,8 @@ const client = new Client({
 const commands = [
   new SlashCommandBuilder()
     .setName("rolepanel")
-    .setDescription("Create a single-choice role panel")
+    .setDescription("Create single-select role panel")
     .addStringOption(o => o.setName("title").setRequired(true).setDescription("Title"))
-    .addStringOption(o => o.setName("banner").setDescription("Banner URL"))
 
     .addRoleOption(o => o.setName("role1").setDescription("Role 1"))
     .addStringOption(o => o.setName("name1").setDescription("Label 1"))
@@ -80,44 +78,58 @@ client.once("ready", () => {
   console.log(`✅ Logged in as ${client.user.tag}`);
 });
 
-// ================= ROLE PANEL STORAGE =================
-const panelRoles = new Map(); // messageId -> [roleIds]
+// ================= PANEL STORAGE =================
+const panelRoles = new Map();
 
 // ================= INTERACTIONS =================
 client.on(Events.InteractionCreate, async i => {
 
-  // ===== BUTTON CLICK =====
+  // ===== BUTTON =====
   if (i.isButton()) {
 
-    await i.deferReply({ ephemeral: true }); // 🔥 fixes interaction failed
+    await i.deferReply({ ephemeral: true });
 
-    const roleId = i.customId;
-    const role = i.guild.roles.cache.get(roleId);
+    // support old + new IDs
+    let roleId = i.customId.startsWith("role_")
+      ? i.customId.split("_")[1]
+      : i.customId;
 
+    let role = i.guild.roles.cache.get(roleId);
+
+    // 🔥 FIX: fetch if not cached
     if (!role) {
-      return i.editReply("❌ Role not found");
+      try {
+        role = await i.guild.roles.fetch(roleId);
+      } catch {}
     }
 
+    if (!role) {
+      return i.editReply("❌ Role not found (maybe deleted)");
+    }
+
+    // fetch member (fix cache issue)
+    const member = await i.guild.members.fetch(i.user.id);
+
     if (!i.guild.members.me.permissions.has(PermissionsBitField.Flags.ManageRoles)) {
-      return i.editReply("❌ Missing Manage Roles");
+      return i.editReply("❌ Missing Manage Roles permission");
     }
 
     if (role.position >= i.guild.members.me.roles.highest.position) {
-      return i.editReply("❌ Role too high");
+      return i.editReply(`❌ Cannot manage ${role}`);
     }
 
     const rolesInPanel = panelRoles.get(i.message.id) || [];
 
     try {
-      // remove all panel roles first
+      // remove old roles
       for (const r of rolesInPanel) {
-        if (i.member.roles.cache.has(r)) {
-          await i.member.roles.remove(r).catch(()=>{});
+        if (member.roles.cache.has(r)) {
+          await member.roles.remove(r).catch(()=>{});
         }
       }
 
-      // add selected role
-      await i.member.roles.add(roleId);
+      // add new role
+      await member.roles.add(roleId);
 
       i.editReply(`✅ You now have ${role}`);
 
@@ -138,9 +150,6 @@ client.on(Events.InteractionCreate, async i => {
       .setColor(0xFFD700)
       .setTitle(i.options.getString("title"));
 
-    const banner = i.options.getString("banner");
-    if (banner) embed.setImage(banner);
-
     const row = new ActionRowBuilder();
     const roleIds = [];
 
@@ -160,9 +169,11 @@ client.on(Events.InteractionCreate, async i => {
       );
     }
 
-    const msg = await i.channel.send({ embeds: [embed], components: [row] });
+    const msg = await i.channel.send({
+      embeds: [embed],
+      components: [row]
+    });
 
-    // store roles for this panel
     panelRoles.set(msg.id, roleIds);
 
     await i.reply({ content: "✅ Panel created", ephemeral: true });
