@@ -232,9 +232,8 @@ client.on(Events.InteractionCreate, async i => {
     const existing = tickets.get(i.user.id);
 
     if (existing) {
-      const ch = i.guild.channels.cache.get(existing);
-
-      if (ch) {
+      const chCheck = i.guild.channels.cache.get(existing);
+      if (chCheck) {
         return i.reply({ content: "You already have a ticket.", ephemeral: true });
       } else {
         tickets.delete(i.user.id);
@@ -273,7 +272,17 @@ client.on(Events.InteractionCreate, async i => {
       new ButtonBuilder().setCustomId("close").setLabel("Close").setStyle(ButtonStyle.Danger)
     );
 
-    await ch.send({ content: "Support will assist you shortly.", components: [row] });
+    const ticketEmbed = new EmbedBuilder()
+      .setTitle("Support Ticket")
+      .setDescription("Support will be with you shortly.\n\nTo close this press the close button **Thankyou**")
+      .addFields(
+        { name: "Opened By", value: `<@${i.user.id}>`, inline: true },
+        { name: "Ticket ID", value: `${ticketCount}`, inline: true },
+        { name: "Created", value: `<t:${Math.floor(Date.now()/1000)}:R>`, inline: true }
+      )
+      .setColor("#111111");
+
+    await ch.send({ embeds: [ticketEmbed], components: [row] });
 
     return i.reply({ content: `Ticket created: ${ch}`, ephemeral: true });
   }
