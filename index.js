@@ -54,31 +54,46 @@ const client = new Client({
 const userTickets = new Map();
 let ticketCount = 0;
 
-// ===== IMAGE VALIDATION =====
-function isValidImage(url) {
-  return /^https?:\/\/.+\.(png|jpg|jpeg|gif|webp)$/i.test(url);
+// ===== IMAGE RESOLVER =====
+async function resolveImage(url) {
+  if (!url) return null;
+
+  if (url.match(/\.(png|jpg|jpeg|gif|webp)$/i)) return url;
+
+  try {
+    if (url.includes("tenor.com")) {
+      const html = await axios.get(url);
+      const match = html.data.match(/https:\/\/media\.tenor\.com\/[^"]+\.gif/);
+      if (match) return match[0];
+    }
+
+    if (url.includes("giphy.com")) {
+      const id = url.split("-").pop();
+      return `https://media.giphy.com/media/${id}/giphy.gif`;
+    }
+  } catch {}
+
+  return null;
 }
 
 // ===== COMMANDS =====
 const commands = [
 
-  // ===== TICKET PANEL =====
   new SlashCommandBuilder()
     .setName("ticketpanel")
     .setDescription("Create ticket panel")
     .addStringOption(o => o.setName("title").setDescription("Title").setRequired(true))
     .addStringOption(o => o.setName("description").setDescription("Description").setRequired(true))
-    .addStringOption(o => o.setName("button").setDescription("Button text").setRequired(true))
-    .addStringOption(o => o.setName("image").setDescription("Image/GIF URL"))
+    .addStringOption(o => o.setName("button").setDescription("Button").setRequired(true))
+    .addStringOption(o => o.setName("image").setDescription("Image/GIF link"))
     .addStringOption(o => o.setName("color").setDescription("Hex color"))
     .addStringOption(o => o.setName("emoji").setDescription("Emoji")),
 
-  // ===== ROLE PANEL =====
   new SlashCommandBuilder()
     .setName("rolepanel")
     .setDescription("Create role panel")
     .addStringOption(o => o.setName("title").setDescription("Title").setRequired(true))
-    .addStringOption(o => o.setName("image").setDescription("Image/GIF URL"))
+    .addStringOption(o => o.setName("image").setDescription("Image/GIF"))
     .addRoleOption(o => o.setName("role1").setDescription("Role 1"))
     .addStringOption(o => o.setName("name1").setDescription("Name 1"))
     .addRoleOption(o => o.setName("role2").setDescription("Role 2"))
@@ -94,7 +109,6 @@ const commands = [
     .addRoleOption(o => o.setName("role7").setDescription("Role 7"))
     .addStringOption(o => o.setName("name7").setDescription("Name 7")),
 
-  // ===== AUDIO =====
   new SlashCommandBuilder()
     .setName("add")
     .setDescription("Merge intro + main audio")
@@ -114,41 +128,31 @@ client.once("ready", () => {
   console.log(`Logged in as ${client.user.tag}`);
 });
 
-// ===== WARN =====
-async function warn(channel, user, text) {
-  const m = await channel.send(`${user}, ${text}`);
-  setTimeout(() => m.delete().catch(()=>{}), 5000);
-}
-
 // ===== MODERATION =====
 client.on("messageCreate", async msg => {
   if (msg.author.bot) return;
 
   const t = msg.content.toLowerCase();
 
-  if (/discord\.gg|discord\.com\/invite/.test(t)) {
+  if (/discord\.gg|discord\.com\/invite/.test(t) || t.includes("dox") || t.includes("ip")) {
     await msg.delete().catch(()=>{});
-    return warn(msg.channel, msg.author, "links are not allowed.");
-  }
-
-  if (t.includes("dox") || t.includes("ip")) {
-    await msg.delete().catch(()=>{});
-    return warn(msg.channel, msg.author, "that content is not allowed.");
+    const m = await msg.channel.send(`${msg.author}, that is not allowed.`);
+    setTimeout(() => m.delete().catch(()=>{}), 5000);
   }
 });
 
 // ===== INTERACTIONS =====
 client.on(Events.InteractionCreate, async i => {
 
-  // ===== ROLE PANEL =====
+  // ===== ROLE PANEL CREATE =====
   if (i.isChatInputCommand() && i.commandName === "rolepanel") {
 
     const embed = new EmbedBuilder()
       .setTitle(i.options.getString("title"))
       .setColor("#111111");
 
-    const img = i.options.getString("image");
-    if (img && isValidImage(img)) embed.setImage(img);
+    const img = await resolveImage(i.options.getString("image"));
+    if (img) embed.setImage(img);
 
     const row = new ActionRowBuilder();
 
@@ -166,7 +170,39 @@ client.on(Events.InteractionCreate, async i => {
     }
 
     await i.channel.send({ embeds: [embed], components: [row] });
-    await i.reply({ content: "Role panel created", ephemeral: true });
+    return i.reply({ content: "Role panel created", ephemeral: true });
+  }
+
+  // ===== ROLE BUTTON =====
+  if (i.isButton() && i.customId.startsWith("role_")) {
+
+    await i.deferReply({ ephemeral: true });
+
+    const member = await i.guild.members.fetch(i.user.id);
+    const buttons = i.message.components.flatMap(r => r.components);
+
+    let removed = false;
+
+    for (const btn of buttons) {
+      const id = btn.customId.replace("role_", "");
+      if (member.roles.cache.has(id)) {
+        await member.roles.remove(id).catch(()=>{});
+        removed = true;
+      }
+    }
+
+    const roleId = i.customId.replace("role_", "");
+    const role = await i.guild.roles.fetch(roleId).catch(()=>null);
+
+    if (!role) return i.editReply("Role not found");
+
+    await member.roles.add(roleId);
+
+    i.editReply(
+      removed
+        ? `Previous role removed. New role: ${role}`
+        : `Role assigned: ${role}`
+    );
   }
 
   // ===== TICKET PANEL =====
@@ -177,23 +213,59 @@ client.on(Events.InteractionCreate, async i => {
       .setDescription(i.options.getString("description"))
       .setColor(i.options.getString("color") || "#111111");
 
-    const img = i.options.getString("image");
-    if (img && isValidImage(img)) embed.setImage(img);
+    const img = await resolveImage(i.options.getString("image"));
+    if (img) embed.setImage(img);
 
     const btn = new ButtonBuilder()
       .setCustomId("create_ticket")
       .setLabel(i.options.getString("button"))
       .setStyle(ButtonStyle.Primary);
 
-    const emoji = i.options.getString("emoji");
-    if (emoji) btn.setEmoji(emoji);
-
     const row = new ActionRowBuilder().addComponents(btn);
 
     await i.channel.send({ embeds: [embed], components: [row] });
-    await i.reply({ content: "Ticket panel created", ephemeral: true });
+    return i.reply({ content: "Ticket panel created", ephemeral: true });
   }
 
+  // ===== CREATE TICKET =====
+  if (i.isButton() && i.customId === "create_ticket") {
+
+    if (userTickets.has(i.user.id)) {
+      return i.reply({ content: "You already have a ticket.", ephemeral: true });
+    }
+
+    ticketCount++;
+
+    const ch = await i.guild.channels.create({
+      name: `ticket-${ticketCount}`,
+      type: ChannelType.GuildText,
+      permissionOverwrites: [
+        { id: i.guild.roles.everyone, deny: [PermissionsBitField.Flags.ViewChannel] },
+        { id: i.user.id, allow: [PermissionsBitField.Flags.ViewChannel] },
+        { id: STAFF_ROLE, allow: [PermissionsBitField.Flags.ViewChannel] }
+      ]
+    });
+
+    userTickets.set(i.user.id, ch.id);
+
+    const row = new ActionRowBuilder().addComponents(
+      new ButtonBuilder().setCustomId("claim").setLabel("Claim").setStyle(ButtonStyle.Secondary),
+      new ButtonBuilder().setCustomId("close").setLabel("Close").setStyle(ButtonStyle.Danger)
+    );
+
+    ch.send({ content: `<@${i.user.id}>`, components: [row] });
+
+    i.reply({ content: `Ticket created: ${ch}`, ephemeral: true });
+  }
+
+  // CLAIM / CLOSE same as before...
+});
+
+// ===== WELCOME =====
+client.on("guildMemberAdd", async m => {
+  await m.roles.add(AUTO_ROLE).catch(()=>{});
+  const ch = m.guild.channels.cache.get(WELCOME_CHANNEL);
+  if (ch) ch.send(`Welcome <@${m.id}>`);
 });
 
 // ===== LOGIN =====
