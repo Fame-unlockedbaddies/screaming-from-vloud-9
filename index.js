@@ -35,7 +35,7 @@ const STAFF_ROLE = "1497843975615283350";
 const AUTO_ROLE = "1448796463491584060";
 const WELCOME_CHANNEL = "1487287724674384032";
 
-// ===== EXPRESS KEEPALIVE =====
+// ===== EXPRESS =====
 const app = express();
 app.get("/", (req, res) => res.send("Bot running"));
 app.listen(process.env.PORT || 3000);
@@ -51,8 +51,8 @@ const client = new Client({
 });
 
 // ===== MEMORY =====
-const tickets = new Map();        // userId -> channelId
-const ticketActivity = new Map();// channelId -> last activity
+const tickets = new Map();
+const ticketActivity = new Map();
 let ticketCount = 0;
 
 // ===== HELPERS =====
@@ -61,57 +61,38 @@ function fixImage(url) {
   return url.split("?")[0];
 }
 
-function parseEmoji(input) {
-  if (!input) return null;
-  const match = input.match(/<a?:\w+:(\d+)>/);
-  if (match) return { id: match[1] };
-  return input;
-}
-
 // ===== COMMANDS =====
 const commands = [
 
-  // ===== TICKET PANEL =====
   new SlashCommandBuilder()
     .setName("ticketpanel")
-    .setDescription("Create a ticket panel")
+    .setDescription("Create ticket panel")
     .addStringOption(o => o.setName("title").setDescription("Title").setRequired(true))
     .addStringOption(o => o.setName("description").setDescription("Description").setRequired(true))
     .addStringOption(o => o.setName("button").setDescription("Button text").setRequired(true))
     .addStringOption(o => o.setName("category").setDescription("Category ID").setRequired(true))
-    .addStringOption(o => o.setName("image").setDescription("Image/GIF URL"))
-    .addStringOption(o => o.setName("emoji").setDescription("Button emoji"))
-    .addRoleOption(o => o.setName("role1").setDescription("Access Role 1"))
-    .addRoleOption(o => o.setName("role2").setDescription("Access Role 2"))
-    .addRoleOption(o => o.setName("role3").setDescription("Access Role 3")),
+    .addStringOption(o => o.setName("image").setDescription("Image URL"))
+    .addRoleOption(o => o.setName("role1").setDescription("Role 1"))
+    .addRoleOption(o => o.setName("role2").setDescription("Role 2"))
+    .addRoleOption(o => o.setName("role3").setDescription("Role 3")),
 
-  // ===== ROLE PANEL =====
   new SlashCommandBuilder()
     .setName("role-reaction-setup")
-    .setDescription("Create role selection panel")
-    .addStringOption(o => o.setName("title").setDescription("Panel title").setRequired(true))
-    .addStringOption(o => o.setName("image").setDescription("Banner URL"))
+    .setDescription("Create role panel")
+    .addStringOption(o => o.setName("title").setDescription("Title").setRequired(true))
+    .addStringOption(o => o.setName("image").setDescription("Image URL"))
     .addRoleOption(o => o.setName("role1").setDescription("Role 1"))
-    .addStringOption(o => o.setName("name1").setDescription("Label 1"))
+    .addStringOption(o => o.setName("name1").setDescription("Name 1"))
     .addRoleOption(o => o.setName("role2").setDescription("Role 2"))
-    .addStringOption(o => o.setName("name2").setDescription("Label 2"))
+    .addStringOption(o => o.setName("name2").setDescription("Name 2"))
     .addRoleOption(o => o.setName("role3").setDescription("Role 3"))
-    .addStringOption(o => o.setName("name3").setDescription("Label 3"))
-    .addRoleOption(o => o.setName("role4").setDescription("Role 4"))
-    .addStringOption(o => o.setName("name4").setDescription("Label 4"))
-    .addRoleOption(o => o.setName("role5").setDescription("Role 5"))
-    .addStringOption(o => o.setName("name5").setDescription("Label 5"))
-    .addRoleOption(o => o.setName("role6").setDescription("Role 6"))
-    .addStringOption(o => o.setName("name6").setDescription("Label 6"))
-    .addRoleOption(o => o.setName("role7").setDescription("Role 7"))
-    .addStringOption(o => o.setName("name7").setDescription("Label 7")),
+    .addStringOption(o => o.setName("name3").setDescription("Name 3")),
 
-  // ===== AUDIO MERGE =====
   new SlashCommandBuilder()
     .setName("add")
-    .setDescription("Merge intro + main audio")
-    .addAttachmentOption(o => o.setName("intro").setDescription("Intro audio").setRequired(true))
-    .addAttachmentOption(o => o.setName("main").setDescription("Main audio").setRequired(true))
+    .setDescription("Merge audio")
+    .addAttachmentOption(o => o.setName("intro").setDescription("Intro").setRequired(true))
+    .addAttachmentOption(o => o.setName("main").setDescription("Main").setRequired(true))
 
 ].map(c => c.toJSON());
 
@@ -133,12 +114,11 @@ client.once("ready", () => {
 client.on("messageCreate", async msg => {
   if (msg.author.bot) return;
 
-  const t = msg.content.toLowerCase();
-
-  // ticket activity tracking
   if (ticketActivity.has(msg.channel.id)) {
     ticketActivity.set(msg.channel.id, Date.now());
   }
+
+  const t = msg.content.toLowerCase();
 
   if (t.includes("dox") || t.includes("ip") || /discord\.gg|discord\.com\/invite/.test(t)) {
     await msg.delete().catch(()=>{});
@@ -151,34 +131,25 @@ client.on("messageCreate", async msg => {
 setInterval(async () => {
   const now = Date.now();
 
-  for (const [channelId, lastActive] of ticketActivity.entries()) {
+  for (const [channelId, last] of ticketActivity.entries()) {
+    if (now - last > 600000) {
 
-    const channel = client.channels.cache.get(channelId);
-    if (!channel) continue;
-
-    if (now - lastActive > 600000) { // 10 min
+      const channel = client.channels.cache.get(channelId);
+      if (!channel) continue;
 
       let ownerId = null;
-      for (const [userId, chId] of tickets.entries()) {
-        if (chId === channelId) {
-          ownerId = userId;
-          break;
-        }
+      for (const [u, c] of tickets.entries()) {
+        if (c === channelId) ownerId = u;
       }
 
       if (!ownerId) continue;
 
-      await channel.send(`<@${ownerId}> This ticket is inactive and will close in 10 seconds.`);
+      await channel.send(`<@${ownerId}> Ticket inactive, closing in 10 seconds.`);
 
       setTimeout(async () => {
-        const stillInactive = ticketActivity.get(channelId);
-        if (Date.now() - stillInactive > 600000) {
-
-          tickets.delete(ownerId);
-          ticketActivity.delete(channelId);
-
-          await channel.delete().catch(()=>{});
-        }
+        tickets.delete(ownerId);
+        ticketActivity.delete(channelId);
+        await channel.delete().catch(()=>{});
       }, 10000);
     }
   }
@@ -199,7 +170,7 @@ client.on(Events.InteractionCreate, async i => {
 
     const row = new ActionRowBuilder();
 
-    for (let x = 1; x <= 7; x++) {
+    for (let x = 1; x <= 3; x++) {
       const role = i.options.getRole(`role${x}`);
       const name = i.options.getString(`name${x}`);
       if (!role || !name) continue;
@@ -212,30 +183,57 @@ client.on(Events.InteractionCreate, async i => {
       );
     }
 
+    if (row.components.length === 0) {
+      return i.reply({ content: "Add at least 1 role.", ephemeral: true });
+    }
+
     await i.reply({ content: "Panel created", ephemeral: true });
     await i.channel.send({ embeds: [embed], components: [row] });
   }
 
-  // ===== ROLE SELECT =====
+  // ===== ROLE BUTTON FIXED =====
   if (i.isButton() && i.customId.startsWith("role_")) {
 
-    const member = await i.guild.members.fetch(i.user.id);
+    try {
+      const member = await i.guild.members.fetch(i.user.id);
+      const roleId = i.customId.split("_")[1];
+      const role = await i.guild.roles.fetch(roleId);
 
-    for (const row of i.message.components) {
-      for (const btn of row.components) {
-        const id = btn.customId.split("_")[1];
-        if (member.roles.cache.has(id)) {
-          await member.roles.remove(id).catch(()=>{});
+      if (!role) {
+        return i.reply({ content: "Role not found.", ephemeral: true });
+      }
+
+      if (!i.guild.members.me.permissions.has(PermissionsBitField.Flags.ManageRoles)) {
+        return i.reply({ content: "Bot missing permissions.", ephemeral: true });
+      }
+
+      if (role.position >= i.guild.members.me.roles.highest.position) {
+        return i.reply({ content: "Role too high.", ephemeral: true });
+      }
+
+      // remove other roles
+      for (const row of i.message.components) {
+        for (const btn of row.components) {
+          const id = btn.customId.split("_")[1];
+          if (member.roles.cache.has(id)) {
+            await member.roles.remove(id).catch(()=>{});
+          }
         }
       }
+
+      await member.roles.add(roleId);
+
+      return i.reply({
+        content: `Role set to ${role.name}`,
+        ephemeral: true
+      });
+
+    } catch (err) {
+      console.error(err);
+      if (!i.replied) {
+        i.reply({ content: "Error assigning role.", ephemeral: true });
+      }
     }
-
-    const roleId = i.customId.split("_")[1];
-    await member.roles.add(roleId);
-
-    const role = await i.guild.roles.fetch(roleId);
-
-    return i.reply({ content: `Role set to ${role.name}`, ephemeral: true });
   }
 
   // ===== TICKET PANEL =====
@@ -260,9 +258,6 @@ client.on(Events.InteractionCreate, async i => {
       .setLabel(i.options.getString("button"))
       .setStyle(ButtonStyle.Primary);
 
-    const emoji = parseEmoji(i.options.getString("emoji"));
-    if (emoji) btn.setEmoji(emoji);
-
     const row = new ActionRowBuilder().addComponents(btn);
 
     await i.reply({ content: "Panel created", ephemeral: true });
@@ -273,14 +268,8 @@ client.on(Events.InteractionCreate, async i => {
   if (i.isButton() && i.customId.startsWith("ticket_")) {
 
     const existing = tickets.get(i.user.id);
-
-    if (existing) {
-      const chCheck = i.guild.channels.cache.get(existing);
-      if (chCheck) {
-        return i.reply({ content: "You already have a ticket.", ephemeral: true });
-      } else {
-        tickets.delete(i.user.id);
-      }
+    if (existing && i.guild.channels.cache.get(existing)) {
+      return i.reply({ content: "You already have a ticket.", ephemeral: true });
     }
 
     const parts = i.customId.split("_");
@@ -289,23 +278,20 @@ client.on(Events.InteractionCreate, async i => {
 
     ticketCount++;
 
-    const permissions = [
+    const perms = [
       { id: i.guild.roles.everyone, deny: [PermissionsBitField.Flags.ViewChannel] },
       { id: i.user.id, allow: [PermissionsBitField.Flags.ViewChannel] }
     ];
 
     for (const r of roleIds) {
-      permissions.push({
-        id: r,
-        allow: [PermissionsBitField.Flags.ViewChannel]
-      });
+      perms.push({ id: r, allow: [PermissionsBitField.Flags.ViewChannel] });
     }
 
     const ch = await i.guild.channels.create({
       name: `ticket-${ticketCount}`,
       type: ChannelType.GuildText,
       parent: category,
-      permissionOverwrites: permissions
+      permissionOverwrites: perms
     });
 
     tickets.set(i.user.id, ch.id);
@@ -347,11 +333,8 @@ client.on(Events.InteractionCreate, async i => {
     }
 
     let ownerId = null;
-    for (const [userId, channelId] of tickets.entries()) {
-      if (channelId === i.channel.id) {
-        ownerId = userId;
-        break;
-      }
+    for (const [u, c] of tickets.entries()) {
+      if (c === i.channel.id) ownerId = u;
     }
 
     if (ownerId) {
