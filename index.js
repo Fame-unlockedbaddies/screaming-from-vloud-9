@@ -7,6 +7,10 @@ const express = require("express");
 const axios = require("axios");
 const fs = require("fs");
 
+const ffmpeg = require("fluent-ffmpeg");
+const ffmpegPath = require("ffmpeg-static");
+ffmpeg.setFfmpegPath(ffmpegPath);
+
 const {
   Client,
   GatewayIntentBits,
@@ -50,16 +54,17 @@ const client = new Client({
 const tickets = new Map();
 let ticketCount = 0;
 
-// ===== IMAGE FIX (WORKS WITH DISCORD CDN LINKS) =====
+// ===== HELPERS =====
 function fixImage(url) {
   if (!url) return null;
+  return url.split("?")[0];
+}
 
-  // remove query junk so discord accepts it
-  const clean = url.split("?")[0];
-
-  if (clean.match(/\.(png|jpg|jpeg|gif|webp)$/i)) return clean;
-
-  return url; // fallback
+function parseEmoji(input) {
+  if (!input) return null;
+  const match = input.match(/<a?:\w+:(\d+)>/);
+  if (match) return { id: match[1] };
+  return input;
 }
 
 // ===== COMMANDS =====
@@ -71,31 +76,38 @@ const commands = [
     .setDescription("Create ticket panel")
     .addStringOption(o => o.setName("title").setDescription("Title").setRequired(true))
     .addStringOption(o => o.setName("description").setDescription("Description").setRequired(true))
-    .addStringOption(o => o.setName("button").setDescription("Button name").setRequired(true))
+    .addStringOption(o => o.setName("button").setDescription("Button text").setRequired(true))
     .addStringOption(o => o.setName("category").setDescription("Category ID").setRequired(true))
-    .addStringOption(o => o.setName("image").setDescription("Image or GIF"))
-    .addStringOption(o => o.setName("color").setDescription("Hex color")),
+    .addStringOption(o => o.setName("image").setDescription("Image/GIF link"))
+    .addStringOption(o => o.setName("emoji").setDescription("Button emoji")),
 
   // ===== ROLE PANEL =====
   new SlashCommandBuilder()
     .setName("role-reaction-setup")
-    .setDescription("Create role panel")
+    .setDescription("Create role reaction panel")
     .addStringOption(o => o.setName("title").setDescription("Title").setRequired(true))
     .addStringOption(o => o.setName("image").setDescription("Banner"))
-    .addRoleOption(o => o.setName("role1").setDescription("Role"))
-    .addStringOption(o => o.setName("name1").setDescription("Name"))
-    .addRoleOption(o => o.setName("role2").setDescription("Role"))
-    .addStringOption(o => o.setName("name2").setDescription("Name"))
-    .addRoleOption(o => o.setName("role3").setDescription("Role"))
-    .addStringOption(o => o.setName("name3").setDescription("Name"))
-    .addRoleOption(o => o.setName("role4").setDescription("Role"))
-    .addStringOption(o => o.setName("name4").setDescription("Name"))
-    .addRoleOption(o => o.setName("role5").setDescription("Role"))
-    .addStringOption(o => o.setName("name5").setDescription("Name"))
-    .addRoleOption(o => o.setName("role6").setDescription("Role"))
-    .addStringOption(o => o.setName("name6").setDescription("Name"))
-    .addRoleOption(o => o.setName("role7").setDescription("Role"))
-    .addStringOption(o => o.setName("name7").setDescription("Name"))
+    .addRoleOption(o => o.setName("role1").setDescription("Role 1"))
+    .addStringOption(o => o.setName("name1").setDescription("Name 1"))
+    .addRoleOption(o => o.setName("role2").setDescription("Role 2"))
+    .addStringOption(o => o.setName("name2").setDescription("Name 2"))
+    .addRoleOption(o => o.setName("role3").setDescription("Role 3"))
+    .addStringOption(o => o.setName("name3").setDescription("Name 3"))
+    .addRoleOption(o => o.setName("role4").setDescription("Role 4"))
+    .addStringOption(o => o.setName("name4").setDescription("Name 4"))
+    .addRoleOption(o => o.setName("role5").setDescription("Role 5"))
+    .addStringOption(o => o.setName("name5").setDescription("Name 5"))
+    .addRoleOption(o => o.setName("role6").setDescription("Role 6"))
+    .addStringOption(o => o.setName("name6").setDescription("Name 6"))
+    .addRoleOption(o => o.setName("role7").setDescription("Role 7"))
+    .addStringOption(o => o.setName("name7").setDescription("Name 7")),
+
+  // ===== AUDIO MERGE =====
+  new SlashCommandBuilder()
+    .setName("add")
+    .setDescription("Merge intro + main audio")
+    .addAttachmentOption(o => o.setName("intro").setDescription("Intro").setRequired(true))
+    .addAttachmentOption(o => o.setName("main").setDescription("Main").setRequired(true))
 
 ].map(c => c.toJSON());
 
@@ -110,15 +122,28 @@ client.once("ready", () => {
   console.log(`Logged in as ${client.user.tag}`);
 });
 
+// ===== MODERATION =====
+client.on("messageCreate", async msg => {
+  if (msg.author.bot) return;
+
+  const t = msg.content.toLowerCase();
+
+  if (/discord\.gg|discord\.com\/invite/.test(t) || t.includes("dox") || t.includes("ip")) {
+    await msg.delete().catch(()=>{});
+    const m = await msg.channel.send(`${msg.author}, that is not allowed.`);
+    setTimeout(() => m.delete().catch(()=>{}), 5000);
+  }
+});
+
 // ===== INTERACTIONS =====
 client.on(Events.InteractionCreate, async i => {
 
-  // ===== ROLE PANEL =====
+  // ===== ROLE PANEL CREATE =====
   if (i.isChatInputCommand() && i.commandName === "role-reaction-setup") {
 
     const embed = new EmbedBuilder()
       .setTitle(i.options.getString("title"))
-      .setColor("#0f0f0f");
+      .setColor("#111111");
 
     const img = fixImage(i.options.getString("image"));
     if (img) embed.setImage(img);
@@ -138,8 +163,8 @@ client.on(Events.InteractionCreate, async i => {
       );
     }
 
+    await i.reply({ content: "Panel created", ephemeral: true });
     await i.channel.send({ embeds: [embed], components: [row] });
-    return i.reply({ content: "Panel created", ephemeral: true });
   }
 
   // ===== ROLE BUTTON =====
@@ -148,23 +173,21 @@ client.on(Events.InteractionCreate, async i => {
     await i.deferReply({ ephemeral: true });
 
     const member = await i.guild.members.fetch(i.user.id);
-    const buttons = i.message.components.flatMap(r => r.components);
 
-    // remove ALL roles from this panel
-    for (const btn of buttons) {
-      const id = btn.customId.replace("role_", "");
-      if (member.roles.cache.has(id)) {
-        await member.roles.remove(id).catch(()=>{});
+    // remove all roles from panel
+    for (const row of i.message.components) {
+      for (const btn of row.components) {
+        const id = btn.customId.split("_")[1];
+        if (member.roles.cache.has(id)) {
+          await member.roles.remove(id).catch(()=>{});
+        }
       }
     }
 
-    const roleId = i.customId.replace("role_", "");
-    const role = await i.guild.roles.fetch(roleId).catch(()=>null);
-
-    if (!role) return i.editReply("Role not found");
-
+    const roleId = i.customId.split("_")[1];
     await member.roles.add(roleId);
 
+    const role = await i.guild.roles.fetch(roleId);
     i.editReply(`Role set to ${role.name}`);
   }
 
@@ -174,31 +197,35 @@ client.on(Events.InteractionCreate, async i => {
     const embed = new EmbedBuilder()
       .setTitle(i.options.getString("title"))
       .setDescription(i.options.getString("description"))
-      .setColor(i.options.getString("color") || "#0f0f0f");
+      .setColor("#111111");
 
     const img = fixImage(i.options.getString("image"));
     if (img) embed.setImage(img);
 
-    const row = new ActionRowBuilder().addComponents(
-      new ButtonBuilder()
-        .setCustomId(`create_ticket_${i.options.getString("category")}`)
-        .setLabel(i.options.getString("button"))
-        .setStyle(ButtonStyle.Primary)
-    );
+    const btn = new ButtonBuilder()
+      .setCustomId(`ticket_${i.options.getString("category")}`)
+      .setLabel(i.options.getString("button"))
+      .setStyle(ButtonStyle.Primary);
 
+    const emoji = parseEmoji(i.options.getString("emoji"));
+    if (emoji) btn.setEmoji(emoji);
+
+    const row = new ActionRowBuilder().addComponents(btn);
+
+    await i.reply({ content: "Panel created", ephemeral: true });
     await i.channel.send({ embeds: [embed], components: [row] });
-    return i.reply({ content: "Ticket panel created", ephemeral: true });
   }
 
   // ===== CREATE TICKET =====
-  if (i.isButton() && i.customId.startsWith("create_ticket_")) {
+  if (i.isButton() && i.customId.startsWith("ticket_")) {
+
+    await i.deferReply({ ephemeral: true });
 
     if (tickets.has(i.user.id)) {
-      return i.reply({ content: "You already have a ticket.", ephemeral: true });
+      return i.editReply("You already have a ticket.");
     }
 
-    const category = i.customId.split("_")[2];
-
+    const category = i.customId.split("_")[1];
     ticketCount++;
 
     const ch = await i.guild.channels.create({
@@ -214,38 +241,37 @@ client.on(Events.InteractionCreate, async i => {
 
     tickets.set(i.user.id, ch.id);
 
-    const embed = new EmbedBuilder()
-      .setTitle("Support Ticket")
-      .setDescription("A staff member will assist you shortly.")
-      .setColor("#0f0f0f");
-
     const row = new ActionRowBuilder().addComponents(
       new ButtonBuilder().setCustomId("claim").setLabel("Claim").setStyle(ButtonStyle.Secondary),
       new ButtonBuilder().setCustomId("close").setLabel("Close").setStyle(ButtonStyle.Danger)
     );
 
-    await ch.send({ embeds: [embed], components: [row] });
+    await ch.send({ content: "Support will assist you shortly.", components: [row] });
 
-    i.reply({ content: `Ticket created: ${ch}`, ephemeral: true });
+    i.editReply(`Ticket created: ${ch}`);
   }
 
   // ===== CLAIM =====
   if (i.isButton() && i.customId === "claim") {
+    await i.deferReply({ ephemeral: true });
+
     if (!i.member.roles.cache.has(STAFF_ROLE)) {
-      return i.reply({ content: "No permission", ephemeral: true });
+      return i.editReply("No permission");
     }
 
-    await i.reply(`Claimed by ${i.user.tag}`);
+    i.editReply("Ticket claimed");
   }
 
   // ===== CLOSE =====
   if (i.isButton() && i.customId === "close") {
+    await i.deferReply({ ephemeral: true });
+
     if (!i.member.roles.cache.has(STAFF_ROLE)) {
-      return i.reply({ content: "No permission", ephemeral: true });
+      return i.editReply("No permission");
     }
 
-    await i.reply("Closing ticket...");
-    setTimeout(() => i.channel.delete().catch(()=>{}), 3000);
+    i.editReply("Closing...");
+    setTimeout(() => i.channel.delete().catch(()=>{}), 2000);
   }
 
 });
