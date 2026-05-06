@@ -51,7 +51,7 @@ const client = new Client({
 });
 
 // ===== MEMORY =====
-const tickets = new Map();
+const tickets = new Map(); // userId -> channelId
 let ticketCount = 0;
 
 // ===== HELPERS =====
@@ -229,8 +229,16 @@ client.on(Events.InteractionCreate, async i => {
   // ===== CREATE TICKET =====
   if (i.isButton() && i.customId.startsWith("ticket_")) {
 
-    if (tickets.has(i.user.id)) {
-      return i.reply({ content: "You already have a ticket.", ephemeral: true });
+    const existing = tickets.get(i.user.id);
+
+    if (existing) {
+      const ch = i.guild.channels.cache.get(existing);
+
+      if (ch) {
+        return i.reply({ content: "You already have a ticket.", ephemeral: true });
+      } else {
+        tickets.delete(i.user.id);
+      }
     }
 
     const parts = i.customId.split("_");
@@ -275,18 +283,31 @@ client.on(Events.InteractionCreate, async i => {
     if (!i.member.roles.cache.has(STAFF_ROLE)) {
       return i.reply({ content: "No permission", ephemeral: true });
     }
-
     return i.reply({ content: "Ticket claimed", ephemeral: true });
   }
 
   // ===== CLOSE =====
   if (i.isButton() && i.customId === "close") {
+
     if (!i.member.roles.cache.has(STAFF_ROLE)) {
       return i.reply({ content: "No permission", ephemeral: true });
     }
 
+    let ownerId = null;
+    for (const [userId, channelId] of tickets.entries()) {
+      if (channelId === i.channel.id) {
+        ownerId = userId;
+        break;
+      }
+    }
+
+    if (ownerId) tickets.delete(ownerId);
+
     await i.reply({ content: "Closing...", ephemeral: true });
-    setTimeout(() => i.channel.delete().catch(()=>{}), 2000);
+
+    setTimeout(() => {
+      i.channel.delete().catch(()=>{});
+    }, 2000);
   }
 
 });
