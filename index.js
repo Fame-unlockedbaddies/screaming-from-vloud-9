@@ -4,8 +4,8 @@ process.on("uncaughtException", console.error);
 process.on("unhandledRejection", console.error);
 
 const express = require("express");
-const axios = require("axios");
 const fs = require("fs");
+const axios = require("axios");
 
 const ffmpeg = require("fluent-ffmpeg");
 const ffmpegPath = require("ffmpeg-static");
@@ -35,7 +35,7 @@ const STAFF_ROLE = "1497843975615283350";
 const AUTO_ROLE = "1448796463491584060";
 const WELCOME_CHANNEL = "1487287724674384032";
 
-// ===== EXPRESS =====
+// ===== EXPRESS KEEPALIVE =====
 const app = express();
 app.get("/", (req, res) => res.send("Bot running"));
 app.listen(process.env.PORT || 3000);
@@ -51,7 +51,8 @@ const client = new Client({
 });
 
 // ===== MEMORY =====
-const tickets = new Map(); // userId -> channelId
+const tickets = new Map();        // userId -> channelId
+const ticketActivity = new Map();// channelId -> last activity
 let ticketCount = 0;
 
 // ===== HELPERS =====
@@ -134,12 +135,54 @@ client.on("messageCreate", async msg => {
 
   const t = msg.content.toLowerCase();
 
+  // ticket activity tracking
+  if (ticketActivity.has(msg.channel.id)) {
+    ticketActivity.set(msg.channel.id, Date.now());
+  }
+
   if (t.includes("dox") || t.includes("ip") || /discord\.gg|discord\.com\/invite/.test(t)) {
     await msg.delete().catch(()=>{});
     const warn = await msg.channel.send(`${msg.author}, that is not allowed.`);
     setTimeout(() => warn.delete().catch(()=>{}), 4000);
   }
 });
+
+// ===== AUTO CLOSE =====
+setInterval(async () => {
+  const now = Date.now();
+
+  for (const [channelId, lastActive] of ticketActivity.entries()) {
+
+    const channel = client.channels.cache.get(channelId);
+    if (!channel) continue;
+
+    if (now - lastActive > 600000) { // 10 min
+
+      let ownerId = null;
+      for (const [userId, chId] of tickets.entries()) {
+        if (chId === channelId) {
+          ownerId = userId;
+          break;
+        }
+      }
+
+      if (!ownerId) continue;
+
+      await channel.send(`<@${ownerId}> This ticket is inactive and will close in 10 seconds.`);
+
+      setTimeout(async () => {
+        const stillInactive = ticketActivity.get(channelId);
+        if (Date.now() - stillInactive > 600000) {
+
+          tickets.delete(ownerId);
+          ticketActivity.delete(channelId);
+
+          await channel.delete().catch(()=>{});
+        }
+      }, 10000);
+    }
+  }
+}, 60000);
 
 // ===== INTERACTIONS =====
 client.on(Events.InteractionCreate, async i => {
@@ -173,7 +216,7 @@ client.on(Events.InteractionCreate, async i => {
     await i.channel.send({ embeds: [embed], components: [row] });
   }
 
-  // ===== ROLE BUTTON =====
+  // ===== ROLE SELECT =====
   if (i.isButton() && i.customId.startsWith("role_")) {
 
     const member = await i.guild.members.fetch(i.user.id);
@@ -266,13 +309,14 @@ client.on(Events.InteractionCreate, async i => {
     });
 
     tickets.set(i.user.id, ch.id);
+    ticketActivity.set(ch.id, Date.now());
 
     const row = new ActionRowBuilder().addComponents(
       new ButtonBuilder().setCustomId("claim").setLabel("Claim").setStyle(ButtonStyle.Secondary),
       new ButtonBuilder().setCustomId("close").setLabel("Close").setStyle(ButtonStyle.Danger)
     );
 
-    const ticketEmbed = new EmbedBuilder()
+    const embed = new EmbedBuilder()
       .setTitle("Support Ticket")
       .setDescription("Support will be with you shortly.\n\nTo close this press the close button **Thankyou**")
       .addFields(
@@ -282,7 +326,7 @@ client.on(Events.InteractionCreate, async i => {
       )
       .setColor("#111111");
 
-    await ch.send({ embeds: [ticketEmbed], components: [row] });
+    await ch.send({ embeds: [embed], components: [row] });
 
     return i.reply({ content: `Ticket created: ${ch}`, ephemeral: true });
   }
@@ -310,7 +354,10 @@ client.on(Events.InteractionCreate, async i => {
       }
     }
 
-    if (ownerId) tickets.delete(ownerId);
+    if (ownerId) {
+      tickets.delete(ownerId);
+      ticketActivity.delete(i.channel.id);
+    }
 
     await i.reply({ content: "Closing...", ephemeral: true });
 
