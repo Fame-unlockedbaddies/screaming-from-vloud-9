@@ -7,6 +7,10 @@ const express = require("express");
 const axios = require("axios");
 const fs = require("fs");
 
+const ffmpeg = require("fluent-ffmpeg");
+const ffmpegPath = require("ffmpeg-static");
+ffmpeg.setFfmpegPath(ffmpegPath);
+
 const {
   Client,
   GatewayIntentBits,
@@ -75,12 +79,15 @@ const commands = [
     .addStringOption(o => o.setName("button").setDescription("Button text").setRequired(true))
     .addStringOption(o => o.setName("category").setDescription("Category ID").setRequired(true))
     .addStringOption(o => o.setName("image").setDescription("Image/GIF URL"))
-    .addStringOption(o => o.setName("emoji").setDescription("Button emoji")),
+    .addStringOption(o => o.setName("emoji").setDescription("Button emoji"))
+    .addRoleOption(o => o.setName("role1").setDescription("Access Role 1"))
+    .addRoleOption(o => o.setName("role2").setDescription("Access Role 2"))
+    .addRoleOption(o => o.setName("role3").setDescription("Access Role 3")),
 
   // ===== ROLE PANEL =====
   new SlashCommandBuilder()
     .setName("role-reaction-setup")
-    .setDescription("Create a role selection panel")
+    .setDescription("Create role selection panel")
     .addStringOption(o => o.setName("title").setDescription("Panel title").setRequired(true))
     .addStringOption(o => o.setName("image").setDescription("Banner URL"))
     .addRoleOption(o => o.setName("role1").setDescription("Role 1"))
@@ -101,7 +108,7 @@ const commands = [
   // ===== AUDIO MERGE =====
   new SlashCommandBuilder()
     .setName("add")
-    .setDescription("Merge intro and main audio")
+    .setDescription("Merge intro + main audio")
     .addAttachmentOption(o => o.setName("intro").setDescription("Intro audio").setRequired(true))
     .addAttachmentOption(o => o.setName("main").setDescription("Main audio").setRequired(true))
 
@@ -121,27 +128,23 @@ client.once("ready", () => {
   console.log(`Logged in as ${client.user.tag}`);
 });
 
-// ===== MODERATION (LIGHT) =====
+// ===== MODERATION =====
 client.on("messageCreate", async msg => {
   if (msg.author.bot) return;
 
   const t = msg.content.toLowerCase();
 
-  if (
-    t.includes("dox") ||
-    t.includes("ip") ||
-    /discord\.gg|discord\.com\/invite/.test(t)
-  ) {
-    await msg.delete().catch(() => {});
+  if (t.includes("dox") || t.includes("ip") || /discord\.gg|discord\.com\/invite/.test(t)) {
+    await msg.delete().catch(()=>{});
     const warn = await msg.channel.send(`${msg.author}, that is not allowed.`);
-    setTimeout(() => warn.delete().catch(() => {}), 4000);
+    setTimeout(() => warn.delete().catch(()=>{}), 4000);
   }
 });
 
 // ===== INTERACTIONS =====
 client.on(Events.InteractionCreate, async i => {
 
-  // ===== ROLE PANEL CREATE =====
+  // ===== ROLE PANEL =====
   if (i.isChatInputCommand() && i.commandName === "role-reaction-setup") {
 
     const embed = new EmbedBuilder()
@@ -175,7 +178,6 @@ client.on(Events.InteractionCreate, async i => {
 
     const member = await i.guild.members.fetch(i.user.id);
 
-    // remove all roles from panel
     for (const row of i.message.components) {
       for (const btn of row.components) {
         const id = btn.customId.split("_")[1];
@@ -190,10 +192,7 @@ client.on(Events.InteractionCreate, async i => {
 
     const role = await i.guild.roles.fetch(roleId);
 
-    return i.reply({
-      content: `Role set to ${role.name}`,
-      ephemeral: true
-    });
+    return i.reply({ content: `Role set to ${role.name}`, ephemeral: true });
   }
 
   // ===== TICKET PANEL =====
@@ -207,8 +206,14 @@ client.on(Events.InteractionCreate, async i => {
     const img = fixImage(i.options.getString("image"));
     if (img) embed.setImage(img);
 
+    const roles = [
+      i.options.getRole("role1")?.id,
+      i.options.getRole("role2")?.id,
+      i.options.getRole("role3")?.id
+    ].filter(Boolean);
+
     const btn = new ButtonBuilder()
-      .setCustomId(`ticket_${i.options.getString("category")}`)
+      .setCustomId(`ticket_${i.options.getString("category")}_${roles.join(",")}`)
       .setLabel(i.options.getString("button"))
       .setStyle(ButtonStyle.Primary);
 
@@ -221,25 +226,36 @@ client.on(Events.InteractionCreate, async i => {
     await i.channel.send({ embeds: [embed], components: [row] });
   }
 
-  // ===== CREATE TICKET (INSTANT) =====
+  // ===== CREATE TICKET =====
   if (i.isButton() && i.customId.startsWith("ticket_")) {
 
     if (tickets.has(i.user.id)) {
       return i.reply({ content: "You already have a ticket.", ephemeral: true });
     }
 
-    const category = i.customId.split("_")[1];
+    const parts = i.customId.split("_");
+    const category = parts[1];
+    const roleIds = parts[2] ? parts[2].split(",") : [];
+
     ticketCount++;
+
+    const permissions = [
+      { id: i.guild.roles.everyone, deny: [PermissionsBitField.Flags.ViewChannel] },
+      { id: i.user.id, allow: [PermissionsBitField.Flags.ViewChannel] }
+    ];
+
+    for (const r of roleIds) {
+      permissions.push({
+        id: r,
+        allow: [PermissionsBitField.Flags.ViewChannel]
+      });
+    }
 
     const ch = await i.guild.channels.create({
       name: `ticket-${ticketCount}`,
       type: ChannelType.GuildText,
       parent: category,
-      permissionOverwrites: [
-        { id: i.guild.roles.everyone, deny: [PermissionsBitField.Flags.ViewChannel] },
-        { id: i.user.id, allow: [PermissionsBitField.Flags.ViewChannel] },
-        { id: STAFF_ROLE, allow: [PermissionsBitField.Flags.ViewChannel] }
-      ]
+      permissionOverwrites: permissions
     });
 
     tickets.set(i.user.id, ch.id);
@@ -251,10 +267,7 @@ client.on(Events.InteractionCreate, async i => {
 
     await ch.send({ content: "Support will assist you shortly.", components: [row] });
 
-    return i.reply({
-      content: `Ticket created: ${ch}`,
-      ephemeral: true
-    });
+    return i.reply({ content: `Ticket created: ${ch}`, ephemeral: true });
   }
 
   // ===== CLAIM =====
