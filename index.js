@@ -7,10 +7,6 @@ const express = require("express");
 const axios = require("axios");
 const fs = require("fs");
 
-const ffmpeg = require("fluent-ffmpeg");
-const ffmpegPath = require("ffmpeg-static");
-ffmpeg.setFfmpegPath(ffmpegPath);
-
 const {
   Client,
   GatewayIntentBits,
@@ -73,48 +69,51 @@ const commands = [
   // ===== TICKET PANEL =====
   new SlashCommandBuilder()
     .setName("ticketpanel")
-    .setDescription("Create ticket panel")
+    .setDescription("Create a ticket panel")
     .addStringOption(o => o.setName("title").setDescription("Title").setRequired(true))
     .addStringOption(o => o.setName("description").setDescription("Description").setRequired(true))
     .addStringOption(o => o.setName("button").setDescription("Button text").setRequired(true))
     .addStringOption(o => o.setName("category").setDescription("Category ID").setRequired(true))
-    .addStringOption(o => o.setName("image").setDescription("Image/GIF link"))
+    .addStringOption(o => o.setName("image").setDescription("Image/GIF URL"))
     .addStringOption(o => o.setName("emoji").setDescription("Button emoji")),
 
   // ===== ROLE PANEL =====
   new SlashCommandBuilder()
     .setName("role-reaction-setup")
-    .setDescription("Create role reaction panel")
-    .addStringOption(o => o.setName("title").setDescription("Title").setRequired(true))
-    .addStringOption(o => o.setName("image").setDescription("Banner"))
+    .setDescription("Create a role selection panel")
+    .addStringOption(o => o.setName("title").setDescription("Panel title").setRequired(true))
+    .addStringOption(o => o.setName("image").setDescription("Banner URL"))
     .addRoleOption(o => o.setName("role1").setDescription("Role 1"))
-    .addStringOption(o => o.setName("name1").setDescription("Name 1"))
+    .addStringOption(o => o.setName("name1").setDescription("Label 1"))
     .addRoleOption(o => o.setName("role2").setDescription("Role 2"))
-    .addStringOption(o => o.setName("name2").setDescription("Name 2"))
+    .addStringOption(o => o.setName("name2").setDescription("Label 2"))
     .addRoleOption(o => o.setName("role3").setDescription("Role 3"))
-    .addStringOption(o => o.setName("name3").setDescription("Name 3"))
+    .addStringOption(o => o.setName("name3").setDescription("Label 3"))
     .addRoleOption(o => o.setName("role4").setDescription("Role 4"))
-    .addStringOption(o => o.setName("name4").setDescription("Name 4"))
+    .addStringOption(o => o.setName("name4").setDescription("Label 4"))
     .addRoleOption(o => o.setName("role5").setDescription("Role 5"))
-    .addStringOption(o => o.setName("name5").setDescription("Name 5"))
+    .addStringOption(o => o.setName("name5").setDescription("Label 5"))
     .addRoleOption(o => o.setName("role6").setDescription("Role 6"))
-    .addStringOption(o => o.setName("name6").setDescription("Name 6"))
+    .addStringOption(o => o.setName("name6").setDescription("Label 6"))
     .addRoleOption(o => o.setName("role7").setDescription("Role 7"))
-    .addStringOption(o => o.setName("name7").setDescription("Name 7")),
+    .addStringOption(o => o.setName("name7").setDescription("Label 7")),
 
   // ===== AUDIO MERGE =====
   new SlashCommandBuilder()
     .setName("add")
-    .setDescription("Merge intro + main audio")
-    .addAttachmentOption(o => o.setName("intro").setDescription("Intro").setRequired(true))
-    .addAttachmentOption(o => o.setName("main").setDescription("Main").setRequired(true))
+    .setDescription("Merge intro and main audio")
+    .addAttachmentOption(o => o.setName("intro").setDescription("Intro audio").setRequired(true))
+    .addAttachmentOption(o => o.setName("main").setDescription("Main audio").setRequired(true))
 
 ].map(c => c.toJSON());
 
 // ===== REGISTER =====
 const rest = new REST({ version: "10" }).setToken(TOKEN);
 (async () => {
-  await rest.put(Routes.applicationGuildCommands(CLIENT_ID, GUILD_ID), { body: commands });
+  await rest.put(
+    Routes.applicationGuildCommands(CLIENT_ID, GUILD_ID),
+    { body: commands }
+  );
 })();
 
 // ===== READY =====
@@ -122,16 +121,20 @@ client.once("ready", () => {
   console.log(`Logged in as ${client.user.tag}`);
 });
 
-// ===== MODERATION =====
+// ===== MODERATION (LIGHT) =====
 client.on("messageCreate", async msg => {
   if (msg.author.bot) return;
 
   const t = msg.content.toLowerCase();
 
-  if (/discord\.gg|discord\.com\/invite/.test(t) || t.includes("dox") || t.includes("ip")) {
-    await msg.delete().catch(()=>{});
-    const m = await msg.channel.send(`${msg.author}, that is not allowed.`);
-    setTimeout(() => m.delete().catch(()=>{}), 5000);
+  if (
+    t.includes("dox") ||
+    t.includes("ip") ||
+    /discord\.gg|discord\.com\/invite/.test(t)
+  ) {
+    await msg.delete().catch(() => {});
+    const warn = await msg.channel.send(`${msg.author}, that is not allowed.`);
+    setTimeout(() => warn.delete().catch(() => {}), 4000);
   }
 });
 
@@ -170,8 +173,6 @@ client.on(Events.InteractionCreate, async i => {
   // ===== ROLE BUTTON =====
   if (i.isButton() && i.customId.startsWith("role_")) {
 
-    await i.deferReply({ ephemeral: true });
-
     const member = await i.guild.members.fetch(i.user.id);
 
     // remove all roles from panel
@@ -188,7 +189,11 @@ client.on(Events.InteractionCreate, async i => {
     await member.roles.add(roleId);
 
     const role = await i.guild.roles.fetch(roleId);
-    i.editReply(`Role set to ${role.name}`);
+
+    return i.reply({
+      content: `Role set to ${role.name}`,
+      ephemeral: true
+    });
   }
 
   // ===== TICKET PANEL =====
@@ -216,13 +221,11 @@ client.on(Events.InteractionCreate, async i => {
     await i.channel.send({ embeds: [embed], components: [row] });
   }
 
-  // ===== CREATE TICKET =====
+  // ===== CREATE TICKET (INSTANT) =====
   if (i.isButton() && i.customId.startsWith("ticket_")) {
 
-    await i.deferReply({ ephemeral: true });
-
     if (tickets.has(i.user.id)) {
-      return i.editReply("You already have a ticket.");
+      return i.reply({ content: "You already have a ticket.", ephemeral: true });
     }
 
     const category = i.customId.split("_")[1];
@@ -248,29 +251,28 @@ client.on(Events.InteractionCreate, async i => {
 
     await ch.send({ content: "Support will assist you shortly.", components: [row] });
 
-    i.editReply(`Ticket created: ${ch}`);
+    return i.reply({
+      content: `Ticket created: ${ch}`,
+      ephemeral: true
+    });
   }
 
   // ===== CLAIM =====
   if (i.isButton() && i.customId === "claim") {
-    await i.deferReply({ ephemeral: true });
-
     if (!i.member.roles.cache.has(STAFF_ROLE)) {
-      return i.editReply("No permission");
+      return i.reply({ content: "No permission", ephemeral: true });
     }
 
-    i.editReply("Ticket claimed");
+    return i.reply({ content: "Ticket claimed", ephemeral: true });
   }
 
   // ===== CLOSE =====
   if (i.isButton() && i.customId === "close") {
-    await i.deferReply({ ephemeral: true });
-
     if (!i.member.roles.cache.has(STAFF_ROLE)) {
-      return i.editReply("No permission");
+      return i.reply({ content: "No permission", ephemeral: true });
     }
 
-    i.editReply("Closing...");
+    await i.reply({ content: "Closing...", ephemeral: true });
     setTimeout(() => i.channel.delete().catch(()=>{}), 2000);
   }
 
