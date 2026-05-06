@@ -88,12 +88,6 @@ const commands = [
     .addRoleOption(o => o.setName("role3").setDescription("Role 3"))
     .addStringOption(o => o.setName("name3").setDescription("Name 3")),
 
-  new SlashCommandBuilder()
-    .setName("add")
-    .setDescription("Merge audio")
-    .addAttachmentOption(o => o.setName("intro").setDescription("Intro").setRequired(true))
-    .addAttachmentOption(o => o.setName("main").setDescription("Main").setRequired(true))
-
 ].map(c => c.toJSON());
 
 // ===== REGISTER =====
@@ -110,7 +104,7 @@ client.once("ready", () => {
   console.log(`Logged in as ${client.user.tag}`);
 });
 
-// ===== MODERATION =====
+// ===== MESSAGE / MODERATION =====
 client.on("messageCreate", async msg => {
   if (msg.author.bot) return;
 
@@ -158,7 +152,7 @@ setInterval(async () => {
 // ===== INTERACTIONS =====
 client.on(Events.InteractionCreate, async i => {
 
-  // ===== ROLE PANEL =====
+  // ===== ROLE PANEL CREATE =====
   if (i.isChatInputCommand() && i.commandName === "role-reaction-setup") {
 
     const embed = new EmbedBuilder()
@@ -183,37 +177,39 @@ client.on(Events.InteractionCreate, async i => {
       );
     }
 
-    if (row.components.length === 0) {
-      return i.reply({ content: "Add at least 1 role.", ephemeral: true });
+    if (!row.components.length) {
+      return i.reply({ content: "Add at least one role.", ephemeral: true });
     }
 
     await i.reply({ content: "Panel created", ephemeral: true });
     await i.channel.send({ embeds: [embed], components: [row] });
   }
 
-  // ===== ROLE BUTTON FIXED =====
+  // ===== 🔥 UNIVERSAL ROLE BUTTON FIX =====
   if (i.isButton() && i.customId.startsWith("role_")) {
 
     try {
+      await i.deferReply({ ephemeral: true });
+
       const member = await i.guild.members.fetch(i.user.id);
       const roleId = i.customId.split("_")[1];
-      const role = await i.guild.roles.fetch(roleId);
+      const role = await i.guild.roles.fetch(roleId).catch(()=>null);
 
-      if (!role) {
-        return i.reply({ content: "Role not found.", ephemeral: true });
-      }
+      if (!role) return i.editReply({ content: "Role not found." });
 
       if (!i.guild.members.me.permissions.has(PermissionsBitField.Flags.ManageRoles)) {
-        return i.reply({ content: "Bot missing permissions.", ephemeral: true });
+        return i.editReply({ content: "Bot missing Manage Roles permission." });
       }
 
       if (role.position >= i.guild.members.me.roles.highest.position) {
-        return i.reply({ content: "Role too high.", ephemeral: true });
+        return i.editReply({ content: "Role is higher than my role." });
       }
 
-      // remove other roles
+      // remove all roles from this panel
       for (const row of i.message.components) {
         for (const btn of row.components) {
+          if (!btn.customId.startsWith("role_")) continue;
+
           const id = btn.customId.split("_")[1];
           if (member.roles.cache.has(id)) {
             await member.roles.remove(id).catch(()=>{});
@@ -223,10 +219,7 @@ client.on(Events.InteractionCreate, async i => {
 
       await member.roles.add(roleId);
 
-      return i.reply({
-        content: `Role set to ${role.name}`,
-        ephemeral: true
-      });
+      return i.editReply({ content: `Role set to ${role.name}` });
 
     } catch (err) {
       console.error(err);
@@ -317,7 +310,7 @@ client.on(Events.InteractionCreate, async i => {
     return i.reply({ content: `Ticket created: ${ch}`, ephemeral: true });
   }
 
-  // ===== CLAIM =====
+  // CLAIM
   if (i.isButton() && i.customId === "claim") {
     if (!i.member.roles.cache.has(STAFF_ROLE)) {
       return i.reply({ content: "No permission", ephemeral: true });
@@ -325,7 +318,7 @@ client.on(Events.InteractionCreate, async i => {
     return i.reply({ content: "Ticket claimed", ephemeral: true });
   }
 
-  // ===== CLOSE =====
+  // CLOSE
   if (i.isButton() && i.customId === "close") {
 
     if (!i.member.roles.cache.has(STAFF_ROLE)) {
