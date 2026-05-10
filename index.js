@@ -8,11 +8,17 @@ const express = require("express");
 const {
   Client,
   GatewayIntentBits,
-  Events
+  Events,
+  SlashCommandBuilder,
+  REST,
+  Routes,
+  EmbedBuilder
 } = require("discord.js");
 
 // ================= CONFIG =================
 const TOKEN = process.env.TOKEN;
+const CLIENT_ID = process.env.CLIENT_ID;
+const GUILD_ID = "1428878035926388809";
 
 // ================= KEEP ALIVE =================
 const app = express();
@@ -80,15 +86,75 @@ const blacklist = [
   "suicide",
   "self harm",
 
-  // OTHER WORDS YOU ADDED
+  // OTHER WORDS
   "dog",
   "jerk",
   "jerking off"
 ];
 
+// ================= WORDS SHOWN IN EMBED =================
+const embedWords = blacklist.filter(
+  word =>
+    word !== "dog" &&
+    word !== "jerk" &&
+    word !== "jerking off"
+);
+
+// ================= COMMANDS =================
+const commands = [
+  new SlashCommandBuilder()
+    .setName("whatperioddoes")
+    .setDescription("Shows all blacklisted words")
+].map(command => command.toJSON());
+
+// ================= REGISTER COMMANDS =================
+const rest = new REST({ version: "10" }).setToken(TOKEN);
+
+(async () => {
+  try {
+
+    console.log("Registering commands...");
+
+    await rest.put(
+      Routes.applicationGuildCommands(CLIENT_ID, GUILD_ID),
+      { body: commands }
+    );
+
+    console.log("Commands registered.");
+
+  } catch (error) {
+    console.error(error);
+  }
+})();
+
 // ================= READY EVENT =================
 client.once(Events.ClientReady, bot => {
   console.log(`Logged in as ${bot.user.tag}`);
+});
+
+// ================= SLASH COMMANDS =================
+client.on(Events.InteractionCreate, async interaction => {
+
+  if (!interaction.isChatInputCommand()) return;
+
+  try {
+
+    if (interaction.commandName === "whatperioddoes") {
+
+      const embed = new EmbedBuilder()
+        .setTitle("Blacklisted Words")
+        .setDescription(embedWords.join("\n"))
+        .setColor("Red");
+
+      await interaction.reply({
+        embeds: [embed],
+        ephemeral: true
+      });
+    }
+
+  } catch (error) {
+    console.error(error);
+  }
 });
 
 // ================= MESSAGE FILTER =================
@@ -111,7 +177,7 @@ client.on(Events.MessageCreate, async message => {
 
     try {
 
-      // DELETE MESSAGE FAST
+      // DELETE MESSAGE
       await message.delete();
 
       // DM USER
