@@ -37,17 +37,53 @@ const client = new Client({
 
 // ================= BLACKLIST =================
 const blacklist = [
+  // RACIAL SLURS
   "nigger",
-  "faggot",
-  "tranny",
-  "twink",
-  "ponk",
-  "dyke",
   "chink",
-  "killing myself",
-  "kms",
+  "coon",
+  "spic",
+  "wetback",
+  "kike",
+  "gook",
+  "paki",
+  "raghead",
+  "beaner",
+  "redskin",
+  "camel jockey",
+  "zipperhead",
+  "porch monkey",
+  "towelhead",
+  "gypsy",
+
+  // LGBT / TRANS SLURS
+  "faggot",
+  "fag",
+  "fggt",
+  "tranny",
+  "troon",
+  "shemale",
+  "dyke",
+  "dike",
+  "twink",
+  "twinkie",
+  "ponk",
+  "he she",
+  "it pretending to be a woman",
+  "it pretending to be a man",
+
+  // SELF HARM
   "kys",
-  "khs"
+  "kms",
+  "khs",
+  "kill yourself",
+  "killing myself",
+  "suicide",
+  "self harm",
+
+  // OTHER WORDS YOU ADDED
+  "dog",
+  "jerk",
+  "jerking off"
 ];
 
 // ================= READY EVENT =================
@@ -60,6 +96,9 @@ client.on(Events.MessageCreate, async message => {
 
   // IGNORE BOTS
   if (message.author.bot) return;
+
+  // IGNORE EMPTY MESSAGES
+  if (!message.content) return;
 
   const content = message.content.toLowerCase();
 
@@ -81,7 +120,7 @@ client.on(Events.MessageCreate, async message => {
       );
 
       console.log(
-        `Deleted message from ${message.author.tag} for word: ${foundWord}`
+        `Deleted message from ${message.author.tag} for using: ${foundWord}`
       );
 
     } catch (error) {
