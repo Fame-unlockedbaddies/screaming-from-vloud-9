@@ -8,16 +8,11 @@ const express = require("express");
 const {
   Client,
   GatewayIntentBits,
-  REST,
-  Routes,
-  SlashCommandBuilder,
   Events
 } = require("discord.js");
 
 // ================= CONFIG =================
 const TOKEN = process.env.TOKEN;
-const CLIENT_ID = process.env.CLIENT_ID;
-const GUILD_ID = "1428878035926388809";
 
 // ================= KEEP ALIVE =================
 const app = express();
@@ -32,89 +27,67 @@ app.listen(process.env.PORT || 3000, () => {
 
 // ================= CLIENT =================
 const client = new Client({
-  intents: [GatewayIntentBits.Guilds]
+  intents: [
+    GatewayIntentBits.Guilds,
+    GatewayIntentBits.GuildMessages,
+    GatewayIntentBits.MessageContent,
+    GatewayIntentBits.DirectMessages
+  ]
 });
 
-// ================= COMMANDS =================
-const commands = [
-  new SlashCommandBuilder()
-    .setName("sendmessage")
-    .setDescription("Send a message through the bot")
-    .addStringOption(option =>
-      option
-        .setName("message")
-        .setDescription("The message to send")
-        .setRequired(true)
-    )
-].map(command => command.toJSON());
-
-// ================= REGISTER COMMANDS =================
-const rest = new REST({ version: "10" }).setToken(TOKEN);
-
-(async () => {
-  try {
-    console.log("Registering commands...");
-
-    await rest.put(
-      Routes.applicationGuildCommands(CLIENT_ID, GUILD_ID),
-      { body: commands }
-    );
-
-    console.log("Commands registered successfully.");
-  } catch (error) {
-    console.error("Failed to register commands:", error);
-  }
-})();
+// ================= BLACKLIST =================
+const blacklist = [
+  "nigger",
+  "faggot",
+  "tranny",
+  "twink",
+  "ponk",
+  "dyke",
+  "chink",
+  "killing myself",
+  "kms",
+  "kys",
+  "khs"
+];
 
 // ================= READY EVENT =================
 client.once(Events.ClientReady, bot => {
   console.log(`Logged in as ${bot.user.tag}`);
 });
 
-// ================= COMMAND HANDLER =================
-client.on(Events.InteractionCreate, async interaction => {
+// ================= MESSAGE FILTER =================
+client.on(Events.MessageCreate, async message => {
 
-  if (!interaction.isChatInputCommand()) return;
+  // IGNORE BOTS
+  if (message.author.bot) return;
 
-  try {
+  const content = message.content.toLowerCase();
 
-    // ONLY THE USER CAN SEE THIS WHILE BOT IS THINKING
-    await interaction.deferReply({
-      ephemeral: true
-    });
+  // CHECK FOR BLACKLISTED WORDS
+  const foundWord = blacklist.find(word =>
+    content.includes(word.toLowerCase())
+  );
 
-    // ===== /sendmessage =====
-    if (interaction.commandName === "sendmessage") {
+  if (foundWord) {
 
-      const message = interaction.options.getString("message");
+    try {
 
-      // SEND MESSAGE TO CHANNEL
-      await interaction.channel.send({
-        content: message
-      });
+      // DELETE MESSAGE FAST
+      await message.delete();
 
-      // HIDDEN CONFIRMATION
-      await interaction.editReply({
-        content: "Message sent."
-      });
-    }
+      // DM USER
+      await message.author.send(
+        `You used this word which is against our TOS: "${foundWord}"`
+      );
 
-  } catch (error) {
+      console.log(
+        `Deleted message from ${message.author.tag} for word: ${foundWord}`
+      );
 
-    console.error(error);
-
-    if (interaction.replied || interaction.deferred) {
-      await interaction.editReply({
-        content: "Something went wrong."
-      });
-    } else {
-      await interaction.reply({
-        content: "Something went wrong.",
-        ephemeral: true
-      });
+    } catch (error) {
+      console.error("Failed to moderate message:", error);
     }
   }
-
 });
 
 // ================= LOGIN =================
