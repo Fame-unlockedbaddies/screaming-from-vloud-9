@@ -1,4 +1,4 @@
-console.log("BOOTING CLEAN BOT...");
+console.log("BOOTING ADVANCED PROTECTION BOT...");
 
 process.on("uncaughtException", console.error);
 process.on("unhandledRejection", console.error);
@@ -9,7 +9,7 @@ const {
   Client,
   GatewayIntentBits,
   Events,
- SlashCommandBuilder,
+  SlashCommandBuilder,
   REST,
   Routes,
   EmbedBuilder
@@ -23,11 +23,15 @@ const GUILD_ID = "1428878035926388809";
 // USER TO PROTECT
 const PROTECTED_USER_ID = "1497846804480524298";
 
+// ALLOWED DOG GIF
+const ALLOWED_DOG_GIF =
+  "https://tenor.com/view/h2di-dog-side-eye-awkward-gif-7599485883499901089";
+
 // ================= KEEP ALIVE =================
 const app = express();
 
 app.get("/", (req, res) => {
-  res.send("Bot is running");
+  res.send("Advanced bot is online.");
 });
 
 app.listen(process.env.PORT || 3000, () => {
@@ -126,12 +130,12 @@ const blacklist = [
   "bastard",
   "cunt",
 
-  // OTHER WORDS
+  // OTHER
   "dog",
   "jerk"
 ];
 
-// ================= WORDS SHOWN IN EMBED =================
+// ================= EMBED WORDS =================
 const embedWords = blacklist.filter(
   word =>
     word !== "dog" &&
@@ -143,7 +147,7 @@ const embedWords = blacklist.filter(
 const commands = [
   new SlashCommandBuilder()
     .setName("whatperioddoes")
-    .setDescription("Shows all blacklisted words")
+    .setDescription("Displays protected blacklist words")
 ].map(command => command.toJSON());
 
 // ================= REGISTER COMMANDS =================
@@ -162,7 +166,7 @@ const rest = new REST({ version: "10" }).setToken(TOKEN);
       }
     );
 
-    console.log("Commands registered.");
+    console.log("Commands registered successfully.");
 
   } catch (error) {
     console.error(error);
@@ -170,9 +174,21 @@ const rest = new REST({ version: "10" }).setToken(TOKEN);
 
 })();
 
-// ================= READY EVENT =================
+// ================= READY =================
 client.once(Events.ClientReady, bot => {
+
   console.log(`Logged in as ${bot.user.tag}`);
+
+  client.user.setPresence({
+    activities: [
+      {
+        name: "Advanced Moderation Active",
+        type: 3
+      }
+    ],
+    status: "dnd"
+  });
+
 });
 
 // ================= SLASH COMMANDS =================
@@ -182,51 +198,57 @@ client.on(Events.InteractionCreate, async interaction => {
 
   try {
 
-    // ===== /whatperioddoes =====
     if (interaction.commandName === "whatperioddoes") {
 
       const rows = [];
       const wordsPerRow = 3;
 
       for (let i = 0; i < embedWords.length; i += wordsPerRow) {
+
         rows.push(
           embedWords
             .slice(i, i + wordsPerRow)
-            .join("  •  ")
+            .join("  ✦  ")
         );
+
       }
 
       const embed = new EmbedBuilder()
 
-        .setTitle("✦ Advanced Blacklist System")
+        .setAuthor({
+          name: "Advanced Blacklist Protection",
+          iconURL: client.user.displayAvatarURL()
+        })
+
+        .setTitle("✦ Moderation Database")
 
         .setDescription(
           [
-            "╔════════════════════╗",
-            "     PROTECTED FILTER     ",
-            "╚════════════════════╝",
+            "╔══════════════════════════════╗",
+            "        ACTIVE FILTER SYSTEM",
+            "╚══════════════════════════════╝",
             "",
             "```ansi",
             rows.join("\n"),
             "```",
             "",
-            "➜ Automatically deletes blocked words",
-            "➜ Sends DM warnings instantly",
-            "➜ Advanced moderation enabled"
+            "✦ Real-time moderation enabled",
+            "✦ Automatic deletion active",
+            "✦ DM protection warnings enabled",
+            "✦ Advanced security monitoring online"
           ].join("\n")
         )
 
-        .setColor("#c71585")
-
-        .setAuthor({
-          name: client.user.username,
-          iconURL: client.user.displayAvatarURL()
-        })
-
         .setThumbnail(client.user.displayAvatarURL())
 
+        .setColor("#c71585")
+
+        .setImage(
+          "https://media.tenor.com/4Z9wzP0K4JAAAAAC/anime-pink.gif"
+        )
+
         .setFooter({
-          text: "Advanced Protection • Moderation Active"
+          text: "Advanced Protection System • Online"
         })
 
         .setTimestamp();
@@ -234,6 +256,7 @@ client.on(Events.InteractionCreate, async interaction => {
       await interaction.reply({
         embeds: [embed]
       });
+
     }
 
   } catch (error) {
@@ -255,18 +278,35 @@ client.on(Events.MessageCreate, async message => {
 
   try {
 
-    // ================= "IM LEAVING" FILTER =================
+    // ================= IM LEAVING =================
     if (content.includes("im leaving")) {
 
       await message.delete();
 
-      await message.channel.send(
-        `${message.author} ok?`
-      );
+      const leaveEmbed = new EmbedBuilder()
 
-      console.log(
-        `${message.author.tag} said im leaving`
-      );
+        .setAuthor({
+          name: "Conversation Monitor",
+          iconURL: client.user.displayAvatarURL()
+        })
+
+        .setTitle("✦ User Leaving Detected")
+
+        .setDescription(
+          `${message.author}\n\n\`\`\`ok?\`\`\``
+        )
+
+        .setColor("#c71585")
+
+        .setFooter({
+          text: "Automatic Response System"
+        })
+
+        .setTimestamp();
+
+      await message.channel.send({
+        embeds: [leaveEmbed]
+      });
 
       return;
     }
@@ -283,20 +323,32 @@ client.on(Events.MessageCreate, async message => {
       await message.delete();
 
       const momoEmbed = new EmbedBuilder()
-        .setTitle("⚠ Content Blocked")
+
+        .setAuthor({
+          name: "Content Protection",
+          iconURL: client.user.displayAvatarURL()
+        })
+
+        .setTitle("⚠ Blocked Content Detected")
+
         .setDescription(
           [
             "Your message was removed.",
             "",
-            "Reason:",
-            "```The word or GIF 'momo' is not allowed.```"
+            "```ansi",
+            "The word or GIF 'momo' is restricted.",
+            "```"
           ].join("\n")
         )
-        .setColor("#c71585")
+
         .setThumbnail(client.user.displayAvatarURL())
+
+        .setColor("#c71585")
+
         .setFooter({
-          text: "Advanced Protection System"
+          text: "Advanced Protection • Content Blocked"
         })
+
         .setTimestamp();
 
       await message.author.send({
@@ -306,25 +358,38 @@ client.on(Events.MessageCreate, async message => {
       return;
     }
 
-    // ================= PROTECTED USER TAG =================
+    // ================= PROTECTED USER =================
     if (message.mentions.users.has(PROTECTED_USER_ID)) {
 
       await message.delete();
 
       const protectedEmbed = new EmbedBuilder()
-        .setTitle("✦ User Protection Enabled")
+
+        .setAuthor({
+          name: "Protected User System",
+          iconURL: client.user.displayAvatarURL()
+        })
+
+        .setTitle("✦ Protected User Mentioned")
+
         .setDescription(
           [
             "Your message was removed.",
             "",
-            "```Fame is busy at this moment sorry.```"
+            "```ansi",
+            "Fame is busy at this moment sorry.",
+            "```"
           ].join("\n")
         )
-        .setColor("#c71585")
+
         .setThumbnail(client.user.displayAvatarURL())
+
+        .setColor("#c71585")
+
         .setFooter({
-          text: "Protected User System"
+          text: "Advanced User Protection Enabled"
         })
+
         .setTimestamp();
 
       await message.author.send({
@@ -335,9 +400,20 @@ client.on(Events.MessageCreate, async message => {
     }
 
     // ================= BLACKLIST FILTER =================
+    const hasAllowedDogGif =
+      content.includes(ALLOWED_DOG_GIF);
+
     const foundWord = blacklist.find(word => {
 
-      // IGNORE GIFS/IMAGES FOR "dog"
+      // ALLOW SPECIFIC DOG GIF
+      if (
+        word === "dog" &&
+        hasAllowedDogGif
+      ) {
+        return false;
+      }
+
+      // IGNORE ATTACHMENTS FOR DOG
       if (
         word === "dog" &&
         message.attachments.size > 0
@@ -354,22 +430,41 @@ client.on(Events.MessageCreate, async message => {
       await message.delete();
 
       const warningEmbed = new EmbedBuilder()
+
+        .setAuthor({
+          name: "Advanced Moderation",
+          iconURL: client.user.displayAvatarURL()
+        })
+
         .setTitle("⚠ Moderation Warning")
+
         .setDescription(
           [
-            "Your message was automatically removed.",
+            "Your message has been removed.",
             "",
-            "Blocked Word:",
+            "╔════════════════════╗",
+            "      BLOCKED WORD",
+            "╚════════════════════╝",
+            "",
             `\`\`\`${foundWord}\`\`\``,
             "",
-            "Please follow the server rules."
+            "✦ Please follow the server rules",
+            "✦ Repeated violations may result in punishment"
           ].join("\n")
         )
-        .setColor("#c71585")
+
         .setThumbnail(client.user.displayAvatarURL())
+
+        .setColor("#c71585")
+
+        .setImage(
+          "https://media.tenor.com/LxggFGxwOjIAAAAC/pink-anime.gif"
+        )
+
         .setFooter({
           text: "Advanced Moderation • Warning Issued"
         })
+
         .setTimestamp();
 
       await message.author.send({
