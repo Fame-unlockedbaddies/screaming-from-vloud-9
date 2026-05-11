@@ -47,7 +47,7 @@ const client = new Client({
   ]
 });
 
-// ================= STATUS FUNCTION =================
+// ================= STATUS =================
 function setBotStatus() {
 
   client.user.setPresence({
@@ -64,6 +64,8 @@ function setBotStatus() {
 
 // ================= BLACKLIST =================
 const blacklist = [
+
+  // RACIAL
   "nigger",
   "chink",
   "coon",
@@ -76,6 +78,7 @@ const blacklist = [
   "beaner",
   "redskin",
 
+  // LGBT
   "faggot",
   "fag",
   "fggt",
@@ -88,12 +91,14 @@ const blacklist = [
   "twinkie",
   "ponk",
 
+  // SELF HARM
   "kys",
   "kms",
   "khs",
   "kill yourself",
   "killing myself",
 
+  // SEXUAL
   "sex",
   "porn",
   "nudes",
@@ -113,6 +118,7 @@ const blacklist = [
   "whore",
   "ho",
 
+  // SWEARING
   "fuck",
   "fucking",
   "fack",
@@ -122,6 +128,7 @@ const blacklist = [
   "bastard",
   "cunt",
 
+  // OTHER
   "dog",
   "jerk"
 ];
@@ -149,19 +156,23 @@ async function sendLog(guild, embed) {
     });
 
   } catch (error) {
-    console.error("Log error:", error);
+    console.error(error);
   }
 
 }
 
 // ================= COMMANDS =================
 const commands = [
+
   new SlashCommandBuilder()
     .setName("whatperioddoes")
-    .setDescription("Displays blacklist system")
+    .setDescription(
+      "Displays blacklist system"
+    )
+
 ].map(command => command.toJSON());
 
-// ================= REGISTER COMMANDS =================
+// ================= REGISTER =================
 const rest = new REST({
   version: "10"
 }).setToken(TOKEN);
@@ -180,7 +191,9 @@ const rest = new REST({
       }
     );
 
-    console.log("Commands registered.");
+    console.log(
+      "Commands registered."
+    );
 
   } catch (error) {
     console.error(error);
@@ -197,10 +210,9 @@ client.once(
       `Logged in as ${bot.user.tag}`
     );
 
-    // SET STATUS
     setBotStatus();
 
-    // KEEP STATUS FOREVER
+    // NEVER CLEAR STATUS
     setInterval(() => {
       setBotStatus();
     }, 15000);
@@ -213,7 +225,9 @@ client.on(
   Events.InteractionCreate,
   async interaction => {
 
-    if (!interaction.isChatInputCommand()) {
+    if (
+      !interaction.isChatInputCommand()
+    ) {
       return;
     }
 
@@ -298,6 +312,273 @@ client.on(
         await interaction.reply({
           embeds: [embed]
         });
+
+      }
+
+    } catch (error) {
+      console.error(error);
+    }
+
+  }
+);
+
+// ================= MESSAGE CACHE =================
+const messageCache = new Map();
+
+// ================= MESSAGE CREATE =================
+client.on(
+  Events.MessageCreate,
+  async message => {
+
+    try {
+
+      if (message.author.bot) {
+        return;
+      }
+
+      messageCache.set(
+        message.id,
+        {
+          content:
+            message.content || ""
+        }
+      );
+
+      const content =
+        (
+          message.content || ""
+        ).toLowerCase();
+
+      // ================= IGNORE GIFS =================
+      const isGif =
+        content.includes(
+          "tenor.com"
+        ) ||
+        content.includes(".gif") ||
+        content.includes(
+          "giphy.com"
+        );
+
+      if (isGif) {
+        return;
+      }
+
+      // ================= INVITE FILTER =================
+      const inviteRegex =
+        /(discord\.gg\/|discord\.com\/invite\/|discordapp\.com\/invite\/)/i;
+
+      if (
+        inviteRegex.test(content)
+      ) {
+
+        await message.delete();
+
+        const embed =
+          new EmbedBuilder()
+
+            .setColor("#ff1493")
+
+            .setTitle(
+              "Discord Invite Blocked"
+            )
+
+            .setDescription(
+              "Discord invites are not allowed."
+            )
+
+            .setFooter({
+              text:
+                "Invite Protection"
+            })
+
+            .setTimestamp();
+
+        await message.author.send({
+          embeds: [embed]
+        }).catch(() => {});
+
+        await sendLog(
+          message.guild,
+          embed
+        );
+
+        return;
+
+      }
+
+      // ================= PROTECTED USER =================
+      if (
+        message.mentions.users.has(
+          PROTECTED_USER_ID
+        )
+      ) {
+
+        await message.delete();
+
+        const embed =
+          new EmbedBuilder()
+
+            .setColor("#ff1493")
+
+            .setTitle(
+              "Mention Blocked"
+            )
+
+            .setDescription(
+              "Fame is busy at this moment sorry."
+            )
+
+            .setFooter({
+              text:
+                "Protected User System"
+            })
+
+            .setTimestamp();
+
+        await message.author.send({
+          embeds: [embed]
+        }).catch(() => {});
+
+        return;
+
+      }
+
+      // ================= SPACE BYPASS =================
+      const compactContent =
+        content.replace(/\s+/g, "");
+
+      // ================= SMART BLACKLIST =================
+      const foundWord =
+        blacklist.find(word => {
+
+          const escaped =
+            word.replace(
+              /[.*+?^${}()|[\]\\]/g,
+              "\\$&"
+            );
+
+          const regex =
+            new RegExp(
+              `(^|\\s)${escaped}(\\s|$)`,
+              "i"
+            );
+
+          const compactWord =
+            word
+              .toLowerCase()
+              .replace(/\s+/g, "");
+
+          // NORMAL MATCH
+          if (
+            regex.test(content)
+          ) {
+            return true;
+          }
+
+          // SPACE BYPASS
+          if (
+            compactContent.includes(
+              compactWord
+            )
+          ) {
+            return true;
+          }
+
+          return false;
+
+        });
+
+      // ================= DELETE MESSAGE =================
+      if (foundWord) {
+
+        await message.delete();
+
+        // ================= DM USER =================
+        const warningEmbed =
+          new EmbedBuilder()
+
+            .setColor("#ff1493")
+
+            .setTitle(
+              "Message Removed"
+            )
+
+            .setDescription(
+              [
+                "Your message contained a restricted word.",
+                "",
+                `Blocked Word: ${foundWord}`
+              ].join("\n")
+            )
+
+            .addFields(
+              {
+                name: "Status",
+                value:
+                  "```Removed```",
+                inline: true
+              },
+              {
+                name: "Protection",
+                value:
+                  "```Enabled```",
+                inline: true
+              }
+            )
+
+            .setFooter({
+              text:
+                "Advanced Protection"
+            })
+
+            .setTimestamp();
+
+        await message.author.send({
+          embeds: [warningEmbed]
+        }).catch(() => {});
+
+        // ================= LOG =================
+        const logEmbed =
+          new EmbedBuilder()
+
+            .setColor("#ff1493")
+
+            .setTitle(
+              "Blacklist Detection"
+            )
+
+            .addFields(
+              {
+                name: "User",
+                value:
+                  `${message.author.tag}`,
+                inline: true
+              },
+              {
+                name: "Word",
+                value:
+                  `${foundWord}`,
+                inline: true
+              },
+              {
+                name: "Channel",
+                value:
+                  `${message.channel}`,
+                inline: true
+              }
+            )
+
+            .setFooter({
+              text:
+                "Moderation Logs"
+            })
+
+            .setTimestamp();
+
+        await sendLog(
+          message.guild,
+          logEmbed
+        );
 
       }
 
