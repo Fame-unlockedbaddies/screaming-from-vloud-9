@@ -20,6 +20,9 @@ const TOKEN = process.env.TOKEN;
 const CLIENT_ID = process.env.CLIENT_ID;
 const GUILD_ID = "1428878035926388809";
 
+// USER TO PROTECT
+const PROTECTED_USER_ID = "1497846804480524298";
+
 // ================= KEEP ALIVE =================
 const app = express();
 
@@ -147,7 +150,6 @@ client.on(Events.InteractionCreate, async interaction => {
     // ===== /whatperioddoes =====
     if (interaction.commandName === "whatperioddoes") {
 
-      // MAKE WORDS INTO ROWS/COLUMNS
       const rows = [];
       const wordsPerRow = 3;
 
@@ -164,13 +166,13 @@ client.on(Events.InteractionCreate, async interaction => {
         .setDescription(
           "```" + rows.join("\n") + "```"
         )
-        .setColor("#ff1493") // DARK PINK
+        .setColor("#ff1493")
         .setFooter({
           text: "Protected Moderation System"
         })
         .setTimestamp();
 
-      // EVERYONE CAN SEE IT
+      // EVERYONE CAN SEE
       await interaction.reply({
         embeds: [embed]
       });
@@ -188,24 +190,38 @@ client.on(Events.MessageCreate, async message => {
   // IGNORE BOTS
   if (message.author.bot) return;
 
-  // IGNORE EMPTY MESSAGES
+  // IGNORE EMPTY
   if (!message.content) return;
 
   const content = message.content.toLowerCase();
 
-  // CHECK FOR BLACKLISTED WORDS
-  const foundWord = blacklist.find(word =>
-    content.includes(word.toLowerCase())
-  );
+  try {
 
-  if (foundWord) {
+    // ================= PROTECTED USER TAG =================
+    if (message.mentions.users.has(PROTECTED_USER_ID)) {
 
-    try {
-
-      // DELETE MESSAGE FAST
       await message.delete();
 
-      // DM USER
+      await message.author.send(
+        "Fame is busy at this moment sorry."
+      );
+
+      console.log(
+        `${message.author.tag} mentioned protected user.`
+      );
+
+      return;
+    }
+
+    // ================= BLACKLIST FILTER =================
+    const foundWord = blacklist.find(word =>
+      content.includes(word.toLowerCase())
+    );
+
+    if (foundWord) {
+
+      await message.delete();
+
       await message.author.send(
         `You used this word which is against our TOS: "${foundWord}"`
       );
@@ -213,10 +229,10 @@ client.on(Events.MessageCreate, async message => {
       console.log(
         `Deleted message from ${message.author.tag} for using: ${foundWord}`
       );
-
-    } catch (error) {
-      console.error("Failed to moderate message:", error);
     }
+
+  } catch (error) {
+    console.error("Failed to moderate message:", error);
   }
 
 });
