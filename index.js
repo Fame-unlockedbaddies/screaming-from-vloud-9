@@ -265,12 +265,69 @@ client.on(Events.MessageCreate, async message => {
 
   try {
 
-    // ================= IGNORE GIF LINKS =================
+    // ================= GIF DETECTION =================
     const isGifMessage =
       content.includes("tenor.com") ||
       content.includes(".gif") ||
       content.includes("giphy.com") ||
       content.includes("media.discordapp.net");
+
+    // ================= DISCORD INVITE FILTER =================
+    const inviteRegex =
+      /(discord\.gg\/|discord\.com\/invite\/|discordapp\.com\/invite\/)/i;
+
+    if (inviteRegex.test(content)) {
+
+      await message.delete();
+
+      const inviteEmbed = new EmbedBuilder()
+
+        .setColor("#ff1493")
+
+        .setAuthor({
+          name: "Invite Protection",
+          iconURL: client.user.displayAvatarURL()
+        })
+
+        .setTitle("⚠ Discord Invite Blocked")
+
+        .setDescription(
+          [
+            "> Your message was removed automatically.",
+            "",
+            "```fix",
+            "Discord invite links are not allowed here.",
+            "```"
+          ].join("\n")
+        )
+
+        .addFields(
+          {
+            name: "Action",
+            value: "```yaml\nInvite Removed\n```",
+            inline: true
+          },
+          {
+            name: "Protection",
+            value: "```fix\nEnabled\n```",
+            inline: true
+          }
+        )
+
+        .setThumbnail(client.user.displayAvatarURL())
+
+        .setFooter({
+          text: "Advanced Invite Protection"
+        })
+
+        .setTimestamp();
+
+      await message.author.send({
+        embeds: [inviteEmbed]
+      });
+
+      return;
+    }
 
     // ================= IM LEAVING =================
     if (
@@ -401,12 +458,9 @@ client.on(Events.MessageCreate, async message => {
     if (isGifMessage) return;
 
     // ================= SMART BLACKLIST FILTER =================
-
-    // CONTENT WITH SPACES REMOVED
     const compactContent =
       content.replace(/\s+/g, "");
 
-    // FIND BLOCKED WORD
     const foundWord = blacklist.find(word => {
 
       const compactWord =
@@ -420,7 +474,6 @@ client.on(Events.MessageCreate, async message => {
       }
 
       // SPACE BYPASS CHECK
-      // EXAMPLE: d o g
       if (
         compactContent.includes(compactWord)
       ) {
