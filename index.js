@@ -13,7 +13,6 @@ const {
   REST,
   Routes,
   EmbedBuilder,
-  AuditLogEvent,
   ActivityType
 } = require("discord.js");
 
@@ -116,7 +115,6 @@ const blacklist = [
   "jerking off",
   "slut",
   "whore",
-  "ho",
 
   // SWEARING
   "fuck",
@@ -156,7 +154,7 @@ async function sendLog(guild, embed) {
     });
 
   } catch (error) {
-    console.error(error);
+    console.error("Log error:", error);
   }
 
 }
@@ -212,7 +210,7 @@ client.once(
 
     setBotStatus();
 
-    // NEVER CLEAR STATUS
+    // KEEP STATUS FOREVER
     setInterval(() => {
       setBotStatus();
     }, 15000);
@@ -322,9 +320,6 @@ client.on(
   }
 );
 
-// ================= MESSAGE CACHE =================
-const messageCache = new Map();
-
 // ================= MESSAGE CREATE =================
 client.on(
   Events.MessageCreate,
@@ -335,14 +330,6 @@ client.on(
       if (message.author.bot) {
         return;
       }
-
-      messageCache.set(
-        message.id,
-        {
-          content:
-            message.content || ""
-        }
-      );
 
       const content =
         (
@@ -443,10 +430,6 @@ client.on(
 
       }
 
-      // ================= SPACE BYPASS =================
-      const compactContent =
-        content.replace(/\s+/g, "");
-
       // ================= SMART BLACKLIST =================
       const foundWord =
         blacklist.find(word => {
@@ -457,18 +440,29 @@ client.on(
               "\\$&"
             );
 
+          // FULL WORD MATCH
           const regex =
             new RegExp(
-              `(^|\\s)${escaped}(\\s|$)`,
+              `(^|\\b)${escaped}(\\b|$)`,
               "i"
             );
 
-          const compactWord =
-            word
-              .toLowerCase()
-              .replace(/\s+/g, "");
+          // SPACE BYPASS MATCH
+          const spacedRegex =
+            new RegExp(
+              word
+                .split("")
+                .map(letter =>
+                  letter.replace(
+                    /[.*+?^${}()|[\]\\]/g,
+                    "\\$&"
+                  )
+                )
+                .join("\\s*"),
+              "i"
+            );
 
-          // NORMAL MATCH
+          // NORMAL WORD
           if (
             regex.test(content)
           ) {
@@ -477,9 +471,7 @@ client.on(
 
           // SPACE BYPASS
           if (
-            compactContent.includes(
-              compactWord
-            )
+            spacedRegex.test(content)
           ) {
             return true;
           }
