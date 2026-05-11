@@ -23,10 +23,6 @@ const GUILD_ID = "1428878035926388809";
 // ================= PROTECTED USER =================
 const PROTECTED_USER_ID = "1497846804480524298";
 
-// ================= ALLOWED DOG GIF =================
-const ALLOWED_DOG_GIF =
-  "https://tenor.com/view/h2di-dog-side-eye-awkward-gif-7599485883499901089";
-
 // ================= KEEP ALIVE =================
 const app = express();
 
@@ -63,11 +59,6 @@ const blacklist = [
   "raghead",
   "beaner",
   "redskin",
-  "camel jockey",
-  "zipperhead",
-  "porch monkey",
-  "towelhead",
-  "gypsy",
 
   // LGBT / TRANS SLURS
   "faggot",
@@ -81,9 +72,6 @@ const blacklist = [
   "twink",
   "twinkie",
   "ponk",
-  "he she",
-  "it pretending to be a woman",
-  "it pretending to be a man",
 
   // SELF HARM
   "kys",
@@ -91,30 +79,22 @@ const blacklist = [
   "khs",
   "kill yourself",
   "killing myself",
-  "suicide",
-  "self harm",
 
   // SEXUAL WORDS
   "sex",
   "porn",
   "nudes",
-  "nude",
   "boobs",
   "tits",
-  "ass",
   "anal",
   "blowjob",
-  "bj",
   "cock",
   "dick",
   "penis",
-  "vagina",
   "pussy",
   "cum",
-  "cumming",
   "horny",
   "masturbate",
-  "masturbating",
   "jerking off",
   "slut",
   "whore",
@@ -285,8 +265,18 @@ client.on(Events.MessageCreate, async message => {
 
   try {
 
+    // ================= IGNORE GIF LINKS =================
+    const isGifMessage =
+      content.includes("tenor.com") ||
+      content.includes(".gif") ||
+      content.includes("giphy.com") ||
+      content.includes("media.discordapp.net");
+
     // ================= IM LEAVING =================
-    if (content.includes("im leaving")) {
+    if (
+      !isGifMessage &&
+      content.includes("im leaving")
+    ) {
 
       await message.delete();
 
@@ -318,11 +308,14 @@ client.on(Events.MessageCreate, async message => {
 
     // ================= MOMO FILTER =================
     if (
-      content.includes("momo") ||
-      (message.attachments.size > 0 &&
-        [...message.attachments.values()].some(attachment =>
-          attachment.name?.toLowerCase().includes("momo")
-        ))
+      !isGifMessage &&
+      (
+        content.includes("momo") ||
+        (message.attachments.size > 0 &&
+          [...message.attachments.values()].some(attachment =>
+            attachment.name?.toLowerCase().includes("momo")
+          ))
+      )
     ) {
 
       await message.delete();
@@ -404,21 +397,14 @@ client.on(Events.MessageCreate, async message => {
       return;
     }
 
-    // ================= SMART BLACKLIST FILTER =================
+    // ================= IGNORE GIFS FOR BLACKLIST =================
+    if (isGifMessage) return;
 
-    // NORMAL CONTENT
-    const normalContent = content.toLowerCase();
+    // ================= SMART BLACKLIST FILTER =================
 
     // CONTENT WITH SPACES REMOVED
     const compactContent =
-      normalContent.replace(/\s+/g, "");
-
-    // ALLOW SPECIFIC DOG GIF
-    const hasAllowedDogGif =
-      normalContent.includes(ALLOWED_DOG_GIF) ||
-      normalContent.includes(
-        "h2di-dog-side-eye-awkward-gif"
-      );
+      content.replace(/\s+/g, "");
 
     // FIND BLOCKED WORD
     const foundWord = blacklist.find(word => {
@@ -426,30 +412,15 @@ client.on(Events.MessageCreate, async message => {
       const compactWord =
         word.toLowerCase().replace(/\s+/g, "");
 
-      // ALLOW SPECIFIC DOG GIF
-      if (
-        compactWord === "dog" &&
-        hasAllowedDogGif
-      ) {
-        return false;
-      }
-
-      // ALLOW IMAGE/GIF ATTACHMENTS FOR DOG
-      if (
-        compactWord === "dog" &&
-        message.attachments.size > 0
-      ) {
-        return false;
-      }
-
       // NORMAL CHECK
       if (
-        normalContent.includes(word.toLowerCase())
+        content.includes(word.toLowerCase())
       ) {
         return true;
       }
 
       // SPACE BYPASS CHECK
+      // EXAMPLE: d o g
       if (
         compactContent.includes(compactWord)
       ) {
