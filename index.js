@@ -90,10 +90,43 @@ const blacklist = [
   "suicide",
   "self harm",
 
+  // SEXUAL WORDS
+  "sex",
+  "porn",
+  "nudes",
+  "nude",
+  "boobs",
+  "tits",
+  "ass",
+  "anal",
+  "blowjob",
+  "bj",
+  "cock",
+  "dick",
+  "penis",
+  "vagina",
+  "pussy",
+  "cum",
+  "cumming",
+  "horny",
+  "masturbate",
+  "masturbating",
+  "jerking off",
+  "slut",
+  "whore",
+
+  // SWEARING
+  "fuck",
+  "fucking",
+  "bitch",
+  "shit",
+  "motherfucker",
+  "bastard",
+  "cunt",
+
   // OTHER WORDS
   "dog",
-  "jerk",
-  "jerking off"
+  "jerk"
 ];
 
 // ================= WORDS SHOWN IN EMBED =================
@@ -197,6 +230,24 @@ client.on(Events.MessageCreate, async message => {
 
   try {
 
+    // ================= "IM LEAVING" FILTER =================
+    if (content.includes("im leaving")) {
+
+      // DELETE MESSAGE
+      await message.delete();
+
+      // TAG USER
+      await message.channel.send(
+        `${message.author} ok?`
+      );
+
+      console.log(
+        `${message.author.tag} said im leaving`
+      );
+
+      return;
+    }
+
     // ================= PROTECTED USER TAG =================
     if (message.mentions.users.has(PROTECTED_USER_ID)) {
 
@@ -220,8 +271,10 @@ client.on(Events.MessageCreate, async message => {
 
     if (foundWord) {
 
+      // DELETE MESSAGE
       await message.delete();
 
+      // DM USER
       await message.author.send(
         `You used this word which is against our TOS: "${foundWord}"`
       );
