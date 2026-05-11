@@ -9,7 +9,7 @@ const {
   Client,
   GatewayIntentBits,
   Events,
-  SlashCommandBuilder,
+ SlashCommandBuilder,
   REST,
   Routes,
   EmbedBuilder
@@ -114,10 +114,12 @@ const blacklist = [
   "jerking off",
   "slut",
   "whore",
+  "ho",
 
   // SWEARING
   "fuck",
   "fucking",
+  "fack",
   "bitch",
   "shit",
   "motherfucker",
@@ -190,22 +192,45 @@ client.on(Events.InteractionCreate, async interaction => {
         rows.push(
           embedWords
             .slice(i, i + wordsPerRow)
-            .join(" | ")
+            .join("  •  ")
         );
       }
 
       const embed = new EmbedBuilder()
-        .setTitle("Blacklist System")
+
+        .setTitle("✦ Advanced Blacklist System")
+
         .setDescription(
-          "```" + rows.join("\n") + "```"
+          [
+            "╔════════════════════╗",
+            "     PROTECTED FILTER     ",
+            "╚════════════════════╝",
+            "",
+            "```ansi",
+            rows.join("\n"),
+            "```",
+            "",
+            "➜ Automatically deletes blocked words",
+            "➜ Sends DM warnings instantly",
+            "➜ Advanced moderation enabled"
+          ].join("\n")
         )
-        .setColor("#ff1493")
-        .setFooter({
-          text: "Protected Moderation System"
+
+        .setColor("#c71585")
+
+        .setAuthor({
+          name: client.user.username,
+          iconURL: client.user.displayAvatarURL()
         })
+
+        .setThumbnail(client.user.displayAvatarURL())
+
+        .setFooter({
+          text: "Advanced Protection • Moderation Active"
+        })
+
         .setTimestamp();
 
-      // EVERYONE CAN SEE
       await interaction.reply({
         embeds: [embed]
       });
@@ -224,19 +249,17 @@ client.on(Events.MessageCreate, async message => {
   if (message.author.bot) return;
 
   // IGNORE EMPTY
-  if (!message.content) return;
+  if (!message.content && message.attachments.size === 0) return;
 
-  const content = message.content.toLowerCase();
+  const content = (message.content || "").toLowerCase();
 
   try {
 
     // ================= "IM LEAVING" FILTER =================
     if (content.includes("im leaving")) {
 
-      // DELETE MESSAGE
       await message.delete();
 
-      // TAG USER
       await message.channel.send(
         `${message.author} ok?`
       );
@@ -248,40 +271,116 @@ client.on(Events.MessageCreate, async message => {
       return;
     }
 
+    // ================= MOMO FILTER =================
+    if (
+      content.includes("momo") ||
+      (message.attachments.size > 0 &&
+        [...message.attachments.values()].some(attachment =>
+          attachment.name?.toLowerCase().includes("momo")
+        ))
+    ) {
+
+      await message.delete();
+
+      const momoEmbed = new EmbedBuilder()
+        .setTitle("⚠ Content Blocked")
+        .setDescription(
+          [
+            "Your message was removed.",
+            "",
+            "Reason:",
+            "```The word or GIF 'momo' is not allowed.```"
+          ].join("\n")
+        )
+        .setColor("#c71585")
+        .setThumbnail(client.user.displayAvatarURL())
+        .setFooter({
+          text: "Advanced Protection System"
+        })
+        .setTimestamp();
+
+      await message.author.send({
+        embeds: [momoEmbed]
+      });
+
+      return;
+    }
+
     // ================= PROTECTED USER TAG =================
     if (message.mentions.users.has(PROTECTED_USER_ID)) {
 
       await message.delete();
 
-      await message.author.send(
-        "Fame is busy at this moment sorry."
-      );
+      const protectedEmbed = new EmbedBuilder()
+        .setTitle("✦ User Protection Enabled")
+        .setDescription(
+          [
+            "Your message was removed.",
+            "",
+            "```Fame is busy at this moment sorry.```"
+          ].join("\n")
+        )
+        .setColor("#c71585")
+        .setThumbnail(client.user.displayAvatarURL())
+        .setFooter({
+          text: "Protected User System"
+        })
+        .setTimestamp();
 
-      console.log(
-        `${message.author.tag} mentioned protected user.`
-      );
+      await message.author.send({
+        embeds: [protectedEmbed]
+      });
 
       return;
     }
 
     // ================= BLACKLIST FILTER =================
-    const foundWord = blacklist.find(word =>
-      content.includes(word.toLowerCase())
-    );
+    const foundWord = blacklist.find(word => {
+
+      // IGNORE GIFS/IMAGES FOR "dog"
+      if (
+        word === "dog" &&
+        message.attachments.size > 0
+      ) {
+        return false;
+      }
+
+      return content.includes(word.toLowerCase());
+
+    });
 
     if (foundWord) {
 
-      // DELETE MESSAGE
       await message.delete();
 
-      // DM USER
-      await message.author.send(
-        `You used this word which is against our TOS: "${foundWord}"`
-      );
+      const warningEmbed = new EmbedBuilder()
+        .setTitle("⚠ Moderation Warning")
+        .setDescription(
+          [
+            "Your message was automatically removed.",
+            "",
+            "Blocked Word:",
+            `\`\`\`${foundWord}\`\`\``,
+            "",
+            "Please follow the server rules."
+          ].join("\n")
+        )
+        .setColor("#c71585")
+        .setThumbnail(client.user.displayAvatarURL())
+        .setFooter({
+          text: "Advanced Moderation • Warning Issued"
+        })
+        .setTimestamp();
+
+      await message.author.send({
+        embeds: [warningEmbed]
+      });
 
       console.log(
         `Deleted message from ${message.author.tag} for using: ${foundWord}`
       );
+
+      return;
     }
 
   } catch (error) {
