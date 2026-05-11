@@ -43,6 +43,7 @@ const client = new Client({
 
 // ================= BLACKLIST =================
 const blacklist = [
+
   // RACIAL SLURS
   "nigger",
   "chink",
@@ -111,13 +112,16 @@ const commands = [
 const rest = new REST({ version: "10" }).setToken(TOKEN);
 
 (async () => {
+
   try {
 
     console.log("Registering commands...");
 
     await rest.put(
       Routes.applicationGuildCommands(CLIENT_ID, GUILD_ID),
-      { body: commands }
+      {
+        body: commands
+      }
     );
 
     console.log("Commands registered.");
@@ -125,6 +129,7 @@ const rest = new REST({ version: "10" }).setToken(TOKEN);
   } catch (error) {
     console.error(error);
   }
+
 })();
 
 // ================= READY EVENT =================
@@ -139,22 +144,42 @@ client.on(Events.InteractionCreate, async interaction => {
 
   try {
 
+    // ===== /whatperioddoes =====
     if (interaction.commandName === "whatperioddoes") {
 
-      const embed = new EmbedBuilder()
-        .setTitle("Blacklisted Words")
-        .setDescription(embedWords.join("\n"))
-        .setColor("Red");
+      // MAKE WORDS INTO ROWS/COLUMNS
+      const rows = [];
+      const wordsPerRow = 3;
 
+      for (let i = 0; i < embedWords.length; i += wordsPerRow) {
+        rows.push(
+          embedWords
+            .slice(i, i + wordsPerRow)
+            .join(" | ")
+        );
+      }
+
+      const embed = new EmbedBuilder()
+        .setTitle("Blacklist System")
+        .setDescription(
+          "```" + rows.join("\n") + "```"
+        )
+        .setColor("#ff1493") // DARK PINK
+        .setFooter({
+          text: "Protected Moderation System"
+        })
+        .setTimestamp();
+
+      // EVERYONE CAN SEE IT
       await interaction.reply({
-        embeds: [embed],
-        ephemeral: true
+        embeds: [embed]
       });
     }
 
   } catch (error) {
     console.error(error);
   }
+
 });
 
 // ================= MESSAGE FILTER =================
@@ -177,7 +202,7 @@ client.on(Events.MessageCreate, async message => {
 
     try {
 
-      // DELETE MESSAGE
+      // DELETE MESSAGE FAST
       await message.delete();
 
       // DM USER
@@ -193,6 +218,7 @@ client.on(Events.MessageCreate, async message => {
       console.error("Failed to moderate message:", error);
     }
   }
+
 });
 
 // ================= LOGIN =================
