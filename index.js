@@ -16,7 +16,10 @@ const {
 const express = require('express');
 require('dotenv').config();
 
-// EXPRESS SERVER FOR RENDER
+/* =========================
+   EXPRESS SERVER FOR RENDER
+========================= */
+
 const app = express();
 
 app.get('/', (req, res) => {
@@ -29,7 +32,10 @@ app.listen(PORT, () => {
   console.log(`Web server running on port ${PORT}`);
 });
 
-// DISCORD BOT
+/* =========================
+   DISCORD BOT
+========================= */
+
 const TOKEN = process.env.TOKEN;
 const CLIENT_ID = process.env.CLIENT_ID;
 
@@ -37,21 +43,26 @@ const client = new Client({
   intents: [GatewayIntentBits.Guilds]
 });
 
-// Store category IDs
+// Store ticket category IDs
 const ticketCategories = new Map();
 
-// SLASH COMMANDS
+/* =========================
+   SLASH COMMANDS
+========================= */
+
 const commands = [
 
-  // Ping
+  // PING COMMAND
   new SlashCommandBuilder()
     .setName('ping')
     .setDescription('Replies with Pong!'),
 
-  // Ticket Setup
+  // SET TICKET COMMAND
   new SlashCommandBuilder()
     .setName('setticket')
     .setDescription('Create a ticket panel')
+
+    // REQUIRED OPTIONS FIRST
 
     .addStringOption(option =>
       option
@@ -76,13 +87,6 @@ const commands = [
 
     .addStringOption(option =>
       option
-        .setName('image')
-        .setDescription('Embed image URL')
-        .setRequired(false)
-    )
-
-    .addStringOption(option =>
-      option
         .setName('support_category')
         .setDescription('Support category ID')
         .setRequired(true)
@@ -102,9 +106,21 @@ const commands = [
         .setRequired(true)
     )
 
+    // OPTIONAL OPTIONS LAST
+
+    .addStringOption(option =>
+      option
+        .setName('image')
+        .setDescription('Embed image URL')
+        .setRequired(false)
+    )
+
 ].map(command => command.toJSON());
 
-// REGISTER COMMANDS
+/* =========================
+   REGISTER COMMANDS
+========================= */
+
 const rest = new REST({ version: '10' }).setToken(TOKEN);
 
 (async () => {
@@ -126,15 +142,24 @@ const rest = new REST({ version: '10' }).setToken(TOKEN);
 
 })();
 
-// BOT READY
+/* =========================
+   BOT READY
+========================= */
+
 client.once('ready', () => {
   console.log(`Logged in as ${client.user.tag}`);
 });
 
-// INTERACTIONS
+/* =========================
+   INTERACTIONS
+========================= */
+
 client.on('interactionCreate', async interaction => {
 
-  // SLASH COMMANDS
+  /* =========================
+     SLASH COMMANDS
+  ========================= */
+
   if (interaction.isChatInputCommand()) {
 
     // PING
@@ -146,15 +171,18 @@ client.on('interactionCreate', async interaction => {
 
     }
 
-    // SET TICKET PANEL
+    // SET TICKET
     if (interaction.commandName === 'setticket') {
 
-      const title = interaction.options.getString('title');
-      const description = interaction.options.getString('description');
-      const color = interaction.options.getString('color');
-      const image = interaction.options.getString('image');
+      const title =
+        interaction.options.getString('title');
 
-      // CATEGORY IDS
+      const description =
+        interaction.options.getString('description');
+
+      const color =
+        interaction.options.getString('color');
+
       const supportCategory =
         interaction.options.getString('support_category');
 
@@ -164,7 +192,10 @@ client.on('interactionCreate', async interaction => {
       const reportCategory =
         interaction.options.getString('report_category');
 
-      // SAVE IDS
+      const image =
+        interaction.options.getString('image');
+
+      // SAVE CATEGORY IDS
       ticketCategories.set('support', supportCategory);
       ticketCategories.set('billing', billingCategory);
       ticketCategories.set('report', reportCategory);
@@ -193,19 +224,20 @@ client.on('interactionCreate', async interaction => {
           },
           {
             label: 'Billing',
-            description: 'Payments and billing help',
+            description: 'Billing and payments help',
             value: 'billing',
             emoji: '💰'
           },
           {
             label: 'Report User',
-            description: 'Report a user',
+            description: 'Report a member',
             value: 'report',
             emoji: '⚠️'
           }
         ]);
 
-      const row = new ActionRowBuilder().addComponents(menu);
+      const row =
+        new ActionRowBuilder().addComponents(menu);
 
       // SEND PANEL
       await interaction.channel.send({
@@ -213,7 +245,7 @@ client.on('interactionCreate', async interaction => {
         components: [row]
       });
 
-      // PRIVATE REPLY
+      // PRIVATE RESPONSE
       await interaction.reply({
         content: 'Ticket panel created successfully.',
         ephemeral: true
@@ -223,7 +255,10 @@ client.on('interactionCreate', async interaction => {
 
   }
 
-  // SELECT MENU
+  /* =========================
+     SELECT MENU
+  ========================= */
+
   if (interaction.isStringSelectMenu()) {
 
     if (interaction.customId === 'ticket_menu') {
@@ -231,78 +266,84 @@ client.on('interactionCreate', async interaction => {
       const guild = interaction.guild;
       const member = interaction.member;
 
-      const categoryType = interaction.values[0];
+      const ticketType =
+        interaction.values[0];
 
-      // GET CATEGORY ID
+      // CATEGORY ID
       const categoryId =
-        ticketCategories.get(categoryType);
+        ticketCategories.get(ticketType);
 
       // CHECK EXISTING
-      const existing = guild.channels.cache.find(
-        channel =>
+      const existingTicket =
+        guild.channels.cache.find(channel =>
           channel.name ===
-          `${categoryType}-${member.user.username.toLowerCase()}`
-      );
+          `${ticketType}-${member.user.username.toLowerCase()}`
+        );
 
-      if (existing) {
+      if (existingTicket) {
 
         return interaction.reply({
           content:
-            `You already have a ${categoryType} ticket: ${existing}`,
+            `You already have a ${ticketType} ticket: ${existingTicket}`,
           ephemeral: true
         });
 
       }
 
       // CREATE CHANNEL
-      const ticketChannel = await guild.channels.create({
+      const ticketChannel =
+        await guild.channels.create({
 
-        name: `${categoryType}-${member.user.username}`,
+          name:
+            `${ticketType}-${member.user.username}`,
 
-        type: ChannelType.GuildText,
+          type: ChannelType.GuildText,
 
-        parent: categoryId,
+          parent: categoryId,
 
-        permissionOverwrites: [
+          permissionOverwrites: [
 
-          {
-            id: guild.id,
-            deny: [PermissionsBitField.Flags.ViewChannel]
-          },
+            {
+              id: guild.id,
+              deny: [
+                PermissionsBitField.Flags.ViewChannel
+              ]
+            },
 
-          {
-            id: member.id,
-            allow: [
-              PermissionsBitField.Flags.ViewChannel,
-              PermissionsBitField.Flags.SendMessages,
-              PermissionsBitField.Flags.ReadMessageHistory
-            ]
-          }
+            {
+              id: member.id,
+              allow: [
+                PermissionsBitField.Flags.ViewChannel,
+                PermissionsBitField.Flags.SendMessages,
+                PermissionsBitField.Flags.ReadMessageHistory
+              ]
+            }
 
-        ]
+          ]
 
-      });
+        });
 
       // CLOSE BUTTON
-      const closeButton = new ButtonBuilder()
-        .setCustomId('close_ticket')
-        .setLabel('Close Ticket')
-        .setStyle(ButtonStyle.Danger);
+      const closeButton =
+        new ButtonBuilder()
+          .setCustomId('close_ticket')
+          .setLabel('Close Ticket')
+          .setStyle(ButtonStyle.Danger);
 
       const closeRow =
         new ActionRowBuilder().addComponents(closeButton);
 
-      // WELCOME MESSAGE
+      // SEND MESSAGE
       await ticketChannel.send({
         content:
-          `Welcome ${member}! You created a ${categoryType} ticket.`,
+          `Welcome ${member}! You created a ${ticketType} ticket.`,
         components: [closeRow]
       });
 
       // REPLY
       await interaction.reply({
         content:
-          `Your ${categoryType} ticket has been created: ${ticketChannel}`,
+          `Your ${ticketType} ticket has been created: ${ticketChannel}`,
         ephemeral: true
       });
 
@@ -310,7 +351,10 @@ client.on('interactionCreate', async interaction => {
 
   }
 
-  // BUTTONS
+  /* =========================
+     BUTTONS
+  ========================= */
+
   if (interaction.isButton()) {
 
     // CLOSE TICKET
@@ -333,5 +377,8 @@ client.on('interactionCreate', async interaction => {
 
 });
 
-// LOGIN
+/* =========================
+   LOGIN
+========================= */
+
 client.login(TOKEN);
