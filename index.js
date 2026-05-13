@@ -23,11 +23,13 @@ const client = new Client({
 
 // Slash Commands
 const commands = [
+
+  // Ping Command
   new SlashCommandBuilder()
     .setName('ping')
-    .setDescription('Replies with Pong!')
-    .toJSON(),
+    .setDescription('Replies with Pong!'),
 
+  // Setup Ticket Command
   new SlashCommandBuilder()
     .setName('setticket')
     .setDescription('Create a custom ticket panel')
@@ -49,7 +51,7 @@ const commands = [
     .addStringOption(option =>
       option
         .setName('color')
-        .setDescription('Embed color HEX code')
+        .setDescription('Embed HEX color (#5865F2)')
         .setRequired(true)
     )
 
@@ -74,14 +76,14 @@ const commands = [
         .setRequired(false)
     )
 
-    .toJSON()
-];
+].map(command => command.toJSON());
 
 // Register Commands
 const rest = new REST({ version: '10' }).setToken(TOKEN);
 
 (async () => {
   try {
+
     console.log('Registering slash commands...');
 
     await rest.put(
@@ -90,6 +92,7 @@ const rest = new REST({ version: '10' }).setToken(TOKEN);
     );
 
     console.log('Slash commands registered.');
+
   } catch (error) {
     console.error(error);
   }
@@ -106,11 +109,13 @@ client.on('interactionCreate', async interaction => {
   // Slash Commands
   if (interaction.isChatInputCommand()) {
 
-    // Ping Command
+    // Ping
     if (interaction.commandName === 'ping') {
+
       return interaction.reply({
         content: 'Pong!'
       });
+
     }
 
     // Setup Ticket Panel
@@ -123,6 +128,7 @@ client.on('interactionCreate', async interaction => {
       const emoji = interaction.options.getString('emoji');
       const image = interaction.options.getString('image');
 
+      // Embed
       const embed = new EmbedBuilder()
         .setTitle(title)
         .setDescription(description)
@@ -132,6 +138,7 @@ client.on('interactionCreate', async interaction => {
         embed.setImage(image);
       }
 
+      // Button
       const button = new ButtonBuilder()
         .setCustomId('create_ticket')
         .setLabel(buttonName)
@@ -143,7 +150,7 @@ client.on('interactionCreate', async interaction => {
 
       const row = new ActionRowBuilder().addComponents(button);
 
-      // Send Ticket Panel
+      // Send Panel
       await interaction.channel.send({
         embeds: [embed],
         components: [row]
@@ -151,33 +158,39 @@ client.on('interactionCreate', async interaction => {
 
       // Private Reply
       await interaction.reply({
-        content: 'Your ticket panel has been sent successfully.',
+        content: 'Ticket panel sent successfully.',
         ephemeral: true
       });
+
     }
+
   }
 
-  // Button Interactions
+  // Buttons
   if (interaction.isButton()) {
 
+    // Create Ticket
     if (interaction.customId === 'create_ticket') {
 
       const guild = interaction.guild;
       const member = interaction.member;
 
-      // Prevent Duplicate Tickets
-      const existingChannel = guild.channels.cache.find(
-        channel => channel.name === `ticket-${member.user.username.toLowerCase()}`
+      // Check Existing Ticket
+      const existing = guild.channels.cache.find(
+        channel =>
+          channel.name === `ticket-${member.user.username.toLowerCase()}`
       );
 
-      if (existingChannel) {
+      if (existing) {
+
         return interaction.reply({
-          content: `You already have a ticket: ${existingChannel}`,
+          content: `You already have a ticket: ${existing}`,
           ephemeral: true
         });
+
       }
 
-      // Create Ticket Channel
+      // Create Channel
       const ticketChannel = await guild.channels.create({
         name: `ticket-${member.user.username}`,
         type: ChannelType.GuildText,
@@ -198,7 +211,7 @@ client.on('interactionCreate', async interaction => {
         ]
       });
 
-      // Send Welcome Message
+      // Close Button
       const closeButton = new ButtonBuilder()
         .setCustomId('close_ticket')
         .setLabel('Close Ticket')
@@ -206,15 +219,18 @@ client.on('interactionCreate', async interaction => {
 
       const closeRow = new ActionRowBuilder().addComponents(closeButton);
 
+      // Welcome Message
       await ticketChannel.send({
         content: `Welcome ${member}! Support will be with you shortly.`,
         components: [closeRow]
       });
 
+      // Reply
       await interaction.reply({
         content: `Your ticket has been created: ${ticketChannel}`,
         ephemeral: true
       });
+
     }
 
     // Close Ticket
@@ -226,11 +242,16 @@ client.on('interactionCreate', async interaction => {
       });
 
       setTimeout(async () => {
+
         await interaction.channel.delete();
+
       }, 5000);
+
     }
+
   }
+
 });
 
-// Login Bot
+// Login
 client.login(TOKEN);
