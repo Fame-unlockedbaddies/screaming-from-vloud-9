@@ -46,8 +46,8 @@ const client = new Client({
 // Store category IDs
 const ticketCategories = new Map();
 
-// Store emojis
-const ticketEmojis = new Map();
+// Ticket Counter
+let ticketCount = 0;
 
 /* =========================
    SLASH COMMANDS
@@ -60,12 +60,10 @@ const commands = [
     .setName('ping')
     .setDescription('Replies with Pong!'),
 
-  // SET TICKET
+  // SEND MESSAGE
   new SlashCommandBuilder()
-    .setName('setticket')
-    .setDescription('Create a custom ticket panel')
-
-    // REQUIRED
+    .setName('sendmessage')
+    .setDescription('Send a custom embed message')
 
     .addStringOption(option =>
       option
@@ -88,7 +86,38 @@ const commands = [
         .setRequired(true)
     )
 
-    // CATEGORY IDS
+    .addStringOption(option =>
+      option
+        .setName('image')
+        .setDescription('Embed image URL')
+        .setRequired(false)
+    ),
+
+  // SET TICKET
+  new SlashCommandBuilder()
+    .setName('setticket')
+    .setDescription('Create a ticket panel')
+
+    .addStringOption(option =>
+      option
+        .setName('title')
+        .setDescription('Embed title')
+        .setRequired(true)
+    )
+
+    .addStringOption(option =>
+      option
+        .setName('description')
+        .setDescription('Embed description')
+        .setRequired(true)
+    )
+
+    .addStringOption(option =>
+      option
+        .setName('color')
+        .setDescription('Embed HEX color')
+        .setRequired(true)
+    )
 
     .addStringOption(option =>
       option
@@ -111,30 +140,26 @@ const commands = [
         .setRequired(true)
     )
 
-    // EMOJIS
-
     .addStringOption(option =>
       option
         .setName('report_emoji')
-        .setDescription('Emoji for Report section')
+        .setDescription('Emoji for report section')
         .setRequired(true)
     )
 
     .addStringOption(option =>
       option
         .setName('general_emoji')
-        .setDescription('Emoji for General section')
+        .setDescription('Emoji for general section')
         .setRequired(true)
     )
 
     .addStringOption(option =>
       option
         .setName('creator_emoji')
-        .setDescription('Emoji for Creator section')
+        .setDescription('Emoji for creator section')
         .setRequired(true)
     )
-
-    // OPTIONAL
 
     .addStringOption(option =>
       option
@@ -191,7 +216,6 @@ client.on('interactionCreate', async interaction => {
   if (interaction.isChatInputCommand()) {
 
     // PING
-
     if (interaction.commandName === 'ping') {
 
       return interaction.reply({
@@ -200,7 +224,49 @@ client.on('interactionCreate', async interaction => {
 
     }
 
-    // SET TICKET
+    /* =========================
+       SEND MESSAGE
+    ========================= */
+
+    if (interaction.commandName === 'sendmessage') {
+
+      const title =
+        interaction.options.getString('title');
+
+      const description =
+        interaction.options.getString('description');
+
+      const color =
+        interaction.options.getString('color');
+
+      const image =
+        interaction.options.getString('image');
+
+      const embed = new EmbedBuilder()
+        .setTitle(title)
+        .setDescription(description)
+        .setColor(color);
+
+      if (image) {
+        embed.setImage(image);
+      }
+
+      // SEND MESSAGE
+      await interaction.channel.send({
+        embeds: [embed]
+      });
+
+      // SILENT REPLY
+      await interaction.reply({
+        content: 'Message sent.',
+        ephemeral: true
+      });
+
+    }
+
+    /* =========================
+       SET TICKET PANEL
+    ========================= */
 
     if (interaction.commandName === 'setticket') {
 
@@ -238,7 +304,7 @@ client.on('interactionCreate', async interaction => {
       const creatorEmoji =
         interaction.options.getString('creator_emoji');
 
-      // SAVE CATEGORY IDS
+      // SAVE IDS
 
       ticketCategories.set(
         'report_exploiter',
@@ -255,23 +321,6 @@ client.on('interactionCreate', async interaction => {
         creatorCategory
       );
 
-      // SAVE EMOJIS
-
-      ticketEmojis.set(
-        'report_exploiter',
-        reportEmoji
-      );
-
-      ticketEmojis.set(
-        'general',
-        generalEmoji
-      );
-
-      ticketEmojis.set(
-        'content_creator',
-        creatorEmoji
-      );
-
       // EMBED
 
       const embed = new EmbedBuilder()
@@ -283,7 +332,7 @@ client.on('interactionCreate', async interaction => {
         embed.setImage(image);
       }
 
-      // DROPDOWN MENU
+      // DROPDOWN
 
       const menu = new StringSelectMenuBuilder()
         .setCustomId('ticket_menu')
@@ -293,7 +342,7 @@ client.on('interactionCreate', async interaction => {
 
           {
             label: 'Report a Exploiter',
-            description: 'Report exploiters or cheaters',
+            description: 'Report exploiters',
             value: 'report_exploiter',
             emoji: reportEmoji
           },
@@ -307,7 +356,7 @@ client.on('interactionCreate', async interaction => {
 
           {
             label: 'Content Creator',
-            description: 'Creator applications/support',
+            description: 'Creator support',
             value: 'content_creator',
             emoji: creatorEmoji
           }
@@ -327,7 +376,7 @@ client.on('interactionCreate', async interaction => {
       // PRIVATE REPLY
 
       await interaction.reply({
-        content: 'Ticket panel created successfully.',
+        content: 'Ticket panel created.',
         ephemeral: true
       });
 
@@ -358,27 +407,30 @@ client.on('interactionCreate', async interaction => {
 
       const existingTicket =
         guild.channels.cache.find(channel =>
-          channel.name ===
-          `${ticketType}-${member.user.username.toLowerCase()}`
+          channel.topic === member.id
         );
 
       if (existingTicket) {
 
         return interaction.reply({
           content:
-            `You already have a ${ticketType} ticket: ${existingTicket}`,
+            `You already have a ticket: ${existingTicket}`,
           ephemeral: true
         });
 
       }
+
+      // TICKET COUNT
+      ticketCount++;
 
       // CREATE CHANNEL
 
       const ticketChannel =
         await guild.channels.create({
 
-          name:
-            `${ticketType}-${member.user.username}`,
+          name: `ticket-${ticketCount}`,
+
+          topic: member.id,
 
           type: ChannelType.GuildText,
 
@@ -406,7 +458,15 @@ client.on('interactionCreate', async interaction => {
 
         });
 
-      // CLOSE BUTTON
+      /* =========================
+         BUTTONS
+      ========================= */
+
+      const claimButton =
+        new ButtonBuilder()
+          .setCustomId('claim_ticket')
+          .setLabel('Claim Ticket')
+          .setStyle(ButtonStyle.Primary);
 
       const closeButton =
         new ButtonBuilder()
@@ -414,22 +474,26 @@ client.on('interactionCreate', async interaction => {
           .setLabel('Close Ticket')
           .setStyle(ButtonStyle.Danger);
 
-      const closeRow =
-        new ActionRowBuilder().addComponents(closeButton);
+      const row =
+        new ActionRowBuilder()
+          .addComponents(
+            claimButton,
+            closeButton
+          );
 
       // SEND MESSAGE
 
       await ticketChannel.send({
         content:
-          `Welcome ${member}! You created a ${ticketType} ticket.`,
-        components: [closeRow]
+          `Welcome ${member}!`,
+        components: [row]
       });
 
       // REPLY
 
       await interaction.reply({
         content:
-          `Your ${ticketType} ticket has been created: ${ticketChannel}`,
+          `Your ticket has been created: ${ticketChannel}`,
         ephemeral: true
       });
 
@@ -443,10 +507,24 @@ client.on('interactionCreate', async interaction => {
 
   if (interaction.isButton()) {
 
+    // CLAIM TICKET
+
+    if (interaction.customId === 'claim_ticket') {
+
+      await interaction.reply({
+        content:
+          `${interaction.user} claimed this ticket.`,
+      });
+
+    }
+
+    // CLOSE TICKET
+
     if (interaction.customId === 'close_ticket') {
 
       await interaction.reply({
-        content: 'Closing ticket in 5 seconds...',
+        content:
+          'Closing ticket in 5 seconds...',
         ephemeral: true
       });
 
