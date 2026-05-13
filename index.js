@@ -17,7 +17,7 @@ const express = require('express');
 require('dotenv').config();
 
 /* =========================
-   EXPRESS SERVER FOR RENDER
+   EXPRESS SERVER
 ========================= */
 
 const app = express();
@@ -46,6 +46,9 @@ const client = new Client({
 // Store category IDs
 const ticketCategories = new Map();
 
+// Store emojis
+const ticketEmojis = new Map();
+
 /* =========================
    SLASH COMMANDS
 ========================= */
@@ -62,7 +65,7 @@ const commands = [
     .setName('setticket')
     .setDescription('Create a custom ticket panel')
 
-    // REQUIRED OPTIONS
+    // REQUIRED
 
     .addStringOption(option =>
       option
@@ -90,7 +93,7 @@ const commands = [
     .addStringOption(option =>
       option
         .setName('report_category')
-        .setDescription('Report Exploiter category ID')
+        .setDescription('Report category ID')
         .setRequired(true)
     )
 
@@ -104,7 +107,30 @@ const commands = [
     .addStringOption(option =>
       option
         .setName('creator_category')
-        .setDescription('Content Creator category ID')
+        .setDescription('Creator category ID')
+        .setRequired(true)
+    )
+
+    // EMOJIS
+
+    .addStringOption(option =>
+      option
+        .setName('report_emoji')
+        .setDescription('Emoji for Report section')
+        .setRequired(true)
+    )
+
+    .addStringOption(option =>
+      option
+        .setName('general_emoji')
+        .setDescription('Emoji for General section')
+        .setRequired(true)
+    )
+
+    .addStringOption(option =>
+      option
+        .setName('creator_emoji')
+        .setDescription('Emoji for Creator section')
         .setRequired(true)
     )
 
@@ -165,6 +191,7 @@ client.on('interactionCreate', async interaction => {
   if (interaction.isChatInputCommand()) {
 
     // PING
+
     if (interaction.commandName === 'ping') {
 
       return interaction.reply({
@@ -173,7 +200,8 @@ client.on('interactionCreate', async interaction => {
 
     }
 
-    // SET TICKET PANEL
+    // SET TICKET
+
     if (interaction.commandName === 'setticket') {
 
       const title =
@@ -189,6 +217,7 @@ client.on('interactionCreate', async interaction => {
         interaction.options.getString('image');
 
       // CATEGORY IDS
+
       const reportCategory =
         interaction.options.getString('report_category');
 
@@ -198,7 +227,19 @@ client.on('interactionCreate', async interaction => {
       const creatorCategory =
         interaction.options.getString('creator_category');
 
+      // EMOJIS
+
+      const reportEmoji =
+        interaction.options.getString('report_emoji');
+
+      const generalEmoji =
+        interaction.options.getString('general_emoji');
+
+      const creatorEmoji =
+        interaction.options.getString('creator_emoji');
+
       // SAVE CATEGORY IDS
+
       ticketCategories.set(
         'report_exploiter',
         reportCategory
@@ -214,7 +255,25 @@ client.on('interactionCreate', async interaction => {
         creatorCategory
       );
 
+      // SAVE EMOJIS
+
+      ticketEmojis.set(
+        'report_exploiter',
+        reportEmoji
+      );
+
+      ticketEmojis.set(
+        'general',
+        generalEmoji
+      );
+
+      ticketEmojis.set(
+        'content_creator',
+        creatorEmoji
+      );
+
       // EMBED
+
       const embed = new EmbedBuilder()
         .setTitle(title)
         .setDescription(description)
@@ -225,6 +284,7 @@ client.on('interactionCreate', async interaction => {
       }
 
       // DROPDOWN MENU
+
       const menu = new StringSelectMenuBuilder()
         .setCustomId('ticket_menu')
         .setPlaceholder('Choose a ticket section')
@@ -235,21 +295,21 @@ client.on('interactionCreate', async interaction => {
             label: 'Report a Exploiter',
             description: 'Report exploiters or cheaters',
             value: 'report_exploiter',
-            emoji: '⚠️'
+            emoji: reportEmoji
           },
 
           {
             label: 'General',
             description: 'General support',
             value: 'general',
-            emoji: '🎫'
+            emoji: generalEmoji
           },
 
           {
             label: 'Content Creator',
             description: 'Creator applications/support',
             value: 'content_creator',
-            emoji: '📹'
+            emoji: creatorEmoji
           }
 
         ]);
@@ -258,12 +318,14 @@ client.on('interactionCreate', async interaction => {
         new ActionRowBuilder().addComponents(menu);
 
       // SEND PANEL
+
       await interaction.channel.send({
         embeds: [embed],
         components: [row]
       });
 
       // PRIVATE REPLY
+
       await interaction.reply({
         content: 'Ticket panel created successfully.',
         ephemeral: true
@@ -288,10 +350,12 @@ client.on('interactionCreate', async interaction => {
         interaction.values[0];
 
       // CATEGORY ID
+
       const categoryId =
         ticketCategories.get(ticketType);
 
       // CHECK EXISTING
+
       const existingTicket =
         guild.channels.cache.find(channel =>
           channel.name ===
@@ -309,6 +373,7 @@ client.on('interactionCreate', async interaction => {
       }
 
       // CREATE CHANNEL
+
       const ticketChannel =
         await guild.channels.create({
 
@@ -342,6 +407,7 @@ client.on('interactionCreate', async interaction => {
         });
 
       // CLOSE BUTTON
+
       const closeButton =
         new ButtonBuilder()
           .setCustomId('close_ticket')
@@ -352,6 +418,7 @@ client.on('interactionCreate', async interaction => {
         new ActionRowBuilder().addComponents(closeButton);
 
       // SEND MESSAGE
+
       await ticketChannel.send({
         content:
           `Welcome ${member}! You created a ${ticketType} ticket.`,
@@ -359,6 +426,7 @@ client.on('interactionCreate', async interaction => {
       });
 
       // REPLY
+
       await interaction.reply({
         content:
           `Your ${ticketType} ticket has been created: ${ticketChannel}`,
@@ -375,7 +443,6 @@ client.on('interactionCreate', async interaction => {
 
   if (interaction.isButton()) {
 
-    // CLOSE TICKET
     if (interaction.customId === 'close_ticket') {
 
       await interaction.reply({
