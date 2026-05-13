@@ -43,10 +43,10 @@ const client = new Client({
   intents: [GatewayIntentBits.Guilds]
 });
 
-// Store category IDs
+// Ticket categories
 const ticketCategories = new Map();
 
-// Ticket Counter
+// Ticket counter
 let ticketCount = 0;
 
 /* =========================
@@ -63,7 +63,7 @@ const commands = [
   // SEND MESSAGE
   new SlashCommandBuilder()
     .setName('sendmessage')
-    .setDescription('Send a custom embed message')
+    .setDescription('Send a custom embed')
 
     .addStringOption(option =>
       option
@@ -98,6 +98,8 @@ const commands = [
     .setName('setticket')
     .setDescription('Create a ticket panel')
 
+    // REQUIRED
+
     .addStringOption(option =>
       option
         .setName('title')
@@ -118,6 +120,8 @@ const commands = [
         .setDescription('Embed HEX color')
         .setRequired(true)
     )
+
+    // CATEGORY IDS
 
     .addStringOption(option =>
       option
@@ -140,6 +144,8 @@ const commands = [
         .setRequired(true)
     )
 
+    // EMOJIS
+
     .addStringOption(option =>
       option
         .setName('report_emoji')
@@ -160,6 +166,8 @@ const commands = [
         .setDescription('Emoji for creator section')
         .setRequired(true)
     )
+
+    // OPTIONAL
 
     .addStringOption(option =>
       option
@@ -251,12 +259,12 @@ client.on('interactionCreate', async interaction => {
         embed.setImage(image);
       }
 
-      // SEND MESSAGE
+      // SEND EMBED
       await interaction.channel.send({
         embeds: [embed]
       });
 
-      // SILENT REPLY
+      // PRIVATE REPLY
       await interaction.reply({
         content: 'Message sent.',
         ephemeral: true
@@ -304,7 +312,7 @@ client.on('interactionCreate', async interaction => {
       const creatorEmoji =
         interaction.options.getString('creator_emoji');
 
-      // SAVE IDS
+      // SAVE CATEGORY IDS
 
       ticketCategories.set(
         'report_exploiter',
@@ -332,7 +340,7 @@ client.on('interactionCreate', async interaction => {
         embed.setImage(image);
       }
 
-      // DROPDOWN
+      // DROPDOWN MENU
 
       const menu = new StringSelectMenuBuilder()
         .setCustomId('ticket_menu')
@@ -420,7 +428,8 @@ client.on('interactionCreate', async interaction => {
 
       }
 
-      // TICKET COUNT
+      // INCREASE COUNT
+
       ticketCount++;
 
       // CREATE CHANNEL
@@ -507,18 +516,48 @@ client.on('interactionCreate', async interaction => {
 
   if (interaction.isButton()) {
 
-    // CLAIM TICKET
+    /* =========================
+       CLAIM TICKET
+    ========================= */
 
     if (interaction.customId === 'claim_ticket') {
 
+      // TICKET OWNER
+      const ticketOwnerId =
+        interaction.channel.topic;
+
+      // CHECK OWNER
+      const isOwner =
+        interaction.user.id === ticketOwnerId;
+
+      // STAFF CHECK
+      const hasStaffRole =
+        interaction.member.permissions.has(
+          PermissionsBitField.Flags.ManageChannels
+        );
+
+      // BLOCK USER
+      if (isOwner && !hasStaffRole) {
+
+        return interaction.reply({
+          content:
+            'You cannot claim your own ticket.',
+          ephemeral: true
+        });
+
+      }
+
+      // CLAIM MESSAGE
       await interaction.reply({
         content:
-          `${interaction.user} claimed this ticket.`,
+          `${interaction.user} claimed this ticket.`
       });
 
     }
 
-    // CLOSE TICKET
+    /* =========================
+       CLOSE TICKET
+    ========================= */
 
     if (interaction.customId === 'close_ticket') {
 
