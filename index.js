@@ -7,6 +7,7 @@ const {
   EmbedBuilder,
   ActionRowBuilder,
   ButtonBuilder,
+  StringSelectMenuBuilder,
   ButtonStyle,
   ChannelType,
   PermissionsBitField
@@ -21,18 +22,19 @@ const client = new Client({
   intents: [GatewayIntentBits.Guilds]
 });
 
+// Store category channel IDs
+const ticketCategories = new Map();
+
 // Slash Commands
 const commands = [
 
-  // Ping Command
   new SlashCommandBuilder()
     .setName('ping')
     .setDescription('Replies with Pong!'),
 
-  // Setup Ticket Command
   new SlashCommandBuilder()
     .setName('setticket')
-    .setDescription('Create a custom ticket panel')
+    .setDescription('Create a ticket panel')
 
     .addStringOption(option =>
       option
@@ -51,29 +53,39 @@ const commands = [
     .addStringOption(option =>
       option
         .setName('color')
-        .setDescription('Embed HEX color (#5865F2)')
+        .setDescription('Embed color HEX')
         .setRequired(true)
-    )
-
-    .addStringOption(option =>
-      option
-        .setName('button_name')
-        .setDescription('Button text')
-        .setRequired(true)
-    )
-
-    .addStringOption(option =>
-      option
-        .setName('emoji')
-        .setDescription('Button emoji')
-        .setRequired(false)
     )
 
     .addStringOption(option =>
       option
         .setName('image')
-        .setDescription('Image URL')
+        .setDescription('Embed image URL')
         .setRequired(false)
+    )
+
+    // Support Category ID
+    .addStringOption(option =>
+      option
+        .setName('support_category')
+        .setDescription('Support category channel ID')
+        .setRequired(true)
+    )
+
+    // Billing Category ID
+    .addStringOption(option =>
+      option
+        .setName('billing_category')
+        .setDescription('Billing category channel ID')
+        .setRequired(true)
+    )
+
+    // Report Category ID
+    .addStringOption(option =>
+      option
+        .setName('report_category')
+        .setDescription('Report category channel ID')
+        .setRequired(true)
     )
 
 ].map(command => command.toJSON());
@@ -82,6 +94,7 @@ const commands = [
 const rest = new REST({ version: '10' }).setToken(TOKEN);
 
 (async () => {
+
   try {
 
     console.log('Registering slash commands...');
@@ -96,6 +109,7 @@ const rest = new REST({ version: '10' }).setToken(TOKEN);
   } catch (error) {
     console.error(error);
   }
+
 })();
 
 // Bot Ready
@@ -124,9 +138,22 @@ client.on('interactionCreate', async interaction => {
       const title = interaction.options.getString('title');
       const description = interaction.options.getString('description');
       const color = interaction.options.getString('color');
-      const buttonName = interaction.options.getString('button_name');
-      const emoji = interaction.options.getString('emoji');
       const image = interaction.options.getString('image');
+
+      // Category IDs
+      const supportCategory =
+        interaction.options.getString('support_category');
+
+      const billingCategory =
+        interaction.options.getString('billing_category');
+
+      const reportCategory =
+        interaction.options.getString('report_category');
+
+      // Save category IDs
+      ticketCategories.set('support', supportCategory);
+      ticketCategories.set('billing', billingCategory);
+      ticketCategories.set('report', reportCategory);
 
       // Embed
       const embed = new EmbedBuilder()
@@ -138,17 +165,33 @@ client.on('interactionCreate', async interaction => {
         embed.setImage(image);
       }
 
-      // Button
-      const button = new ButtonBuilder()
-        .setCustomId('create_ticket')
-        .setLabel(buttonName)
-        .setStyle(ButtonStyle.Primary);
+      // Dropdown Menu
+      const menu = new StringSelectMenuBuilder()
+        .setCustomId('ticket_menu')
+        .setPlaceholder('Choose a ticket section')
 
-      if (emoji) {
-        button.setEmoji(emoji);
-      }
+        .addOptions([
+          {
+            label: 'Support',
+            description: 'General support help',
+            value: 'support',
+            emoji: '🎫'
+          },
+          {
+            label: 'Billing',
+            description: 'Payments and billing help',
+            value: 'billing',
+            emoji: '💰'
+          },
+          {
+            label: 'Report User',
+            description: 'Report a user',
+            value: 'report',
+            emoji: '⚠️'
+          }
+        ]);
 
-      const row = new ActionRowBuilder().addComponents(button);
+      const row = new ActionRowBuilder().addComponents(menu);
 
       // Send Panel
       await interaction.channel.send({
@@ -158,7 +201,91 @@ client.on('interactionCreate', async interaction => {
 
       // Private Reply
       await interaction.reply({
-        content: 'Ticket panel sent successfully.',
+        content: 'Ticket panel created successfully.',
+        ephemeral: true
+      });
+
+    }
+
+  }
+
+  // Dropdown Menu
+  if (interaction.isStringSelectMenu()) {
+
+    if (interaction.customId === 'ticket_menu') {
+
+      const guild = interaction.guild;
+      const member = interaction.member;
+
+      const categoryType = interaction.values[0];
+
+      // Get category ID
+      const categoryId = ticketCategories.get(categoryType);
+
+      // Check Existing Ticket
+      const existing = guild.channels.cache.find(
+        channel =>
+          channel.name ===
+          `${categoryType}-${member.user.username.toLowerCase()}`
+      );
+
+      if (existing) {
+
+        return interaction.reply({
+          content: `You already have a ${categoryType} ticket: ${existing}`,
+          ephemeral: true
+        });
+
+      }
+
+      // Create Ticket
+      const ticketChannel = await guild.channels.create({
+
+        name: `${categoryType}-${member.user.username}`,
+
+        type: ChannelType.GuildText,
+
+        parent: categoryId,
+
+        permissionOverwrites: [
+
+          {
+            id: guild.id,
+            deny: [PermissionsBitField.Flags.ViewChannel]
+          },
+
+          {
+            id: member.id,
+            allow: [
+              PermissionsBitField.Flags.ViewChannel,
+              PermissionsBitField.Flags.SendMessages,
+              PermissionsBitField.Flags.ReadMessageHistory
+            ]
+          }
+
+        ]
+
+      });
+
+      // Close Button
+      const closeButton = new ButtonBuilder()
+        .setCustomId('close_ticket')
+        .setLabel('Close Ticket')
+        .setStyle(ButtonStyle.Danger);
+
+      const closeRow =
+        new ActionRowBuilder().addComponents(closeButton);
+
+      // Welcome Message
+      await ticketChannel.send({
+        content:
+          `Welcome ${member}! You created a ${categoryType} ticket.`,
+        components: [closeRow]
+      });
+
+      // Reply
+      await interaction.reply({
+        content: `Your ${categoryType} ticket has been created: ${ticketChannel}`,
         ephemeral: true
       });
 
@@ -168,70 +295,6 @@ client.on('interactionCreate', async interaction => {
 
   // Buttons
   if (interaction.isButton()) {
-
-    // Create Ticket
-    if (interaction.customId === 'create_ticket') {
-
-      const guild = interaction.guild;
-      const member = interaction.member;
-
-      // Check Existing Ticket
-      const existing = guild.channels.cache.find(
-        channel =>
-          channel.name === `ticket-${member.user.username.toLowerCase()}`
-      );
-
-      if (existing) {
-
-        return interaction.reply({
-          content: `You already have a ticket: ${existing}`,
-          ephemeral: true
-        });
-
-      }
-
-      // Create Channel
-      const ticketChannel = await guild.channels.create({
-        name: `ticket-${member.user.username}`,
-        type: ChannelType.GuildText,
-
-        permissionOverwrites: [
-          {
-            id: guild.id,
-            deny: [PermissionsBitField.Flags.ViewChannel]
-          },
-          {
-            id: member.id,
-            allow: [
-              PermissionsBitField.Flags.ViewChannel,
-              PermissionsBitField.Flags.SendMessages,
-              PermissionsBitField.Flags.ReadMessageHistory
-            ]
-          }
-        ]
-      });
-
-      // Close Button
-      const closeButton = new ButtonBuilder()
-        .setCustomId('close_ticket')
-        .setLabel('Close Ticket')
-        .setStyle(ButtonStyle.Danger);
-
-      const closeRow = new ActionRowBuilder().addComponents(closeButton);
-
-      // Welcome Message
-      await ticketChannel.send({
-        content: `Welcome ${member}! Support will be with you shortly.`,
-        components: [closeRow]
-      });
-
-      // Reply
-      await interaction.reply({
-        content: `Your ticket has been created: ${ticketChannel}`,
-        ephemeral: true
-      });
-
-    }
 
     // Close Ticket
     if (interaction.customId === 'close_ticket') {
