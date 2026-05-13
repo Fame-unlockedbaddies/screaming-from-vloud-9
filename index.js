@@ -1,585 +1,236 @@
-console.log("BOOTING ADVANCED PROTECTION BOT...");
-
-process.on("uncaughtException", console.error);
-process.on("unhandledRejection", console.error);
-
-const express = require("express");
-
 const {
   Client,
   GatewayIntentBits,
-  Events,
-  SlashCommandBuilder,
   REST,
   Routes,
+  SlashCommandBuilder,
   EmbedBuilder,
-  ActivityType
-} = require("discord.js");
+  ActionRowBuilder,
+  ButtonBuilder,
+  ButtonStyle,
+  ChannelType,
+  PermissionsBitField
+} = require('discord.js');
 
-// ================= CONFIG =================
+require('dotenv').config();
+
 const TOKEN = process.env.TOKEN;
 const CLIENT_ID = process.env.CLIENT_ID;
-const GUILD_ID = "1428878035926388809";
 
-const LOG_CHANNEL_ID = "1503214617294278676";
-const PROTECTED_USER_ID = "1497846804480524298";
-
-// ================= KEEP ALIVE =================
-const app = express();
-
-app.get("/", (req, res) => {
-  res.send("Advanced protection bot online.");
-});
-
-app.listen(process.env.PORT || 3000, () => {
-  console.log("Web server online.");
-});
-
-// ================= CLIENT =================
 const client = new Client({
-  intents: [
-    GatewayIntentBits.Guilds,
-    GatewayIntentBits.GuildMessages,
-    GatewayIntentBits.MessageContent,
-    GatewayIntentBits.GuildModeration,
-    GatewayIntentBits.DirectMessages
-  ]
+  intents: [GatewayIntentBits.Guilds]
 });
 
-// ================= STATUS =================
-function setBotStatus() {
-
-  client.user.setPresence({
-    status: "dnd",
-    activities: [
-      {
-        name: "discord.gg/famee",
-        type: ActivityType.Watching
-      }
-    ]
-  });
-
-}
-
-// ================= BLACKLIST =================
-const blacklist = [
-
-  // RACIAL
-  "nigger",
-  "chink",
-  "coon",
-  "spic",
-  "wetback",
-  "kike",
-  "gook",
-  "paki",
-  "raghead",
-  "beaner",
-  "redskin",
-
-  // LGBT
-  "faggot",
-  "fag",
-  "fggt",
-  "tranny",
-  "troon",
-  "shemale",
-  "dyke",
-  "dike",
-  "twink",
-  "twinkie",
-  "ponk",
-
-  // SELF HARM
-  "kys",
-  "kms",
-  "khs",
-  "kill yourself",
-  "killing myself",
-
-  // SEXUAL
-  "sex",
-  "porn",
-  "nudes",
-  "boobs",
-  "tits",
-  "anal",
-  "blowjob",
-  "cock",
-  "dick",
-  "penis",
-  "pussy",
-  "cum",
-  "horny",
-  "masturbate",
-  "jerking off",
-  "slut",
-  "whore",
-
-  // SWEARING
-  "fuck",
-  "fucking",
-  "fack",
-  "bitch",
-  "shit",
-  "motherfucker",
-  "bastard",
-  "cunt",
-
-  // OTHER
-  "dog",
-  "jerk"
-];
-
-// ================= EMBED WORDS =================
-const embedWords = blacklist.filter(
-  word =>
-    word !== "dog" &&
-    word !== "jerk" &&
-    word !== "jerking off"
-);
-
-// ================= LOG FUNCTION =================
-async function sendLog(guild, embed) {
-
-  try {
-
-    const channel =
-      guild.channels.cache.get(LOG_CHANNEL_ID);
-
-    if (!channel) return;
-
-    await channel.send({
-      embeds: [embed]
-    });
-
-  } catch (error) {
-    console.error("Log error:", error);
-  }
-
-}
-
-// ================= COMMANDS =================
+// Slash Commands
 const commands = [
+  new SlashCommandBuilder()
+    .setName('ping')
+    .setDescription('Replies with Pong!')
+    .toJSON(),
 
   new SlashCommandBuilder()
-    .setName("whatperioddoes")
-    .setDescription(
-      "Displays blacklist system"
+    .setName('setticket')
+    .setDescription('Create a custom ticket panel')
+
+    .addStringOption(option =>
+      option
+        .setName('title')
+        .setDescription('Embed title')
+        .setRequired(true)
     )
 
-].map(command => command.toJSON());
+    .addStringOption(option =>
+      option
+        .setName('description')
+        .setDescription('Embed description')
+        .setRequired(true)
+    )
 
-// ================= REGISTER =================
-const rest = new REST({
-  version: "10"
-}).setToken(TOKEN);
+    .addStringOption(option =>
+      option
+        .setName('color')
+        .setDescription('Embed color HEX code')
+        .setRequired(true)
+    )
+
+    .addStringOption(option =>
+      option
+        .setName('button_name')
+        .setDescription('Button text')
+        .setRequired(true)
+    )
+
+    .addStringOption(option =>
+      option
+        .setName('emoji')
+        .setDescription('Button emoji')
+        .setRequired(false)
+    )
+
+    .addStringOption(option =>
+      option
+        .setName('image')
+        .setDescription('Image URL')
+        .setRequired(false)
+    )
+
+    .toJSON()
+];
+
+// Register Commands
+const rest = new REST({ version: '10' }).setToken(TOKEN);
 
 (async () => {
-
   try {
+    console.log('Registering slash commands...');
 
     await rest.put(
-      Routes.applicationGuildCommands(
-        CLIENT_ID,
-        GUILD_ID
-      ),
-      {
-        body: commands
-      }
+      Routes.applicationCommands(CLIENT_ID),
+      { body: commands }
     );
 
-    console.log(
-      "Commands registered."
-    );
-
+    console.log('Slash commands registered.');
   } catch (error) {
     console.error(error);
   }
-
 })();
 
-// ================= READY =================
-client.once(
-  Events.ClientReady,
-  bot => {
+// Bot Ready
+client.once('ready', () => {
+  console.log(`Logged in as ${client.user.tag}`);
+});
 
-    console.log(
-      `Logged in as ${bot.user.tag}`
-    );
+// Interactions
+client.on('interactionCreate', async interaction => {
 
-    setBotStatus();
+  // Slash Commands
+  if (interaction.isChatInputCommand()) {
 
-    // KEEP STATUS FOREVER
-    setInterval(() => {
-      setBotStatus();
-    }, 15000);
-
-  }
-);
-
-// ================= SLASH COMMAND =================
-client.on(
-  Events.InteractionCreate,
-  async interaction => {
-
-    if (
-      !interaction.isChatInputCommand()
-    ) {
-      return;
+    // Ping Command
+    if (interaction.commandName === 'ping') {
+      return interaction.reply({
+        content: 'Pong!'
+      });
     }
 
-    try {
+    // Setup Ticket Panel
+    if (interaction.commandName === 'setticket') {
 
-      if (
-        interaction.commandName ===
-        "whatperioddoes"
-      ) {
+      const title = interaction.options.getString('title');
+      const description = interaction.options.getString('description');
+      const color = interaction.options.getString('color');
+      const buttonName = interaction.options.getString('button_name');
+      const emoji = interaction.options.getString('emoji');
+      const image = interaction.options.getString('image');
 
-        const rows = [];
-        const wordsPerRow = 3;
+      const embed = new EmbedBuilder()
+        .setTitle(title)
+        .setDescription(description)
+        .setColor(color);
 
-        for (
-          let i = 0;
-          i < embedWords.length;
-          i += wordsPerRow
-        ) {
+      if (image) {
+        embed.setImage(image);
+      }
 
-          rows.push(
-            embedWords
-              .slice(i, i + wordsPerRow)
-              .join(" | ")
-          );
+      const button = new ButtonBuilder()
+        .setCustomId('create_ticket')
+        .setLabel(buttonName)
+        .setStyle(ButtonStyle.Primary);
 
-        }
+      if (emoji) {
+        button.setEmoji(emoji);
+      }
 
-        const embed =
-          new EmbedBuilder()
+      const row = new ActionRowBuilder().addComponents(button);
 
-            .setColor("#ff1493")
+      // Send Ticket Panel
+      await interaction.channel.send({
+        embeds: [embed],
+        components: [row]
+      });
 
-            .setAuthor({
-              name:
-                "Advanced Moderation Database",
-              iconURL:
-                client.user.displayAvatarURL()
-            })
+      // Private Reply
+      await interaction.reply({
+        content: 'Your ticket panel has been sent successfully.',
+        ephemeral: true
+      });
+    }
+  }
 
-            .setTitle(
-              "Protection System"
-            )
+  // Button Interactions
+  if (interaction.isButton()) {
 
-            .setDescription(
-              [
-                "Blacklist monitoring enabled.",
-                "",
-                "```",
-                rows.join("\n"),
-                "```"
-              ].join("\n")
-            )
+    if (interaction.customId === 'create_ticket') {
 
-            .addFields(
-              {
-                name: "Status",
-                value:
-                  "```Online```",
-                inline: true
-              },
-              {
-                name: "Auto Delete",
-                value:
-                  "```Enabled```",
-                inline: true
-              },
-              {
-                name: "DM Warnings",
-                value:
-                  "```Enabled```",
-                inline: true
-              }
-            )
+      const guild = interaction.guild;
+      const member = interaction.member;
 
-            .setFooter({
-              text:
-                "Advanced Protection"
-            })
+      // Prevent Duplicate Tickets
+      const existingChannel = guild.channels.cache.find(
+        channel => channel.name === `ticket-${member.user.username.toLowerCase()}`
+      );
 
-            .setTimestamp();
-
-        await interaction.reply({
-          embeds: [embed]
+      if (existingChannel) {
+        return interaction.reply({
+          content: `You already have a ticket: ${existingChannel}`,
+          ephemeral: true
         });
-
       }
 
-    } catch (error) {
-      console.error(error);
+      // Create Ticket Channel
+      const ticketChannel = await guild.channels.create({
+        name: `ticket-${member.user.username}`,
+        type: ChannelType.GuildText,
+
+        permissionOverwrites: [
+          {
+            id: guild.id,
+            deny: [PermissionsBitField.Flags.ViewChannel]
+          },
+          {
+            id: member.id,
+            allow: [
+              PermissionsBitField.Flags.ViewChannel,
+              PermissionsBitField.Flags.SendMessages,
+              PermissionsBitField.Flags.ReadMessageHistory
+            ]
+          }
+        ]
+      });
+
+      // Send Welcome Message
+      const closeButton = new ButtonBuilder()
+        .setCustomId('close_ticket')
+        .setLabel('Close Ticket')
+        .setStyle(ButtonStyle.Danger);
+
+      const closeRow = new ActionRowBuilder().addComponents(closeButton);
+
+      await ticketChannel.send({
+        content: `Welcome ${member}! Support will be with you shortly.`,
+        components: [closeRow]
+      });
+
+      await interaction.reply({
+        content: `Your ticket has been created: ${ticketChannel}`,
+        ephemeral: true
+      });
     }
 
-  }
-);
+    // Close Ticket
+    if (interaction.customId === 'close_ticket') {
 
-// ================= MESSAGE CREATE =================
-client.on(
-  Events.MessageCreate,
-  async message => {
+      await interaction.reply({
+        content: 'Closing ticket in 5 seconds...',
+        ephemeral: true
+      });
 
-    try {
-
-      if (message.author.bot) {
-        return;
-      }
-
-      const content =
-        (
-          message.content || ""
-        ).toLowerCase();
-
-      // ================= IGNORE GIFS =================
-      const isGif =
-        content.includes(
-          "tenor.com"
-        ) ||
-        content.includes(".gif") ||
-        content.includes(
-          "giphy.com"
-        );
-
-      if (isGif) {
-        return;
-      }
-
-      // ================= INVITE FILTER =================
-      const inviteRegex =
-        /(discord\.gg\/|discord\.com\/invite\/|discordapp\.com\/invite\/)/i;
-
-      if (
-        inviteRegex.test(content)
-      ) {
-
-        await message.delete();
-
-        const embed =
-          new EmbedBuilder()
-
-            .setColor("#ff1493")
-
-            .setTitle(
-              "Discord Invite Blocked"
-            )
-
-            .setDescription(
-              "Discord invites are not allowed."
-            )
-
-            .setFooter({
-              text:
-                "Invite Protection"
-            })
-
-            .setTimestamp();
-
-        await message.author.send({
-          embeds: [embed]
-        }).catch(() => {});
-
-        await sendLog(
-          message.guild,
-          embed
-        );
-
-        return;
-
-      }
-
-      // ================= PROTECTED USER =================
-      if (
-        message.mentions.users.has(
-          PROTECTED_USER_ID
-        )
-      ) {
-
-        await message.delete();
-
-        const embed =
-          new EmbedBuilder()
-
-            .setColor("#ff1493")
-
-            .setTitle(
-              "Mention Blocked"
-            )
-
-            .setDescription(
-              "Fame is busy at this moment sorry."
-            )
-
-            .setFooter({
-              text:
-                "Protected User System"
-            })
-
-            .setTimestamp();
-
-        await message.author.send({
-          embeds: [embed]
-        }).catch(() => {});
-
-        return;
-
-      }
-
-      // ================= SMART BLACKLIST =================
-      const foundWord =
-        blacklist.find(word => {
-
-          const escaped =
-            word.replace(
-              /[.*+?^${}()|[\]\\]/g,
-              "\\$&"
-            );
-
-          // FULL WORD MATCH
-          const regex =
-            new RegExp(
-              `(^|\\b)${escaped}(\\b|$)`,
-              "i"
-            );
-
-          // SPACE BYPASS MATCH
-          const spacedRegex =
-            new RegExp(
-              word
-                .split("")
-                .map(letter =>
-                  letter.replace(
-                    /[.*+?^${}()|[\]\\]/g,
-                    "\\$&"
-                  )
-                )
-                .join("\\s*"),
-              "i"
-            );
-
-          // NORMAL WORD
-          if (
-            regex.test(content)
-          ) {
-            return true;
-          }
-
-          // SPACE BYPASS
-          if (
-            spacedRegex.test(content)
-          ) {
-            return true;
-          }
-
-          return false;
-
-        });
-
-      // ================= DELETE MESSAGE =================
-      if (foundWord) {
-
-        await message.delete();
-
-        // ================= DM USER =================
-        const warningEmbed =
-          new EmbedBuilder()
-
-            .setColor("#ff1493")
-
-            .setTitle(
-              "Message Removed"
-            )
-
-            .setDescription(
-              [
-                "Your message contained a restricted word.",
-                "",
-                `Blocked Word: ${foundWord}`
-              ].join("\n")
-            )
-
-            .addFields(
-              {
-                name: "Status",
-                value:
-                  "```Removed```",
-                inline: true
-              },
-              {
-                name: "Protection",
-                value:
-                  "```Enabled```",
-                inline: true
-              }
-            )
-
-            .setFooter({
-              text:
-                "Advanced Protection"
-            })
-
-            .setTimestamp();
-
-        await message.author.send({
-          embeds: [warningEmbed]
-        }).catch(() => {});
-
-        // ================= LOG =================
-        const logEmbed =
-          new EmbedBuilder()
-
-            .setColor("#ff1493")
-
-            .setTitle(
-              "Blacklist Detection"
-            )
-
-            .addFields(
-              {
-                name: "User",
-                value:
-                  `${message.author.tag}`,
-                inline: true
-              },
-              {
-                name: "Word",
-                value:
-                  `${foundWord}`,
-                inline: true
-              },
-              {
-                name: "Channel",
-                value:
-                  `${message.channel}`,
-                inline: true
-              }
-            )
-
-            .setFooter({
-              text:
-                "Moderation Logs"
-            })
-
-            .setTimestamp();
-
-        await sendLog(
-          message.guild,
-          logEmbed
-        );
-
-      }
-
-    } catch (error) {
-      console.error(error);
+      setTimeout(async () => {
+        await interaction.channel.delete();
+      }, 5000);
     }
-
   }
-);
+});
 
-// ================= LOGIN =================
+// Login Bot
 client.login(TOKEN);
