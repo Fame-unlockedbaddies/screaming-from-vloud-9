@@ -43,7 +43,7 @@ const client = new Client({
   intents: [GatewayIntentBits.Guilds]
 });
 
-// Store ticket category IDs
+// Store category IDs
 const ticketCategories = new Map();
 
 /* =========================
@@ -52,17 +52,17 @@ const ticketCategories = new Map();
 
 const commands = [
 
-  // PING COMMAND
+  // PING
   new SlashCommandBuilder()
     .setName('ping')
     .setDescription('Replies with Pong!'),
 
-  // SET TICKET COMMAND
+  // SET TICKET
   new SlashCommandBuilder()
     .setName('setticket')
-    .setDescription('Create a ticket panel')
+    .setDescription('Create a custom ticket panel')
 
-    // REQUIRED OPTIONS FIRST
+    // REQUIRED OPTIONS
 
     .addStringOption(option =>
       option
@@ -85,28 +85,30 @@ const commands = [
         .setRequired(true)
     )
 
-    .addStringOption(option =>
-      option
-        .setName('support_category')
-        .setDescription('Support category ID')
-        .setRequired(true)
-    )
-
-    .addStringOption(option =>
-      option
-        .setName('billing_category')
-        .setDescription('Billing category ID')
-        .setRequired(true)
-    )
+    // CATEGORY IDS
 
     .addStringOption(option =>
       option
         .setName('report_category')
-        .setDescription('Report category ID')
+        .setDescription('Report Exploiter category ID')
         .setRequired(true)
     )
 
-    // OPTIONAL OPTIONS LAST
+    .addStringOption(option =>
+      option
+        .setName('general_category')
+        .setDescription('General category ID')
+        .setRequired(true)
+    )
+
+    .addStringOption(option =>
+      option
+        .setName('creator_category')
+        .setDescription('Content Creator category ID')
+        .setRequired(true)
+    )
+
+    // OPTIONAL
 
     .addStringOption(option =>
       option
@@ -143,7 +145,7 @@ const rest = new REST({ version: '10' }).setToken(TOKEN);
 })();
 
 /* =========================
-   BOT READY
+   READY
 ========================= */
 
 client.once('ready', () => {
@@ -171,7 +173,7 @@ client.on('interactionCreate', async interaction => {
 
     }
 
-    // SET TICKET
+    // SET TICKET PANEL
     if (interaction.commandName === 'setticket') {
 
       const title =
@@ -183,22 +185,34 @@ client.on('interactionCreate', async interaction => {
       const color =
         interaction.options.getString('color');
 
-      const supportCategory =
-        interaction.options.getString('support_category');
-
-      const billingCategory =
-        interaction.options.getString('billing_category');
-
-      const reportCategory =
-        interaction.options.getString('report_category');
-
       const image =
         interaction.options.getString('image');
 
+      // CATEGORY IDS
+      const reportCategory =
+        interaction.options.getString('report_category');
+
+      const generalCategory =
+        interaction.options.getString('general_category');
+
+      const creatorCategory =
+        interaction.options.getString('creator_category');
+
       // SAVE CATEGORY IDS
-      ticketCategories.set('support', supportCategory);
-      ticketCategories.set('billing', billingCategory);
-      ticketCategories.set('report', reportCategory);
+      ticketCategories.set(
+        'report_exploiter',
+        reportCategory
+      );
+
+      ticketCategories.set(
+        'general',
+        generalCategory
+      );
+
+      ticketCategories.set(
+        'content_creator',
+        creatorCategory
+      );
 
       // EMBED
       const embed = new EmbedBuilder()
@@ -216,24 +230,28 @@ client.on('interactionCreate', async interaction => {
         .setPlaceholder('Choose a ticket section')
 
         .addOptions([
+
           {
-            label: 'Support',
-            description: 'General support help',
-            value: 'support',
+            label: 'Report a Exploiter',
+            description: 'Report exploiters or cheaters',
+            value: 'report_exploiter',
+            emoji: '⚠️'
+          },
+
+          {
+            label: 'General',
+            description: 'General support',
+            value: 'general',
             emoji: '🎫'
           },
+
           {
-            label: 'Billing',
-            description: 'Billing and payments help',
-            value: 'billing',
-            emoji: '💰'
-          },
-          {
-            label: 'Report User',
-            description: 'Report a member',
-            value: 'report',
-            emoji: '⚠️'
+            label: 'Content Creator',
+            description: 'Creator applications/support',
+            value: 'content_creator',
+            emoji: '📹'
           }
+
         ]);
 
       const row =
@@ -245,7 +263,7 @@ client.on('interactionCreate', async interaction => {
         components: [row]
       });
 
-      // PRIVATE RESPONSE
+      // PRIVATE REPLY
       await interaction.reply({
         content: 'Ticket panel created successfully.',
         ephemeral: true
