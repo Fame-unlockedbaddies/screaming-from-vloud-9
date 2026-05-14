@@ -23,13 +23,13 @@ require('dotenv').config();
 const app = express();
 
 app.get('/', (req, res) => {
-  res.send('Fame bot is online.');
+  res.send('Bot online');
 });
 
 const PORT = process.env.PORT || 3000;
 
 app.listen(PORT, () => {
-  console.log(`Web server running on port ${PORT}`);
+  console.log(`Server running on port ${PORT}`);
 });
 
 /* =========================
@@ -40,14 +40,21 @@ const TOKEN = process.env.TOKEN;
 const CLIENT_ID = process.env.CLIENT_ID;
 
 const client = new Client({
-  intents: [GatewayIntentBits.Guilds]
+  intents: [
+    GatewayIntentBits.Guilds,
+    GatewayIntentBits.GuildMembers
+  ]
 });
 
-// Ticket categories
+/* =========================
+   VARIABLES
+========================= */
+
 const ticketCategories = new Map();
 
-// Ticket counter
 let ticketCount = 0;
+
+let autoRoleId = null;
 
 /* =========================
    CUSTOM EMOJI SYSTEM
@@ -56,24 +63,6 @@ let ticketCount = 0;
 function convertCustomEmojis(text, guild) {
 
   if (!text) return text;
-
-  // NORMAL EMOJIS
-
-  text = text
-    .replace(/:heart:/g, '❤️')
-    .replace(/:fire:/g, '🔥')
-    .replace(/:star:/g, '⭐')
-    .replace(/:sparkles:/g, '✨')
-    .replace(/:ticket:/g, '🎫')
-    .replace(/:warning:/g, '⚠️')
-    .replace(/:money:/g, '💰')
-    .replace(/:camera:/g, '📸')
-    .replace(/:video:/g, '📹')
-    .replace(/:crown:/g, '👑')
-    .replace(/:check:/g, '✅');
-
-  // CUSTOM SERVER EMOJIS
-  // Example: :rightpurplearrow:
 
   const regex = /:([a-zA-Z0-9_]+):/g;
 
@@ -108,7 +97,7 @@ const commands = [
 
   new SlashCommandBuilder()
     .setName('ping')
-    .setDescription('Replies with Pong!'),
+    .setDescription('Ping command'),
 
   /* =========================
      SEND MESSAGE
@@ -116,7 +105,7 @@ const commands = [
 
   new SlashCommandBuilder()
     .setName('sendmessage')
-    .setDescription('Send a custom embed')
+    .setDescription('Send embed message')
 
     .addStringOption(option =>
       option
@@ -135,14 +124,14 @@ const commands = [
     .addStringOption(option =>
       option
         .setName('color')
-        .setDescription('Embed HEX color')
+        .setDescription('Embed color')
         .setRequired(true)
     )
 
     .addStringOption(option =>
       option
         .setName('image')
-        .setDescription('Embed image URL')
+        .setDescription('Embed image')
         .setRequired(false)
     ),
 
@@ -152,30 +141,28 @@ const commands = [
 
   new SlashCommandBuilder()
     .setName('setticket')
-    .setDescription('Create a ticket panel')
+    .setDescription('Create ticket panel')
 
     .addStringOption(option =>
       option
         .setName('title')
-        .setDescription('Embed title')
+        .setDescription('Panel title')
         .setRequired(true)
     )
 
     .addStringOption(option =>
       option
         .setName('description')
-        .setDescription('Embed description')
+        .setDescription('Panel description')
         .setRequired(true)
     )
 
     .addStringOption(option =>
       option
         .setName('color')
-        .setDescription('Embed HEX color')
+        .setDescription('Panel color')
         .setRequired(true)
     )
-
-    // CATEGORY IDS
 
     .addStringOption(option =>
       option
@@ -198,36 +185,47 @@ const commands = [
         .setRequired(true)
     )
 
-    // EMOJIS
-
     .addStringOption(option =>
       option
         .setName('report_emoji')
-        .setDescription('Emoji for report section')
+        .setDescription('Report emoji')
         .setRequired(true)
     )
 
     .addStringOption(option =>
       option
         .setName('general_emoji')
-        .setDescription('Emoji for general section')
+        .setDescription('General emoji')
         .setRequired(true)
     )
 
     .addStringOption(option =>
       option
         .setName('creator_emoji')
-        .setDescription('Emoji for creator section')
+        .setDescription('Creator emoji')
         .setRequired(true)
     )
-
-    // OPTIONAL
 
     .addStringOption(option =>
       option
         .setName('image')
-        .setDescription('Embed image URL')
+        .setDescription('Panel image')
         .setRequired(false)
+    ),
+
+  /* =========================
+     AUTO ROLE
+  ========================= */
+
+  new SlashCommandBuilder()
+    .setName('autorole')
+    .setDescription('Set auto role')
+
+    .addRoleOption(option =>
+      option
+        .setName('role')
+        .setDescription('Role to give members')
+        .setRequired(true)
     )
 
 ].map(command => command.toJSON());
@@ -244,14 +242,14 @@ const rest =
 
   try {
 
-    console.log('Registering slash commands...');
+    console.log('Loading commands...');
 
     await rest.put(
       Routes.applicationCommands(CLIENT_ID),
       { body: commands }
     );
 
-    console.log('Slash commands registered.');
+    console.log('Commands loaded');
 
   } catch (error) {
 
@@ -278,10 +276,6 @@ client.once('ready', () => {
 ========================= */
 
 client.on('interactionCreate', async interaction => {
-
-  /* =========================
-     SLASH COMMANDS
-  ========================= */
 
   if (interaction.isChatInputCommand()) {
 
@@ -315,8 +309,6 @@ client.on('interactionCreate', async interaction => {
       const image =
         interaction.options.getString('image');
 
-      // CUSTOM EMOJIS
-
       title =
         convertCustomEmojis(
           title,
@@ -329,8 +321,6 @@ client.on('interactionCreate', async interaction => {
           interaction.guild
         );
 
-      // EMBED
-
       const embed =
         new EmbedBuilder()
           .setTitle(title)
@@ -341,23 +331,19 @@ client.on('interactionCreate', async interaction => {
         embed.setImage(image);
       }
 
-      // SEND EMBED
-
       await interaction.channel.send({
         embeds: [embed]
       });
 
-      // PRIVATE REPLY
-
       await interaction.reply({
-        content: 'Message sent.',
+        content: 'Message sent',
         ephemeral: true
       });
 
     }
 
     /* =========================
-       SET TICKET PANEL
+       SET TICKET
     ========================= */
 
     if (interaction.commandName === 'setticket') {
@@ -374,8 +360,6 @@ client.on('interactionCreate', async interaction => {
       const image =
         interaction.options.getString('image');
 
-      // CUSTOM EMOJIS
-
       title =
         convertCustomEmojis(
           title,
@@ -387,8 +371,6 @@ client.on('interactionCreate', async interaction => {
           description,
           interaction.guild
         );
-
-      // CATEGORY IDS
 
       const reportCategory =
         interaction.options.getString(
@@ -405,8 +387,6 @@ client.on('interactionCreate', async interaction => {
           'creator_category'
         );
 
-      // DROPDOWN EMOJIS
-
       const reportEmoji =
         interaction.options.getString(
           'report_emoji'
@@ -422,10 +402,8 @@ client.on('interactionCreate', async interaction => {
           'creator_emoji'
         );
 
-      // SAVE CATEGORY IDS
-
       ticketCategories.set(
-        'report_exploiter',
+        'report',
         reportCategory
       );
 
@@ -435,11 +413,9 @@ client.on('interactionCreate', async interaction => {
       );
 
       ticketCategories.set(
-        'content_creator',
+        'creator',
         creatorCategory
       );
-
-      // EMBED
 
       const embed =
         new EmbedBuilder()
@@ -451,45 +427,32 @@ client.on('interactionCreate', async interaction => {
         embed.setImage(image);
       }
 
-      // DROPDOWN
-
       const menu =
         new StringSelectMenuBuilder()
           .setCustomId('ticket_menu')
-          .setPlaceholder(
-            'Choose a ticket section'
-          )
+          .setPlaceholder('Choose section')
 
           .addOptions([
 
             {
               label: 'Report a Exploiter',
-              description:
-                'Report exploiters',
-              value:
-                'report_exploiter',
-              emoji:
-                reportEmoji
+              description: 'Report support',
+              value: 'report',
+              emoji: reportEmoji
             },
 
             {
               label: 'General',
-              description:
-                'General support',
-              value:
-                'general',
-              emoji:
-                generalEmoji
+              description: 'General support',
+              value: 'general',
+              emoji: generalEmoji
             },
 
             {
               label: 'Content Creator',
-              description:
-                'Creator support',
-              value:
-                'content_creator',
-              emoji:
-                creatorEmoji
+              description: 'Creator support',
+              value: 'creator',
+              emoji: creatorEmoji
             }
 
           ]);
@@ -498,18 +461,72 @@ client.on('interactionCreate', async interaction => {
         new ActionRowBuilder()
           .addComponents(menu);
 
-      // SEND PANEL
-
       await interaction.channel.send({
         embeds: [embed],
         components: [row]
       });
 
-      // PRIVATE REPLY
+      await interaction.reply({
+        content: 'Ticket panel sent',
+        ephemeral: true
+      });
+
+    }
+
+    /* =========================
+       AUTO ROLE
+    ========================= */
+
+    if (interaction.commandName === 'autorole') {
+
+      if (
+        !interaction.member.permissions.has(
+          PermissionsBitField.Flags.Administrator
+        )
+      ) {
+
+        return interaction.reply({
+          content:
+            'You need Administrator permission.',
+          ephemeral: true
+        });
+
+      }
+
+      const role =
+        interaction.options.getRole('role');
+
+      autoRoleId = role.id;
+
+      const members =
+        await interaction.guild.members.fetch();
+
+      let given = 0;
+
+      for (const [, member] of members) {
+
+        if (member.user.bot) continue;
+
+        if (member.roles.cache.has(role.id))
+          continue;
+
+        try {
+
+          await member.roles.add(role.id);
+
+          given++;
+
+        } catch (err) {
+
+          console.log(err);
+
+        }
+
+      }
 
       await interaction.reply({
         content:
-          'Ticket panel created.',
+          `Auto role set to ${role}. Gave role to ${given} members.`,
         ephemeral: true
       });
 
@@ -523,10 +540,7 @@ client.on('interactionCreate', async interaction => {
 
   if (interaction.isStringSelectMenu()) {
 
-    if (
-      interaction.customId ===
-      'ticket_menu'
-    ) {
+    if (interaction.customId === 'ticket_menu') {
 
       const guild =
         interaction.guild;
@@ -537,37 +551,26 @@ client.on('interactionCreate', async interaction => {
       const ticketType =
         interaction.values[0];
 
-      // CATEGORY ID
-
       const categoryId =
-        ticketCategories.get(
-          ticketType
-        );
-
-      // CHECK EXISTING TICKET
+        ticketCategories.get(ticketType);
 
       const existingTicket =
         guild.channels.cache.find(
           channel =>
-            channel.topic ===
-            member.id
+            channel.topic === member.id
         );
 
       if (existingTicket) {
 
         return interaction.reply({
           content:
-            `You already have a ticket: ${existingTicket}`,
+            `You already have a ticket ${existingTicket}`,
           ephemeral: true
         });
 
       }
 
-      // INCREASE COUNT
-
       ticketCount++;
-
-      // CREATE CHANNEL
 
       const ticketChannel =
         await guild.channels.create({
@@ -620,33 +623,17 @@ client.on('interactionCreate', async interaction => {
 
         });
 
-      /* =========================
-         BUTTONS
-      ========================= */
-
       const claimButton =
         new ButtonBuilder()
-          .setCustomId(
-            'claim_ticket'
-          )
-          .setLabel(
-            'Claim Ticket'
-          )
-          .setStyle(
-            ButtonStyle.Primary
-          );
+          .setCustomId('claim_ticket')
+          .setLabel('Claim Ticket')
+          .setStyle(ButtonStyle.Primary);
 
       const closeButton =
         new ButtonBuilder()
-          .setCustomId(
-            'close_ticket'
-          )
-          .setLabel(
-            'Close Ticket'
-          )
-          .setStyle(
-            ButtonStyle.Danger
-          );
+          .setCustomId('close_ticket')
+          .setLabel('Close Ticket')
+          .setStyle(ButtonStyle.Danger);
 
       const row =
         new ActionRowBuilder()
@@ -655,36 +642,22 @@ client.on('interactionCreate', async interaction => {
             closeButton
           );
 
-      // EMBED
-
       const ticketEmbed =
         new EmbedBuilder()
-          .setTitle(
-            '🎫 TICKET'
-          )
+          .setTitle('TICKET')
           .setDescription(
             `Welcome to Fame support ${member}`
           )
-          .setColor(
-            '#8b5cf6'
-          )
-          .setFooter({
-            text:
-              'Fame Support System'
-          });
-
-      // SEND MESSAGE
+          .setColor('#8b5cf6');
 
       await ticketChannel.send({
         embeds: [ticketEmbed],
         components: [row]
       });
 
-      // REPLY
-
       await interaction.reply({
         content:
-          `Your ticket has been created: ${ticketChannel}`,
+          `Your ticket has been created ${ticketChannel}`,
         ephemeral: true
       });
 
@@ -699,35 +672,21 @@ client.on('interactionCreate', async interaction => {
   if (interaction.isButton()) {
 
     /* =========================
-       CLAIM TICKET
+       CLAIM
     ========================= */
 
-    if (
-      interaction.customId ===
-      'claim_ticket'
-    ) {
-
-      // OWNER ID
+    if (interaction.customId === 'claim_ticket') {
 
       const ticketOwnerId =
         interaction.channel.topic;
 
-      // OWNER CHECK
-
       const isOwner =
-        interaction.user.id ===
-        ticketOwnerId;
-
-      // STAFF CHECK
+        interaction.user.id === ticketOwnerId;
 
       const hasStaffRole =
         interaction.member.permissions.has(
-          PermissionsBitField
-            .Flags
-            .ManageChannels
+          PermissionsBitField.Flags.ManageChannels
         );
-
-      // BLOCK USER
 
       if (
         isOwner &&
@@ -742,23 +701,18 @@ client.on('interactionCreate', async interaction => {
 
       }
 
-      // CLAIM MESSAGE
-
       await interaction.reply({
         content:
-          `✅ ${interaction.user} claimed this ticket.`
+          `${interaction.user} claimed this ticket.`
       });
 
     }
 
     /* =========================
-       CLOSE TICKET
+       CLOSE
     ========================= */
 
-    if (
-      interaction.customId ===
-      'close_ticket'
-    ) {
+    if (interaction.customId === 'close_ticket') {
 
       await interaction.reply({
         content:
@@ -773,6 +727,28 @@ client.on('interactionCreate', async interaction => {
       }, 5000);
 
     }
+
+  }
+
+});
+
+/* =========================
+   AUTO ROLE JOIN EVENT
+========================= */
+
+client.on('guildMemberAdd', async member => {
+
+  if (member.user.bot) return;
+
+  if (!autoRoleId) return;
+
+  try {
+
+    await member.roles.add(autoRoleId);
+
+  } catch (err) {
+
+    console.log(err);
 
   }
 
