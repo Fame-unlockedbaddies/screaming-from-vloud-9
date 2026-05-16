@@ -58,6 +58,7 @@ let autoRoleId = null;
 
 const MEMBER_ROLE_ID = '1505041194156167339';
 const QAQ_ROLE_ID = '1497660027274530927';
+const CONTENT_CREATOR_ROLE_ID = '1502715193975771257';
 
 /* =========================
    CUSTOM EMOJI SYSTEM
@@ -124,7 +125,7 @@ const commands = [
     .addStringOption(option =>
       option
         .setName('image')
-        .setDescription('Embed image')
+        .setDescription('Embed image URL')
         .setRequired(false)
     ),
 
@@ -198,7 +199,7 @@ const commands = [
     .addStringOption(option =>
       option
         .setName('image')
-        .setDescription('Panel image')
+        .setDescription('Panel image URL')
         .setRequired(false)
     ),
 
@@ -268,9 +269,7 @@ client.on('interactionCreate', async interaction => {
 
   if (interaction.isChatInputCommand()) {
 
-    /* =========================
-       PING
-    ========================= */
+    /* PING */
 
     if (interaction.commandName === 'ping') {
 
@@ -280,9 +279,7 @@ client.on('interactionCreate', async interaction => {
 
     }
 
-    /* =========================
-       SEND MESSAGE
-    ========================= */
+    /* SEND MESSAGE */
 
     if (interaction.commandName === 'sendmessage') {
 
@@ -331,9 +328,7 @@ client.on('interactionCreate', async interaction => {
 
     }
 
-    /* =========================
-       SET TICKET
-    ========================= */
+    /* SET TICKET */
 
     if (interaction.commandName === 'setticket') {
 
@@ -462,9 +457,7 @@ client.on('interactionCreate', async interaction => {
 
     }
 
-    /* =========================
-       AUTO ROLE
-    ========================= */
+    /* AUTO ROLE */
 
     if (interaction.commandName === 'autorole') {
 
@@ -525,7 +518,7 @@ client.on('interactionCreate', async interaction => {
   }
 
   /* =========================
-     SELECT MENU
+     TICKET MENU
   ========================= */
 
   if (interaction.isStringSelectMenu()) {
@@ -715,7 +708,7 @@ client.on('interactionCreate', async interaction => {
 });
 
 /* =========================
-   AUTO ROLE JOIN EVENT
+   AUTO ROLE
 ========================= */
 
 client.on('guildMemberAdd', async member => {
@@ -742,9 +735,7 @@ client.on('guildMemberAdd', async member => {
 
 client.on('guildMemberUpdate', async (oldMember, newMember) => {
 
-  /* =========================
-     MEMBER ROLE
-  ========================= */
+  /* MEMBER ROLE */
 
   const hadMemberRole =
     oldMember.roles.cache.has(
@@ -811,17 +802,13 @@ client.on('guildMemberUpdate', async (oldMember, newMember) => {
 
     } catch (err) {
 
-      console.log(
-        `Could not DM ${newMember.user.tag}`
-      );
+      console.log(err);
 
     }
 
   }
 
-  /* =========================
-     QAQ ROLE
-  ========================= */
+  /* QAQ ROLE */
 
   const hadQAQRole =
     oldMember.roles.cache.has(
@@ -906,9 +893,95 @@ ${newMember}
 
     } catch (err) {
 
-      console.log(
-        `Could not DM ${newMember.user.tag}`
-      );
+      console.log(err);
+
+    }
+
+  }
+
+  /* CONTENT CREATOR ROLE */
+
+  const hadCreatorRole =
+    oldMember.roles.cache.has(
+      CONTENT_CREATOR_ROLE_ID
+    );
+
+  const hasCreatorRole =
+    newMember.roles.cache.has(
+      CONTENT_CREATOR_ROLE_ID
+    );
+
+  if (
+    !hadCreatorRole &&
+    hasCreatorRole
+  ) {
+
+    try {
+
+      const creatorEmbed =
+        new EmbedBuilder()
+
+          .setColor('#ffff00')
+
+          .setTitle('Content Creator Role')
+
+          .setDescription(`
+# **Congratulations!**
+
+${newMember}
+
+**You have officially received the Content Creator role in Fame.**
+
+**This role is given to members who help support and represent Fame through content creation, creativity, activity, and community engagement. Your work and dedication are appreciated by the Fame community.**
+
+**As a Content Creator, you are now recognized as an official creator within Fame and may receive access to creator-related opportunities, announcements, and future projects.**
+
+# **Role Information:**
+
+• **Official Content Creator status within Fame**
+• **Recognition for supporting the community through content**
+• **Access to creator-related channels and updates**
+• **Eligibility for future creator opportunities and events**
+• **Closer involvement with upcoming Fame releases and announcements**
+• **Ability to collaborate and communicate with staff members**
+
+# **Things You Should Do:**
+
+• **Create positive and appropriate content related to Fame**
+• **Represent the community professionally**
+• **Remain active and supportive within the server**
+• **Encourage community engagement and growth**
+• **Work respectfully with members and staff**
+
+# **Things You Must Not Do:**
+
+• **Do not create harmful, misleading, or inappropriate content**
+• **Do not leak private information or upcoming content**
+• **Do not misuse your creator status for personal gain**
+• **Do not disrespect members, creators, or staff**
+• **Do not spread drama, toxicity, or false information**
+• **Do not impersonate higher staff roles or official announcements**
+
+**Failure to follow expectations may result in warnings, role removal, or further moderation action.**
+
+**Thank you for supporting Fame and contributing to the community.**
+`)
+
+          .setThumbnail(
+            newMember.user.displayAvatarURL()
+          )
+
+          .setFooter({
+            text: 'Fame Community'
+          });
+
+      await newMember.send({
+        embeds: [creatorEmbed]
+      });
+
+    } catch (err) {
+
+      console.log(err);
 
     }
 
