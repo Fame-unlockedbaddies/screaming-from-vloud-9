@@ -5,7 +5,7 @@ const {
   Routes,
   SlashCommandBuilder,
   EmbedBuilder,
-  ActionRowBuilder,
+ ActionRowBuilder,
   ButtonBuilder,
   StringSelectMenuBuilder,
   ButtonStyle,
@@ -33,7 +33,7 @@ app.listen(PORT, () => {
 });
 
 /* =========================
-   DISCORD BOT
+   BOT SETUP
 ========================= */
 
 const TOKEN = process.env.TOKEN;
@@ -55,6 +55,8 @@ const ticketCategories = new Map();
 let ticketCount = 0;
 
 let autoRoleId = null;
+
+const MEMBER_ROLE_ID = '1502711771603931177';
 
 /* =========================
    CUSTOM EMOJI SYSTEM
@@ -91,17 +93,9 @@ function convertCustomEmojis(text, guild) {
 
 const commands = [
 
-  /* =========================
-     PING
-  ========================= */
-
   new SlashCommandBuilder()
     .setName('ping')
     .setDescription('Ping command'),
-
-  /* =========================
-     SEND MESSAGE
-  ========================= */
 
   new SlashCommandBuilder()
     .setName('sendmessage')
@@ -134,10 +128,6 @@ const commands = [
         .setDescription('Embed image')
         .setRequired(false)
     ),
-
-  /* =========================
-     SET TICKET
-  ========================= */
 
   new SlashCommandBuilder()
     .setName('setticket')
@@ -212,10 +202,6 @@ const commands = [
         .setDescription('Panel image')
         .setRequired(false)
     ),
-
-  /* =========================
-     AUTO ROLE
-  ========================= */
 
   new SlashCommandBuilder()
     .setName('autorole')
@@ -671,10 +657,6 @@ client.on('interactionCreate', async interaction => {
 
   if (interaction.isButton()) {
 
-    /* =========================
-       CLAIM
-    ========================= */
-
     if (interaction.customId === 'claim_ticket') {
 
       const ticketOwnerId =
@@ -707,10 +689,6 @@ client.on('interactionCreate', async interaction => {
       });
 
     }
-
-    /* =========================
-       CLOSE
-    ========================= */
 
     if (interaction.customId === 'close_ticket') {
 
@@ -749,6 +727,61 @@ client.on('guildMemberAdd', async member => {
   } catch (err) {
 
     console.log(err);
+
+  }
+
+});
+
+/* =========================
+   ROLE DM SYSTEM
+========================= */
+
+client.on('guildMemberUpdate', async (oldMember, newMember) => {
+
+  const hadRole =
+    oldMember.roles.cache.has(MEMBER_ROLE_ID);
+
+  const hasRole =
+    newMember.roles.cache.has(MEMBER_ROLE_ID);
+
+  if (!hadRole && hasRole) {
+
+    try {
+
+      await newMember.send(`
+# **Hello ${newMember.user.username}!**
+
+# **Congratulations!**
+**You have officially received the Member role in Fame.**
+
+**This role gives you access to be part of the Fame community, interact with other players, and stay updated with announcements, events, and future updates.**
+
+**Please make sure to follow the community rules at all times.**
+
+# **Things you must not do to community members or staff:**
+
+• **Do not disrespect, insult, or harass members or staff**
+• **Do not start drama, arguments, or toxic behavior**
+• **Do not spam chats or misuse channels**
+• **Do not spread false information or rumors**
+• **Do not leak private information or upcoming content**
+• **Do not threaten, troll, or target other members**
+• **Do not bypass rules or encourage others to break rules**
+• **Do not impersonate staff members or higher roles**
+
+# **Punishments**
+**Failure to follow these rules may result in warnings, mutes, or removal from the community.**
+
+# **Thank you for being part of Fame.**
+`);
+
+    } catch (err) {
+
+      console.log(
+        `Could not DM ${newMember.user.tag}`
+      );
+
+    }
 
   }
 
