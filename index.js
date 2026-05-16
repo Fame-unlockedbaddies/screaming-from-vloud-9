@@ -5,7 +5,7 @@ const {
   Routes,
   SlashCommandBuilder,
   EmbedBuilder,
- ActionRowBuilder,
+  ActionRowBuilder,
   ButtonBuilder,
   StringSelectMenuBuilder,
   ButtonStyle,
@@ -56,7 +56,8 @@ let ticketCount = 0;
 
 let autoRoleId = null;
 
-const MEMBER_ROLE_ID = '1502711771603931177';
+const MEMBER_ROLE_ID = '1505041194156167339';
+const QAQ_ROLE_ID = '1497660027274530927';
 
 /* =========================
    CUSTOM EMOJI SYSTEM
@@ -68,7 +69,7 @@ function convertCustomEmojis(text, guild) {
 
   const regex = /:([a-zA-Z0-9_]+):/g;
 
-  text = text.replace(regex, (match, emojiName) => {
+  return text.replace(regex, (match, emojiName) => {
 
     const emoji =
       guild.emojis.cache.find(
@@ -82,8 +83,6 @@ function convertCustomEmojis(text, guild) {
     return match;
 
   });
-
-  return text;
 
 }
 
@@ -258,10 +257,14 @@ client.once('ready', () => {
 });
 
 /* =========================
-   INTERACTIONS
+   INTERACTION CREATE
 ========================= */
 
 client.on('interactionCreate', async interaction => {
+
+  /* =========================
+     SLASH COMMANDS
+  ========================= */
 
   if (interaction.isChatInputCommand()) {
 
@@ -322,7 +325,7 @@ client.on('interactionCreate', async interaction => {
       });
 
       await interaction.reply({
-        content: 'Message sent',
+        content: 'Message sent.',
         ephemeral: true
       });
 
@@ -453,7 +456,7 @@ client.on('interactionCreate', async interaction => {
       });
 
       await interaction.reply({
-        content: 'Ticket panel sent',
+        content: 'Ticket panel sent.',
         ephemeral: true
       });
 
@@ -493,8 +496,9 @@ client.on('interactionCreate', async interaction => {
 
         if (member.user.bot) continue;
 
-        if (member.roles.cache.has(role.id))
-          continue;
+        if (
+          member.roles.cache.has(role.id)
+        ) continue;
 
         try {
 
@@ -521,7 +525,7 @@ client.on('interactionCreate', async interaction => {
   }
 
   /* =========================
-     DROPDOWN MENU
+     SELECT MENU
   ========================= */
 
   if (interaction.isStringSelectMenu()) {
@@ -634,7 +638,7 @@ client.on('interactionCreate', async interaction => {
           .setDescription(
             `Welcome to Fame support ${member}`
           )
-          .setColor('#8b5cf6');
+          .setColor('#ff1493');
 
       await ticketChannel.send({
         embeds: [ticketEmbed],
@@ -665,14 +669,14 @@ client.on('interactionCreate', async interaction => {
       const isOwner =
         interaction.user.id === ticketOwnerId;
 
-      const hasStaffRole =
+      const hasStaffPermission =
         interaction.member.permissions.has(
           PermissionsBitField.Flags.ManageChannels
         );
 
       if (
         isOwner &&
-        !hasStaffRole
+        !hasStaffPermission
       ) {
 
         return interaction.reply({
@@ -738,18 +742,36 @@ client.on('guildMemberAdd', async member => {
 
 client.on('guildMemberUpdate', async (oldMember, newMember) => {
 
-  const hadRole =
-    oldMember.roles.cache.has(MEMBER_ROLE_ID);
+  /* =========================
+     MEMBER ROLE
+  ========================= */
 
-  const hasRole =
-    newMember.roles.cache.has(MEMBER_ROLE_ID);
+  const hadMemberRole =
+    oldMember.roles.cache.has(
+      MEMBER_ROLE_ID
+    );
 
-  if (!hadRole && hasRole) {
+  const hasMemberRole =
+    newMember.roles.cache.has(
+      MEMBER_ROLE_ID
+    );
+
+  if (
+    !hadMemberRole &&
+    hasMemberRole
+  ) {
 
     try {
 
-      await newMember.send(`
-# **Hello ${newMember.user.username}!**
+      const memberEmbed =
+        new EmbedBuilder()
+
+          .setColor('#ff1493')
+
+          .setTitle('Welcome to Fame')
+
+          .setDescription(`
+# **Hello ${newMember}!**
 
 # **Congratulations!**
 **You have officially received the Member role in Fame.**
@@ -773,7 +795,114 @@ client.on('guildMemberUpdate', async (oldMember, newMember) => {
 **Failure to follow these rules may result in warnings, mutes, or removal from the community.**
 
 # **Thank you for being part of Fame.**
-`);
+`)
+
+          .setThumbnail(
+            newMember.user.displayAvatarURL()
+          )
+
+          .setFooter({
+            text: 'Fame Community'
+          });
+
+      await newMember.send({
+        embeds: [memberEmbed]
+      });
+
+    } catch (err) {
+
+      console.log(
+        `Could not DM ${newMember.user.tag}`
+      );
+
+    }
+
+  }
+
+  /* =========================
+     QAQ ROLE
+  ========================= */
+
+  const hadQAQRole =
+    oldMember.roles.cache.has(
+      QAQ_ROLE_ID
+    );
+
+  const hasQAQRole =
+    newMember.roles.cache.has(
+      QAQ_ROLE_ID
+    );
+
+  if (
+    !hadQAQRole &&
+    hasQAQRole
+  ) {
+
+    try {
+
+      const qaqEmbed =
+        new EmbedBuilder()
+
+          .setColor('#0099ff')
+
+          .setTitle('QAQ Manager Role')
+
+          .setDescription(`
+# **Congratulations!**
+
+${newMember}
+
+**You have officially been given the QAQ Manager role in Fame.**
+
+**This role recognizes your presence, support, and involvement within the community. QAQ Manager is a respected position that represents trust, professionalism, and dedication inside Fame.**
+
+**With this role, you are now part of a higher level within the community and will have access to additional features, management areas, and future opportunities as Fame continues to grow.**
+
+# **Role Information:**
+
+• **Official QAQ Manager status within Fame**
+• **Access to exclusive management-related channels**
+• **Ability to communicate with higher-level staff members**
+• **Recognition as part of the trusted community team**
+• **Eligibility for future projects, events, and updates**
+• **Closer involvement with upcoming Fame systems and releases**
+• **Expanded access within the community environment**
+
+# **Things You Should Do:**
+
+• **Remain respectful and professional at all times**
+• **Help support and guide community members when needed**
+• **Report problems or rule violations to higher staff**
+• **Stay active and involved within the community**
+• **Represent Fame positively inside and outside the server**
+• **Work together with staff members professionally**
+
+# **Things You Must Not Do:**
+
+• **Do not abuse your role or permissions**
+• **Do not disrespect members or staff**
+• **Do not leak private staff information or upcoming content**
+• **Do not start arguments, drama, or toxic behavior**
+• **Do not misuse management channels or staff access**
+• **Do not impersonate higher staff positions**
+• **Do not bypass rules or encourage others to break rules**
+
+**Failure to follow expectations may result in warnings, role removal, or further moderation action.**
+
+**Thank you for supporting Fame and being part of the community.**
+`)
+
+          .setThumbnail(
+            newMember.user.displayAvatarURL()
+          )
+
+          .setFooter({
+            text: 'Fame Community'
+          });
+
+      await newMember.send({
+        embeds: [qaqEmbed]
+      });
 
     } catch (err) {
 
