@@ -1,3 +1,7 @@
+// ======================================================
+// FULL FAME BOT
+// ======================================================
+
 const {
   Client,
   GatewayIntentBits,
@@ -16,9 +20,9 @@ const {
 const express = require('express');
 require('dotenv').config();
 
-/* =========================
-   EXPRESS SERVER
-========================= */
+// ======================================================
+// EXPRESS SERVER
+// ======================================================
 
 const app = express();
 
@@ -32,36 +36,42 @@ app.listen(PORT, () => {
   console.log(`Web server running on port ${PORT}`);
 });
 
-/* =========================
-   CLIENT
-========================= */
+// ======================================================
+// CLIENT
+// ======================================================
 
 const client = new Client({
   intents: [
     GatewayIntentBits.Guilds,
-    GatewayIntentBits.GuildMembers
+    GatewayIntentBits.GuildMembers,
+    GatewayIntentBits.GuildMessages,
+    GatewayIntentBits.MessageContent,
+    GatewayIntentBits.GuildVoiceStates
   ]
 });
 
 const TOKEN = process.env.TOKEN;
 const CLIENT_ID = process.env.CLIENT_ID;
 
-/* =========================
-   VARIABLES
-========================= */
+// ======================================================
+// VARIABLES
+// ======================================================
 
 let ticketCount = 0;
 let autoRoleId = null;
 
 const ticketCategories = new Map();
 
+const userWarnings = new Map();
+const userMessages = new Map();
+
 const MEMBER_ROLE_ID = '1505041194156167339';
 const QAQ_ROLE_ID = '1497660027274530927';
 const CONTENT_CREATOR_ROLE_ID = '1502715193975771257';
 
-/* =========================
-   EMOJI SYSTEM
-========================= */
+// ======================================================
+// EMOJI CONVERTER
+// ======================================================
 
 function convertCustomEmojis(text, guild) {
 
@@ -86,9 +96,79 @@ function convertCustomEmojis(text, guild) {
 
 }
 
-/* =========================
-   COMMANDS
-========================= */
+// ======================================================
+// WARNING SYSTEM
+// ======================================================
+
+async function warnUser(message, reason) {
+
+  const warns =
+    userWarnings.get(message.author.id) || 0;
+
+  const newWarns = warns + 1;
+
+  userWarnings.set(
+    message.author.id,
+    newWarns
+  );
+
+  const embed =
+    new EmbedBuilder()
+
+      .setColor('#ff0000')
+
+      .setTitle('Rule Violation')
+
+      .setDescription(`
+${message.author}
+
+Reason: **${reason}**
+
+Warnings: **${newWarns}/3**
+`);
+
+  await message.channel.send({
+    embeds: [embed]
+  });
+
+  if (newWarns >= 3) {
+
+    try {
+
+      await message.member.timeout(
+        10 * 60 * 1000,
+        'Too many warnings'
+      );
+
+      await message.channel.send({
+        embeds: [
+
+          new EmbedBuilder()
+
+            .setColor('#ff0000')
+
+            .setTitle('User Timed Out')
+
+            .setDescription(
+              `${message.author} was timed out for repeated violations.`
+            )
+
+        ]
+      });
+
+    } catch (err) {
+
+      console.log(err);
+
+    }
+
+  }
+
+}
+
+// ======================================================
+// COMMANDS
+// ======================================================
 
 const commands = [
 
@@ -98,7 +178,7 @@ const commands = [
 
   new SlashCommandBuilder()
     .setName('sendmessage')
-    .setDescription('Send embed message')
+    .setDescription('Send embed')
 
     .addStringOption(option =>
       option
@@ -135,42 +215,42 @@ const commands = [
     .addStringOption(option =>
       option
         .setName('title')
-        .setDescription('Panel title')
+        .setDescription('Title')
         .setRequired(true)
     )
 
     .addStringOption(option =>
       option
         .setName('description')
-        .setDescription('Panel description')
+        .setDescription('Description')
         .setRequired(true)
     )
 
     .addStringOption(option =>
       option
         .setName('color')
-        .setDescription('Panel color')
+        .setDescription('Color')
         .setRequired(true)
     )
 
     .addStringOption(option =>
       option
         .setName('report_category')
-        .setDescription('Report category ID')
+        .setDescription('Report category')
         .setRequired(true)
     )
 
     .addStringOption(option =>
       option
         .setName('general_category')
-        .setDescription('General category ID')
+        .setDescription('General category')
         .setRequired(true)
     )
 
     .addStringOption(option =>
       option
         .setName('creator_category')
-        .setDescription('Creator category ID')
+        .setDescription('Creator category')
         .setRequired(true)
     )
 
@@ -198,7 +278,7 @@ const commands = [
     .addStringOption(option =>
       option
         .setName('image')
-        .setDescription('Panel image')
+        .setDescription('Image')
         .setRequired(false)
     ),
 
@@ -215,20 +295,42 @@ const commands = [
 
   new SlashCommandBuilder()
     .setName('scanserver')
-    .setDescription('Scan shared members')
+    .setDescription('Scan shared users')
 
     .addStringOption(option =>
       option
         .setName('serverid')
         .setDescription('Server ID')
         .setRequired(true)
+    ),
+
+  new SlashCommandBuilder()
+    .setName('warnings')
+    .setDescription('Check warnings')
+
+    .addUserOption(option =>
+      option
+        .setName('user')
+        .setDescription('User')
+        .setRequired(true)
+    ),
+
+  new SlashCommandBuilder()
+    .setName('clearwarnings')
+    .setDescription('Clear warnings')
+
+    .addUserOption(option =>
+      option
+        .setName('user')
+        .setDescription('User')
+        .setRequired(true)
     )
 
 ].map(command => command.toJSON());
 
-/* =========================
-   REGISTER COMMANDS
-========================= */
+// ======================================================
+// REGISTER COMMANDS
+// ======================================================
 
 const rest =
   new REST({ version: '10' })
@@ -243,7 +345,7 @@ const rest =
       { body: commands }
     );
 
-    console.log('Commands loaded');
+    console.log('Commands Loaded');
 
   } catch (err) {
 
@@ -253,31 +355,212 @@ const rest =
 
 })();
 
-/* =========================
-   READY
-========================= */
+// ======================================================
+// READY
+// ======================================================
 
 client.once('ready', () => {
 
   console.log(
-    `${client.user.tag} online`
+    `${client.user.tag} Online`
   );
 
 });
 
-/* =========================
-   INTERACTIONS
-========================= */
+// ======================================================
+// AUTOMOD
+// ======================================================
+
+client.on('messageCreate', async message => {
+
+  if (!message.guild) return;
+  if (message.author.bot) return;
+
+  const content =
+    message.content.toLowerCase();
+
+  // RESPECT RULES
+
+  const disrespectWords = [
+    'nigger',
+    'faggot',
+    'retard',
+    'kys',
+    'kill yourself'
+  ];
+
+  if (
+    disrespectWords.some(word =>
+      content.includes(word)
+    )
+  ) {
+
+    await message.delete().catch(() => {});
+
+    return warnUser(
+      message,
+      'Disrespectful language'
+    );
+
+  }
+
+  // SPAM
+
+  const userData =
+    userMessages.get(message.author.id) || {
+      count: 0,
+      lastMessage: Date.now()
+    };
+
+  if (
+    Date.now() - userData.lastMessage <
+    3000
+  ) {
+
+    userData.count++;
+
+  } else {
+
+    userData.count = 1;
+
+  }
+
+  userData.lastMessage = Date.now();
+
+  userMessages.set(
+    message.author.id,
+    userData
+  );
+
+  if (userData.count >= 5) {
+
+    await message.delete().catch(() => {});
+
+    return warnUser(
+      message,
+      'Spam or flooding'
+    );
+
+  }
+
+  // CAPS
+
+  if (
+    message.content.length > 10 &&
+    message.content ===
+    message.content.toUpperCase()
+  ) {
+
+    await message.delete().catch(() => {});
+
+    return warnUser(
+      message,
+      'Excessive caps'
+    );
+
+  }
+
+  // MASS PING
+
+  if (
+    message.mentions.users.size >= 5
+  ) {
+
+    await message.delete().catch(() => {});
+
+    return warnUser(
+      message,
+      'Mass pinging'
+    );
+
+  }
+
+  // ADVERTISING
+
+  if (
+    content.includes('discord.gg/')
+  ) {
+
+    if (
+      !message.member.permissions.has(
+        PermissionsBitField.Flags.Administrator
+      )
+    ) {
+
+      await message.delete().catch(() => {});
+
+      return warnUser(
+        message,
+        'Advertising'
+      );
+
+    }
+
+  }
+
+  // NSFW
+
+  const nsfwWords = [
+    'porn',
+    'nudes',
+    'xxx',
+    'gore'
+  ];
+
+  if (
+    nsfwWords.some(word =>
+      content.includes(word)
+    )
+  ) {
+
+    await message.delete().catch(() => {});
+
+    return warnUser(
+      message,
+      'NSFW content'
+    );
+
+  }
+
+  // EXPLOITING
+
+  const exploitWords = [
+    'synapse',
+    'executor',
+    'aimbot',
+    'cheat client'
+  ];
+
+  if (
+    exploitWords.some(word =>
+      content.includes(word)
+    )
+  ) {
+
+    await message.delete().catch(() => {});
+
+    return warnUser(
+      message,
+      'Exploiting discussion'
+    );
+
+  }
+
+});
+
+// ======================================================
+// INTERACTIONS
+// ======================================================
 
 client.on('interactionCreate', async interaction => {
 
-  /* =========================
-     SLASH COMMANDS
-  ========================= */
+  // ======================================================
+  // SLASH COMMANDS
+  // ======================================================
 
   if (interaction.isChatInputCommand()) {
 
-    /* PING */
+    // PING
 
     if (interaction.commandName === 'ping') {
 
@@ -287,7 +570,7 @@ client.on('interactionCreate', async interaction => {
 
     }
 
-    /* SEND MESSAGE */
+    // SEND MESSAGE
 
     if (interaction.commandName === 'sendmessage') {
 
@@ -332,197 +615,16 @@ client.on('interactionCreate', async interaction => {
         embeds: [embed]
       });
 
-      await interaction.reply({
+      return interaction.reply({
         content: 'Message sent.',
         ephemeral: true
       });
 
     }
 
-    /* SET TICKET */
-
-    if (interaction.commandName === 'setticket') {
-
-      let title =
-        interaction.options.getString('title');
-
-      let description =
-        interaction.options.getString('description');
-
-      const color =
-        interaction.options.getString('color');
-
-      const image =
-        interaction.options.getString('image');
-
-      title =
-        convertCustomEmojis(
-          title,
-          interaction.guild
-        );
-
-      description =
-        convertCustomEmojis(
-          description,
-          interaction.guild
-        );
-
-      const reportCategory =
-        interaction.options.getString(
-          'report_category'
-        );
-
-      const generalCategory =
-        interaction.options.getString(
-          'general_category'
-        );
-
-      const creatorCategory =
-        interaction.options.getString(
-          'creator_category'
-        );
-
-      const reportEmoji =
-        interaction.options.getString(
-          'report_emoji'
-        );
-
-      const generalEmoji =
-        interaction.options.getString(
-          'general_emoji'
-        );
-
-      const creatorEmoji =
-        interaction.options.getString(
-          'creator_emoji'
-        );
-
-      ticketCategories.set(
-        'report',
-        reportCategory
-      );
-
-      ticketCategories.set(
-        'general',
-        generalCategory
-      );
-
-      ticketCategories.set(
-        'creator',
-        creatorCategory
-      );
-
-      const embed =
-        new EmbedBuilder()
-
-          .setTitle(title)
-
-          .setDescription(description)
-
-          .setColor(color);
-
-      if (image) {
-        embed.setImage(image);
-      }
-
-      const menu =
-        new StringSelectMenuBuilder()
-
-          .setCustomId('ticket_menu')
-
-          .setPlaceholder(
-            'Choose section'
-          )
-
-          .addOptions([
-
-            {
-              label:
-                'Report a Exploiter',
-
-              description:
-                'Exploiter support',
-
-              value:
-                'report',
-
-              emoji:
-                reportEmoji
-            },
-
-            {
-              label:
-                'General',
-
-              description:
-                'General support',
-
-              value:
-                'general',
-
-              emoji:
-                generalEmoji
-            },
-
-            {
-              label:
-                'Content Creator',
-
-              description:
-                'Creator support',
-
-              value:
-                'creator',
-
-              emoji:
-                creatorEmoji
-            }
-
-          ]);
-
-      const row =
-        new ActionRowBuilder()
-          .addComponents(menu);
-
-      await interaction.channel.send({
-
-        embeds: [embed],
-
-        components: [row]
-
-      });
-
-      await interaction.reply({
-
-        content:
-          'Ticket panel sent.',
-
-        ephemeral: true
-
-      });
-
-    }
-
-    /* AUTO ROLE */
+    // AUTO ROLE
 
     if (interaction.commandName === 'autorole') {
-
-      if (
-        !interaction.member.permissions.has(
-          PermissionsBitField.Flags.Administrator
-        )
-      ) {
-
-        return interaction.reply({
-
-          content:
-            'Administrator only.',
-
-          ephemeral: true
-
-        });
-
-      }
 
       const role =
         interaction.options.getRole('role');
@@ -532,7 +634,7 @@ client.on('interactionCreate', async interaction => {
       const members =
         await interaction.guild.members.fetch();
 
-      let given = 0;
+      let count = 0;
 
       for (const [, member] of members) {
 
@@ -542,24 +644,16 @@ client.on('interactionCreate', async interaction => {
           member.roles.cache.has(role.id)
         ) continue;
 
-        try {
+        await member.roles.add(role.id);
 
-          await member.roles.add(role.id);
-
-          given++;
-
-        } catch (err) {
-
-          console.log(err);
-
-        }
+        count++;
 
       }
 
-      await interaction.reply({
+      return interaction.reply({
 
         content:
-          `Auto role set to ${role}. Gave role to ${given} users.`,
+          `Auto role set to ${role}. Added to ${count} users.`,
 
         ephemeral: true
 
@@ -567,272 +661,31 @@ client.on('interactionCreate', async interaction => {
 
     }
 
-    /* SCAN SERVER */
+    // WARNINGS
 
-    if (interaction.commandName === 'scanserver') {
+    if (interaction.commandName === 'warnings') {
 
-      if (
-        !interaction.member.permissions.has(
-          PermissionsBitField.Flags.Administrator
-        )
-      ) {
+      const user =
+        interaction.options.getUser('user');
 
-        return interaction.reply({
+      const warns =
+        userWarnings.get(user.id) || 0;
 
-          content:
-            'Administrator only.',
+      return interaction.reply({
 
-          ephemeral: true
+        embeds: [
 
-        });
+          new EmbedBuilder()
 
-      }
+            .setColor('#ff1493')
 
-      const serverId =
-        interaction.options.getString(
-          'serverid'
-        );
+            .setTitle('Warnings')
 
-      const targetGuild =
-        client.guilds.cache.get(serverId);
+            .setDescription(
+              `${user}\nWarnings: **${warns}/3**`
+            )
 
-      if (!targetGuild) {
-
-        return interaction.reply({
-
-          content:
-            'Bot is not in that server.',
-
-          ephemeral: true
-
-        });
-
-      }
-
-      await targetGuild.members.fetch();
-
-      await interaction.guild.members.fetch();
-
-      const sharedMembers = [];
-
-      interaction.guild.members.cache.forEach(member => {
-
-        if (member.user.bot) return;
-
-        const exists =
-          targetGuild.members.cache.has(
-            member.id
-          );
-
-        if (exists) {
-
-          sharedMembers.push(
-            `<@${member.id}>`
-          );
-
-        }
-
-      });
-
-      if (!sharedMembers.length) {
-
-        return interaction.reply({
-
-          content:
-            'No shared members found.',
-
-          ephemeral: true
-
-        });
-
-      }
-
-      const embed =
-        new EmbedBuilder()
-
-          .setTitle('PLAYGROUND SCAN')
-
-          .setColor('#ff1493')
-
-          .setDescription(
-            sharedMembers.join('\n')
-          )
-
-          .setFooter({
-
-            text:
-              `Found ${sharedMembers.length} shared members`
-
-          });
-
-      await interaction.reply({
-
-        embeds: [embed]
-
-      });
-
-    }
-
-  }
-
-  /* =========================
-     SELECT MENU
-  ========================= */
-
-  if (interaction.isStringSelectMenu()) {
-
-    if (
-      interaction.customId ===
-      'ticket_menu'
-    ) {
-
-      const guild =
-        interaction.guild;
-
-      const member =
-        interaction.member;
-
-      const ticketType =
-        interaction.values[0];
-
-      const categoryId =
-        ticketCategories.get(ticketType);
-
-      const existing =
-        guild.channels.cache.find(
-          c =>
-            c.topic === member.id
-        );
-
-      if (existing) {
-
-        return interaction.reply({
-
-          content:
-            `You already have a ticket ${existing}`,
-
-          ephemeral: true
-
-        });
-
-      }
-
-      ticketCount++;
-
-      const ticketChannel =
-        await guild.channels.create({
-
-          name:
-            `ticket-${ticketCount}`,
-
-          type:
-            ChannelType.GuildText,
-
-          parent:
-            categoryId,
-
-          topic:
-            member.id,
-
-          permissionOverwrites: [
-
-            {
-              id:
-                guild.id,
-
-              deny: [
-                PermissionsBitField
-                  .Flags
-                  .ViewChannel
-              ]
-            },
-
-            {
-              id:
-                member.id,
-
-              allow: [
-
-                PermissionsBitField
-                  .Flags
-                  .ViewChannel,
-
-                PermissionsBitField
-                  .Flags
-                  .SendMessages,
-
-                PermissionsBitField
-                  .Flags
-                  .ReadMessageHistory
-
-              ]
-            }
-
-          ]
-
-        });
-
-      const claimButton =
-        new ButtonBuilder()
-
-          .setCustomId(
-            'claim_ticket'
-          )
-
-          .setLabel(
-            'Claim Ticket'
-          )
-
-          .setStyle(
-            ButtonStyle.Primary
-          );
-
-      const closeButton =
-        new ButtonBuilder()
-
-          .setCustomId(
-            'close_ticket'
-          )
-
-          .setLabel(
-            'Close Ticket'
-          )
-
-          .setStyle(
-            ButtonStyle.Danger
-          );
-
-      const row =
-        new ActionRowBuilder()
-
-          .addComponents(
-            claimButton,
-            closeButton
-          );
-
-      const embed =
-        new EmbedBuilder()
-
-          .setTitle('TICKET')
-
-          .setColor('#ff1493')
-
-          .setDescription(
-            `Welcome to Fame support ${member}`
-          );
-
-      await ticketChannel.send({
-
-        embeds: [embed],
-
-        components: [row]
-
-      });
-
-      await interaction.reply({
-
-        content:
-          `Ticket created ${ticketChannel}`,
+        ],
 
         ephemeral: true
 
@@ -840,79 +693,32 @@ client.on('interactionCreate', async interaction => {
 
     }
 
-  }
+    // CLEAR WARNINGS
 
-  /* =========================
-     BUTTONS
-  ========================= */
+    if (interaction.commandName === 'clearwarnings') {
 
-  if (interaction.isButton()) {
+      const user =
+        interaction.options.getUser('user');
 
-    /* CLAIM */
+      userWarnings.set(user.id, 0);
 
-    if (
-      interaction.customId ===
-      'claim_ticket'
-    ) {
+      return interaction.reply({
 
-      const ticketOwnerId =
-        interaction.channel.topic;
+        embeds: [
 
-      const isOwner =
-        interaction.user.id ===
-        ticketOwnerId;
+          new EmbedBuilder()
 
-      const hasStaff =
-        interaction.member.permissions.has(
-          PermissionsBitField.Flags.ManageChannels
-        );
+            .setColor('#00ff00')
 
-      if (
-        isOwner &&
-        !hasStaff
-      ) {
+            .setTitle('Warnings Cleared')
 
-        return interaction.reply({
+            .setDescription(
+              `Warnings cleared for ${user}`
+            )
 
-          content:
-            'You cannot claim your own ticket.',
-
-          ephemeral: true
-
-        });
-
-      }
-
-      await interaction.reply({
-
-        content:
-          `${interaction.user} claimed this ticket.`
+        ]
 
       });
-
-    }
-
-    /* CLOSE */
-
-    if (
-      interaction.customId ===
-      'close_ticket'
-    ) {
-
-      await interaction.reply({
-
-        content:
-          'Closing ticket in 5 seconds.',
-
-        ephemeral: true
-
-      });
-
-      setTimeout(async () => {
-
-        await interaction.channel.delete();
-
-      }, 5000);
 
     }
 
@@ -920,9 +726,9 @@ client.on('interactionCreate', async interaction => {
 
 });
 
-/* =========================
-   AUTO ROLE JOIN
-========================= */
+// ======================================================
+// AUTO ROLE JOIN
+// ======================================================
 
 client.on('guildMemberAdd', async member => {
 
@@ -942,143 +748,8 @@ client.on('guildMemberAdd', async member => {
 
 });
 
-/* =========================
-   ROLE DM SYSTEM
-========================= */
-
-client.on(
-  'guildMemberUpdate',
-  async (
-    oldMember,
-    newMember
-  ) => {
-
-    /* MEMBER ROLE */
-
-    if (
-      !oldMember.roles.cache.has(MEMBER_ROLE_ID) &&
-      newMember.roles.cache.has(MEMBER_ROLE_ID)
-    ) {
-
-      try {
-
-        const embed =
-          new EmbedBuilder()
-
-            .setTitle(
-              'Welcome to Fame'
-            )
-
-            .setColor('#ff1493')
-
-            .setDescription(`
-# **Hello ${newMember}!**
-
-# **Congratulations!**
-**You have officially received the Member role in Fame.**
-
-**Thank you for being part of Fame.**
-`);
-
-        await newMember.send({
-
-          embeds: [embed]
-
-        });
-
-      } catch (err) {
-
-        console.log(err);
-
-      }
-
-    }
-
-    /* QAQ ROLE */
-
-    if (
-      !oldMember.roles.cache.has(QAQ_ROLE_ID) &&
-      newMember.roles.cache.has(QAQ_ROLE_ID)
-    ) {
-
-      try {
-
-        const embed =
-          new EmbedBuilder()
-
-            .setTitle(
-              'QAQ Manager'
-            )
-
-            .setColor('#0099ff')
-
-            .setDescription(`
-# **Congratulations!**
-
-${newMember}
-
-**You have officially been given the QAQ Manager role in Fame.**
-`);
-
-        await newMember.send({
-
-          embeds: [embed]
-
-        });
-
-      } catch (err) {
-
-        console.log(err);
-
-      }
-
-    }
-
-    /* CONTENT CREATOR ROLE */
-
-    if (
-      !oldMember.roles.cache.has(CONTENT_CREATOR_ROLE_ID) &&
-      newMember.roles.cache.has(CONTENT_CREATOR_ROLE_ID)
-    ) {
-
-      try {
-
-        const embed =
-          new EmbedBuilder()
-
-            .setTitle(
-              'Content Creator'
-            )
-
-            .setColor('#ffff00')
-
-            .setDescription(`
-# **Congratulations!**
-
-${newMember}
-
-**You have officially received the Content Creator role in Fame.**
-`);
-
-        await newMember.send({
-
-          embeds: [embed]
-
-        });
-
-      } catch (err) {
-
-        console.log(err);
-
-      }
-
-    }
-
-  }
-);
-
-/* =========================
-   LOGIN
-========================= */
+// ======================================================
+// LOGIN
+// ======================================================
 
 client.login(TOKEN);
