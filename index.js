@@ -16,7 +16,14 @@ const express = require('express');
 require('dotenv').config();
 
 // ======================================================
-// EXPRESS SERVER
+// VARIABLES
+// ======================================================
+
+const TOKEN = process.env.TOKEN;
+const CLIENT_ID = process.env.CLIENT_ID;
+
+// ======================================================
+// EXPRESS SERVER FOR RENDER
 // ======================================================
 
 const app = express();
@@ -50,6 +57,7 @@ const client = new Client({
 client.once('ready', () => {
 
   console.log(`${client.user.tag} Online`);
+  console.log(`CLIENT ID: ${CLIENT_ID}`);
 
 });
 
@@ -149,4 +157,4 @@ client.on('messageCreate', async message => {
 // LOGIN
 // ======================================================
 
-client.login(process.env.TOKEN);
+client.login(TOKEN);
