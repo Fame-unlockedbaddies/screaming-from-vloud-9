@@ -23,21 +23,18 @@ require('dotenv').config();
 const app = express();
 
 app.get('/', (req, res) => {
-  res.send('Bot online');
+  res.send('Bot Online');
 });
 
 const PORT = process.env.PORT || 3000;
 
 app.listen(PORT, () => {
-  console.log(`Server running on port ${PORT}`);
+  console.log(`Web server running on port ${PORT}`);
 });
 
 /* =========================
-   BOT SETUP
+   CLIENT
 ========================= */
-
-const TOKEN = process.env.TOKEN;
-const CLIENT_ID = process.env.CLIENT_ID;
 
 const client = new Client({
   intents: [
@@ -46,22 +43,24 @@ const client = new Client({
   ]
 });
 
+const TOKEN = process.env.TOKEN;
+const CLIENT_ID = process.env.CLIENT_ID;
+
 /* =========================
    VARIABLES
 ========================= */
 
-const ticketCategories = new Map();
-
 let ticketCount = 0;
-
 let autoRoleId = null;
+
+const ticketCategories = new Map();
 
 const MEMBER_ROLE_ID = '1505041194156167339';
 const QAQ_ROLE_ID = '1497660027274530927';
 const CONTENT_CREATOR_ROLE_ID = '1502715193975771257';
 
 /* =========================
-   CUSTOM EMOJI SYSTEM
+   EMOJI SYSTEM
 ========================= */
 
 function convertCustomEmojis(text, guild) {
@@ -88,7 +87,7 @@ function convertCustomEmojis(text, guild) {
 }
 
 /* =========================
-   SLASH COMMANDS
+   COMMANDS
 ========================= */
 
 const commands = [
@@ -125,7 +124,7 @@ const commands = [
     .addStringOption(option =>
       option
         .setName('image')
-        .setDescription('Embed image URL')
+        .setDescription('Embed image')
         .setRequired(false)
     ),
 
@@ -199,7 +198,7 @@ const commands = [
     .addStringOption(option =>
       option
         .setName('image')
-        .setDescription('Panel image URL')
+        .setDescription('Panel image')
         .setRequired(false)
     ),
 
@@ -210,7 +209,18 @@ const commands = [
     .addRoleOption(option =>
       option
         .setName('role')
-        .setDescription('Role to give members')
+        .setDescription('Role')
+        .setRequired(true)
+    ),
+
+  new SlashCommandBuilder()
+    .setName('scanserver')
+    .setDescription('Scan shared members')
+
+    .addStringOption(option =>
+      option
+        .setName('serverid')
+        .setDescription('Server ID')
         .setRequired(true)
     )
 
@@ -228,8 +238,6 @@ const rest =
 
   try {
 
-    console.log('Loading commands...');
-
     await rest.put(
       Routes.applicationCommands(CLIENT_ID),
       { body: commands }
@@ -237,9 +245,9 @@ const rest =
 
     console.log('Commands loaded');
 
-  } catch (error) {
+  } catch (err) {
 
-    console.error(error);
+    console.log(err);
 
   }
 
@@ -252,13 +260,13 @@ const rest =
 client.once('ready', () => {
 
   console.log(
-    `Logged in as ${client.user.tag}`
+    `${client.user.tag} online`
   );
 
 });
 
 /* =========================
-   INTERACTION CREATE
+   INTERACTIONS
 ========================= */
 
 client.on('interactionCreate', async interaction => {
@@ -309,8 +317,11 @@ client.on('interactionCreate', async interaction => {
 
       const embed =
         new EmbedBuilder()
+
           .setTitle(title)
+
           .setDescription(description)
+
           .setColor(color);
 
       if (image) {
@@ -403,8 +414,11 @@ client.on('interactionCreate', async interaction => {
 
       const embed =
         new EmbedBuilder()
+
           .setTitle(title)
+
           .setDescription(description)
+
           .setColor(color);
 
       if (image) {
@@ -413,30 +427,55 @@ client.on('interactionCreate', async interaction => {
 
       const menu =
         new StringSelectMenuBuilder()
+
           .setCustomId('ticket_menu')
-          .setPlaceholder('Choose section')
+
+          .setPlaceholder(
+            'Choose section'
+          )
 
           .addOptions([
 
             {
-              label: 'Report a Exploiter',
-              description: 'Report support',
-              value: 'report',
-              emoji: reportEmoji
+              label:
+                'Report a Exploiter',
+
+              description:
+                'Exploiter support',
+
+              value:
+                'report',
+
+              emoji:
+                reportEmoji
             },
 
             {
-              label: 'General',
-              description: 'General support',
-              value: 'general',
-              emoji: generalEmoji
+              label:
+                'General',
+
+              description:
+                'General support',
+
+              value:
+                'general',
+
+              emoji:
+                generalEmoji
             },
 
             {
-              label: 'Content Creator',
-              description: 'Creator support',
-              value: 'creator',
-              emoji: creatorEmoji
+              label:
+                'Content Creator',
+
+              description:
+                'Creator support',
+
+              value:
+                'creator',
+
+              emoji:
+                creatorEmoji
             }
 
           ]);
@@ -446,13 +485,20 @@ client.on('interactionCreate', async interaction => {
           .addComponents(menu);
 
       await interaction.channel.send({
+
         embeds: [embed],
+
         components: [row]
+
       });
 
       await interaction.reply({
-        content: 'Ticket panel sent.',
+
+        content:
+          'Ticket panel sent.',
+
         ephemeral: true
+
       });
 
     }
@@ -468,9 +514,12 @@ client.on('interactionCreate', async interaction => {
       ) {
 
         return interaction.reply({
+
           content:
-            'You need Administrator permission.',
+            'Administrator only.',
+
           ephemeral: true
+
         });
 
       }
@@ -508,9 +557,118 @@ client.on('interactionCreate', async interaction => {
       }
 
       await interaction.reply({
+
         content:
-          `Auto role set to ${role}. Gave role to ${given} members.`,
+          `Auto role set to ${role}. Gave role to ${given} users.`,
+
         ephemeral: true
+
+      });
+
+    }
+
+    /* SCAN SERVER */
+
+    if (interaction.commandName === 'scanserver') {
+
+      if (
+        !interaction.member.permissions.has(
+          PermissionsBitField.Flags.Administrator
+        )
+      ) {
+
+        return interaction.reply({
+
+          content:
+            'Administrator only.',
+
+          ephemeral: true
+
+        });
+
+      }
+
+      const serverId =
+        interaction.options.getString(
+          'serverid'
+        );
+
+      const targetGuild =
+        client.guilds.cache.get(serverId);
+
+      if (!targetGuild) {
+
+        return interaction.reply({
+
+          content:
+            'Bot is not in that server.',
+
+          ephemeral: true
+
+        });
+
+      }
+
+      await targetGuild.members.fetch();
+
+      await interaction.guild.members.fetch();
+
+      const sharedMembers = [];
+
+      interaction.guild.members.cache.forEach(member => {
+
+        if (member.user.bot) return;
+
+        const exists =
+          targetGuild.members.cache.has(
+            member.id
+          );
+
+        if (exists) {
+
+          sharedMembers.push(
+            `<@${member.id}>`
+          );
+
+        }
+
+      });
+
+      if (!sharedMembers.length) {
+
+        return interaction.reply({
+
+          content:
+            'No shared members found.',
+
+          ephemeral: true
+
+        });
+
+      }
+
+      const embed =
+        new EmbedBuilder()
+
+          .setTitle('PLAYGROUND SCAN')
+
+          .setColor('#ff1493')
+
+          .setDescription(
+            sharedMembers.join('\n')
+          )
+
+          .setFooter({
+
+            text:
+              `Found ${sharedMembers.length} shared members`
+
+          });
+
+      await interaction.reply({
+
+        embeds: [embed]
+
       });
 
     }
@@ -518,12 +676,15 @@ client.on('interactionCreate', async interaction => {
   }
 
   /* =========================
-     TICKET MENU
+     SELECT MENU
   ========================= */
 
   if (interaction.isStringSelectMenu()) {
 
-    if (interaction.customId === 'ticket_menu') {
+    if (
+      interaction.customId ===
+      'ticket_menu'
+    ) {
 
       const guild =
         interaction.guild;
@@ -537,18 +698,21 @@ client.on('interactionCreate', async interaction => {
       const categoryId =
         ticketCategories.get(ticketType);
 
-      const existingTicket =
+      const existing =
         guild.channels.cache.find(
-          channel =>
-            channel.topic === member.id
+          c =>
+            c.topic === member.id
         );
 
-      if (existingTicket) {
+      if (existing) {
 
         return interaction.reply({
+
           content:
-            `You already have a ticket ${existingTicket}`,
+            `You already have a ticket ${existing}`,
+
           ephemeral: true
+
         });
 
       }
@@ -561,14 +725,14 @@ client.on('interactionCreate', async interaction => {
           name:
             `ticket-${ticketCount}`,
 
-          topic:
-            member.id,
-
           type:
             ChannelType.GuildText,
 
           parent:
             categoryId,
+
+          topic:
+            member.id,
 
           permissionOverwrites: [
 
@@ -588,6 +752,7 @@ client.on('interactionCreate', async interaction => {
                 member.id,
 
               allow: [
+
                 PermissionsBitField
                   .Flags
                   .ViewChannel,
@@ -599,6 +764,7 @@ client.on('interactionCreate', async interaction => {
                 PermissionsBitField
                   .Flags
                   .ReadMessageHistory
+
               ]
             }
 
@@ -608,40 +774,68 @@ client.on('interactionCreate', async interaction => {
 
       const claimButton =
         new ButtonBuilder()
-          .setCustomId('claim_ticket')
-          .setLabel('Claim Ticket')
-          .setStyle(ButtonStyle.Primary);
+
+          .setCustomId(
+            'claim_ticket'
+          )
+
+          .setLabel(
+            'Claim Ticket'
+          )
+
+          .setStyle(
+            ButtonStyle.Primary
+          );
 
       const closeButton =
         new ButtonBuilder()
-          .setCustomId('close_ticket')
-          .setLabel('Close Ticket')
-          .setStyle(ButtonStyle.Danger);
+
+          .setCustomId(
+            'close_ticket'
+          )
+
+          .setLabel(
+            'Close Ticket'
+          )
+
+          .setStyle(
+            ButtonStyle.Danger
+          );
 
       const row =
         new ActionRowBuilder()
+
           .addComponents(
             claimButton,
             closeButton
           );
 
-      const ticketEmbed =
+      const embed =
         new EmbedBuilder()
+
           .setTitle('TICKET')
+
+          .setColor('#ff1493')
+
           .setDescription(
             `Welcome to Fame support ${member}`
-          )
-          .setColor('#ff1493');
+          );
 
       await ticketChannel.send({
-        embeds: [ticketEmbed],
+
+        embeds: [embed],
+
         components: [row]
+
       });
 
       await interaction.reply({
+
         content:
-          `Your ticket has been created ${ticketChannel}`,
+          `Ticket created ${ticketChannel}`,
+
         ephemeral: true
+
       });
 
     }
@@ -654,45 +848,64 @@ client.on('interactionCreate', async interaction => {
 
   if (interaction.isButton()) {
 
-    if (interaction.customId === 'claim_ticket') {
+    /* CLAIM */
+
+    if (
+      interaction.customId ===
+      'claim_ticket'
+    ) {
 
       const ticketOwnerId =
         interaction.channel.topic;
 
       const isOwner =
-        interaction.user.id === ticketOwnerId;
+        interaction.user.id ===
+        ticketOwnerId;
 
-      const hasStaffPermission =
+      const hasStaff =
         interaction.member.permissions.has(
           PermissionsBitField.Flags.ManageChannels
         );
 
       if (
         isOwner &&
-        !hasStaffPermission
+        !hasStaff
       ) {
 
         return interaction.reply({
+
           content:
             'You cannot claim your own ticket.',
+
           ephemeral: true
+
         });
 
       }
 
       await interaction.reply({
+
         content:
           `${interaction.user} claimed this ticket.`
+
       });
 
     }
 
-    if (interaction.customId === 'close_ticket') {
+    /* CLOSE */
+
+    if (
+      interaction.customId ===
+      'close_ticket'
+    ) {
 
       await interaction.reply({
+
         content:
-          'Closing ticket in 5 seconds...',
+          'Closing ticket in 5 seconds.',
+
         ephemeral: true
+
       });
 
       setTimeout(async () => {
@@ -708,7 +921,7 @@ client.on('interactionCreate', async interaction => {
 });
 
 /* =========================
-   AUTO ROLE
+   AUTO ROLE JOIN
 ========================= */
 
 client.on('guildMemberAdd', async member => {
@@ -733,261 +946,136 @@ client.on('guildMemberAdd', async member => {
    ROLE DM SYSTEM
 ========================= */
 
-client.on('guildMemberUpdate', async (oldMember, newMember) => {
+client.on(
+  'guildMemberUpdate',
+  async (
+    oldMember,
+    newMember
+  ) => {
 
-  /* MEMBER ROLE */
+    /* MEMBER ROLE */
 
-  const hadMemberRole =
-    oldMember.roles.cache.has(
-      MEMBER_ROLE_ID
-    );
+    if (
+      !oldMember.roles.cache.has(MEMBER_ROLE_ID) &&
+      newMember.roles.cache.has(MEMBER_ROLE_ID)
+    ) {
 
-  const hasMemberRole =
-    newMember.roles.cache.has(
-      MEMBER_ROLE_ID
-    );
+      try {
 
-  if (
-    !hadMemberRole &&
-    hasMemberRole
-  ) {
+        const embed =
+          new EmbedBuilder()
 
-    try {
+            .setTitle(
+              'Welcome to Fame'
+            )
 
-      const memberEmbed =
-        new EmbedBuilder()
+            .setColor('#ff1493')
 
-          .setColor('#ff1493')
-
-          .setTitle('Welcome to Fame')
-
-          .setDescription(`
+            .setDescription(`
 # **Hello ${newMember}!**
 
 # **Congratulations!**
 **You have officially received the Member role in Fame.**
 
-**This role gives you access to be part of the Fame community, interact with other players, and stay updated with announcements, events, and future updates.**
+**Thank you for being part of Fame.**
+`);
 
-**Please make sure to follow the community rules at all times.**
+        await newMember.send({
 
-# **Things you must not do to community members or staff:**
+          embeds: [embed]
 
-• **Do not disrespect, insult, or harass members or staff**
-• **Do not start drama, arguments, or toxic behavior**
-• **Do not spam chats or misuse channels**
-• **Do not spread false information or rumors**
-• **Do not leak private information or upcoming content**
-• **Do not threaten, troll, or target other members**
-• **Do not bypass rules or encourage others to break rules**
-• **Do not impersonate staff members or higher roles**
+        });
 
-# **Punishments**
-**Failure to follow these rules may result in warnings, mutes, or removal from the community.**
+      } catch (err) {
 
-# **Thank you for being part of Fame.**
-`)
+        console.log(err);
 
-          .setThumbnail(
-            newMember.user.displayAvatarURL()
-          )
-
-          .setFooter({
-            text: 'Fame Community'
-          });
-
-      await newMember.send({
-        embeds: [memberEmbed]
-      });
-
-    } catch (err) {
-
-      console.log(err);
+      }
 
     }
 
-  }
+    /* QAQ ROLE */
 
-  /* QAQ ROLE */
+    if (
+      !oldMember.roles.cache.has(QAQ_ROLE_ID) &&
+      newMember.roles.cache.has(QAQ_ROLE_ID)
+    ) {
 
-  const hadQAQRole =
-    oldMember.roles.cache.has(
-      QAQ_ROLE_ID
-    );
+      try {
 
-  const hasQAQRole =
-    newMember.roles.cache.has(
-      QAQ_ROLE_ID
-    );
+        const embed =
+          new EmbedBuilder()
 
-  if (
-    !hadQAQRole &&
-    hasQAQRole
-  ) {
+            .setTitle(
+              'QAQ Manager'
+            )
 
-    try {
+            .setColor('#0099ff')
 
-      const qaqEmbed =
-        new EmbedBuilder()
-
-          .setColor('#0099ff')
-
-          .setTitle('QAQ Manager Role')
-
-          .setDescription(`
+            .setDescription(`
 # **Congratulations!**
 
 ${newMember}
 
 **You have officially been given the QAQ Manager role in Fame.**
+`);
 
-**This role recognizes your presence, support, and involvement within the community. QAQ Manager is a respected position that represents trust, professionalism, and dedication inside Fame.**
+        await newMember.send({
 
-**With this role, you are now part of a higher level within the community and will have access to additional features, management areas, and future opportunities as Fame continues to grow.**
+          embeds: [embed]
 
-# **Role Information:**
+        });
 
-• **Official QAQ Manager status within Fame**
-• **Access to exclusive management-related channels**
-• **Ability to communicate with higher-level staff members**
-• **Recognition as part of the trusted community team**
-• **Eligibility for future projects, events, and updates**
-• **Closer involvement with upcoming Fame systems and releases**
-• **Expanded access within the community environment**
+      } catch (err) {
 
-# **Things You Should Do:**
+        console.log(err);
 
-• **Remain respectful and professional at all times**
-• **Help support and guide community members when needed**
-• **Report problems or rule violations to higher staff**
-• **Stay active and involved within the community**
-• **Represent Fame positively inside and outside the server**
-• **Work together with staff members professionally**
-
-# **Things You Must Not Do:**
-
-• **Do not abuse your role or permissions**
-• **Do not disrespect members or staff**
-• **Do not leak private staff information or upcoming content**
-• **Do not start arguments, drama, or toxic behavior**
-• **Do not misuse management channels or staff access**
-• **Do not impersonate higher staff positions**
-• **Do not bypass rules or encourage others to break rules**
-
-**Failure to follow expectations may result in warnings, role removal, or further moderation action.**
-
-**Thank you for supporting Fame and being part of the community.**
-`)
-
-          .setThumbnail(
-            newMember.user.displayAvatarURL()
-          )
-
-          .setFooter({
-            text: 'Fame Community'
-          });
-
-      await newMember.send({
-        embeds: [qaqEmbed]
-      });
-
-    } catch (err) {
-
-      console.log(err);
+      }
 
     }
 
-  }
+    /* CONTENT CREATOR ROLE */
 
-  /* CONTENT CREATOR ROLE */
+    if (
+      !oldMember.roles.cache.has(CONTENT_CREATOR_ROLE_ID) &&
+      newMember.roles.cache.has(CONTENT_CREATOR_ROLE_ID)
+    ) {
 
-  const hadCreatorRole =
-    oldMember.roles.cache.has(
-      CONTENT_CREATOR_ROLE_ID
-    );
+      try {
 
-  const hasCreatorRole =
-    newMember.roles.cache.has(
-      CONTENT_CREATOR_ROLE_ID
-    );
+        const embed =
+          new EmbedBuilder()
 
-  if (
-    !hadCreatorRole &&
-    hasCreatorRole
-  ) {
+            .setTitle(
+              'Content Creator'
+            )
 
-    try {
+            .setColor('#ffff00')
 
-      const creatorEmbed =
-        new EmbedBuilder()
-
-          .setColor('#ffff00')
-
-          .setTitle('Content Creator Role')
-
-          .setDescription(`
+            .setDescription(`
 # **Congratulations!**
 
 ${newMember}
 
 **You have officially received the Content Creator role in Fame.**
+`);
 
-**This role is given to members who help support and represent Fame through content creation, creativity, activity, and community engagement. Your work and dedication are appreciated by the Fame community.**
+        await newMember.send({
 
-**As a Content Creator, you are now recognized as an official creator within Fame and may receive access to creator-related opportunities, announcements, and future projects.**
+          embeds: [embed]
 
-# **Role Information:**
+        });
 
-• **Official Content Creator status within Fame**
-• **Recognition for supporting the community through content**
-• **Access to creator-related channels and updates**
-• **Eligibility for future creator opportunities and events**
-• **Closer involvement with upcoming Fame releases and announcements**
-• **Ability to collaborate and communicate with staff members**
+      } catch (err) {
 
-# **Things You Should Do:**
+        console.log(err);
 
-• **Create positive and appropriate content related to Fame**
-• **Represent the community professionally**
-• **Remain active and supportive within the server**
-• **Encourage community engagement and growth**
-• **Work respectfully with members and staff**
-
-# **Things You Must Not Do:**
-
-• **Do not create harmful, misleading, or inappropriate content**
-• **Do not leak private information or upcoming content**
-• **Do not misuse your creator status for personal gain**
-• **Do not disrespect members, creators, or staff**
-• **Do not spread drama, toxicity, or false information**
-• **Do not impersonate higher staff roles or official announcements**
-
-**Failure to follow expectations may result in warnings, role removal, or further moderation action.**
-
-**Thank you for supporting Fame and contributing to the community.**
-`)
-
-          .setThumbnail(
-            newMember.user.displayAvatarURL()
-          )
-
-          .setFooter({
-            text: 'Fame Community'
-          });
-
-      await newMember.send({
-        embeds: [creatorEmbed]
-      });
-
-    } catch (err) {
-
-      console.log(err);
+      }
 
     }
 
   }
-
-});
+);
 
 /* =========================
    LOGIN
