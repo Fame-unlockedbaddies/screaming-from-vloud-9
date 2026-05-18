@@ -4,8 +4,9 @@
 // - BLOCKS INVITE LINKS
 // - BLOCKS "playgrounds"
 // - /addsound COMMAND
-// - CODE LOCK SYSTEM
-// - FFmpeg Static Fixed
+// - HIGH QUALITY AUDIO
+// - BASS BOOST
+// - CODE UNLOCK SYSTEM
 // ======================================================
 
 const {
@@ -160,6 +161,20 @@ const commands = [
 
     )
 
+    .addBooleanOption(option =>
+
+      option
+
+        .setName('bass_boost')
+
+        .setDescription(
+          'Enable bass boost'
+        )
+
+        .setRequired(true)
+
+    )
+
 ].map(command =>
   command.toJSON()
 );
@@ -259,7 +274,7 @@ client.on(
         await message.channel.send({
 
           content:
-            `${message.author} 😡 Invite links or any promotional links are not allowed.`
+            `${message.author} 😡 Invite links or promotional links are not allowed.`
 
         });
 
@@ -333,8 +348,13 @@ client.on(
         'addsound'
       ) {
 
-        await interaction.deferReply({
+        await interaction.reply({
+
+          content:
+            'Processing your audio...',
+
           ephemeral: true
+
         });
 
         const originalAudio =
@@ -350,6 +370,11 @@ client.on(
         const position =
           interaction.options.getString(
             'position'
+          );
+
+        const bassBoost =
+          interaction.options.getBoolean(
+            'bass_boost'
           );
 
         const originalPath =
@@ -388,7 +413,7 @@ client.on(
           ).toString();
 
         // ================================================
-        // DM CODE
+        // SEND DM CODE
         // ================================================
 
         try {
@@ -402,12 +427,10 @@ client.on(
                 .setColor('#ff1493')
 
                 .setTitle(
-                  'Your Audio Unlock Code'
+                  'Your Unlock Code'
                 )
 
                 .setDescription(`
-Your unlock code is:
-
 # ${code}
 
 Use this code to unlock your finished audio file.
@@ -465,212 +488,174 @@ Use this code to unlock your finished audio file.
           );
 
           // ==============================================
-          // START
+          // AUDIO FILTERS
+          // ==============================================
+
+          let audioFilters = [];
+
+          if (bassBoost) {
+
+            audioFilters.push(
+              'bass=g=8:f=110:w=0.6'
+            );
+
+          }
+
+          audioFilters.push(
+            'loudnorm'
+          );
+
+          // ==============================================
+          // CREATE FFMPEG
+          // ==============================================
+
+          let process =
+            ffmpeg()
+
+              .audioCodec(
+                'libmp3lame'
+              )
+
+              .audioBitrate(
+                '320k'
+              )
+
+              .audioChannels(2)
+
+              .audioFrequency(
+                48000
+              )
+
+              .complexFilter(
+                audioFilters
+              )
+
+              .outputOptions([
+
+                '-preset veryslow',
+                '-q:a 0'
+
+              ])
+
+              .on(
+                'end',
+
+                async () => {
+
+                  audioStorage.set(
+
+                    interaction.user.id,
+
+                    {
+                      code,
+                      outputPath
+                    }
+
+                  );
+
+                  const row =
+                    new ActionRowBuilder()
+
+                      .addComponents(
+
+                        new ButtonBuilder()
+
+                          .setCustomId(
+                            'unlock_audio'
+                          )
+
+                          .setLabel(
+                            'Unlock Audio'
+                          )
+
+                          .setStyle(
+                            ButtonStyle.Primary
+                          )
+
+                      );
+
+                  await interaction.followUp({
+
+                    embeds: [
+
+                      new EmbedBuilder()
+
+                        .setColor('#ff1493')
+
+                        .setTitle(
+                          'Audio Ready'
+                        )
+
+                        .setDescription(`
+Your audio has finished processing.
+
+Bass Boost:
+**${bassBoost ? 'Enabled' : 'Disabled'}**
+
+Press the button below and enter your code to unlock the audio.
+`)
+
+                    ],
+
+                    components: [row]
+
+                  });
+
+                }
+
+              )
+
+              .on(
+                'error',
+
+                async err => {
+
+                  console.log(err);
+
+                  await interaction.followUp({
+
+                    content:
+                      'Failed to process audio.'
+
+                  });
+
+                }
+
+              );
+
+          // ==============================================
+          // POSITION
           // ==============================================
 
           if (
             position === 'start'
           ) {
 
-            ffmpeg()
-
+            process
               .input(newPath)
-
-              .input(originalPath)
-
-              .on(
-                'end',
-
-                async () => {
-
-                  audioStorage.set(
-
-                    interaction.user.id,
-
-                    {
-                      code,
-                      outputPath
-                    }
-
-                  );
-
-                  const row =
-                    new ActionRowBuilder()
-
-                      .addComponents(
-
-                        new ButtonBuilder()
-
-                          .setCustomId(
-                            'unlock_audio'
-                          )
-
-                          .setLabel(
-                            'Unlock Audio'
-                          )
-
-                          .setStyle(
-                            ButtonStyle.Primary
-                          )
-
-                      );
-
-                  await interaction.editReply({
-
-                    embeds: [
-
-                      new EmbedBuilder()
-
-                        .setColor('#ff1493')
-
-                        .setTitle(
-                          'Audio Ready'
-                        )
-
-                        .setDescription(`
-Your audio has finished processing.
-
-Press the button below and enter your code to unlock the file.
-`)
-
-                    ],
-
-                    components: [row]
-
-                  });
-
-                }
-
-              )
-
-              .on(
-                'error',
-
-                async err => {
-
-                  console.log(err);
-
-                  await interaction.editReply({
-
-                    content:
-                      'Failed to process audio.'
-
-                  });
-
-                }
-
-              )
-
-              .mergeToFile(outputPath);
+              .input(originalPath);
 
           }
-
-          // ==============================================
-          // END
-          // ==============================================
 
           if (
             position === 'end'
           ) {
 
-            ffmpeg()
-
+            process
               .input(originalPath)
-
-              .input(newPath)
-
-              .on(
-                'end',
-
-                async () => {
-
-                  audioStorage.set(
-
-                    interaction.user.id,
-
-                    {
-                      code,
-                      outputPath
-                    }
-
-                  );
-
-                  const row =
-                    new ActionRowBuilder()
-
-                      .addComponents(
-
-                        new ButtonBuilder()
-
-                          .setCustomId(
-                            'unlock_audio'
-                          )
-
-                          .setLabel(
-                            'Unlock Audio'
-                          )
-
-                          .setStyle(
-                            ButtonStyle.Primary
-                          )
-
-                      );
-
-                  await interaction.editReply({
-
-                    embeds: [
-
-                      new EmbedBuilder()
-
-                        .setColor('#ff1493')
-
-                        .setTitle(
-                          'Audio Ready'
-                        )
-
-                        .setDescription(`
-Your audio has finished processing.
-
-Press the button below and enter your code to unlock the file.
-`)
-
-                    ],
-
-                    components: [row]
-
-                  });
-
-                }
-
-              )
-
-              .on(
-                'error',
-
-                async err => {
-
-                  console.log(err);
-
-                  await interaction.editReply({
-
-                    content:
-                      'Failed to process audio.'
-
-                  });
-
-                }
-
-              )
-
-              .mergeToFile(outputPath);
+              .input(newPath);
 
           }
+
+          process.mergeToFile(
+            outputPath
+          );
 
         } catch (err) {
 
           console.log(err);
 
-          await interaction.editReply({
+          await interaction.followUp({
 
             content:
               'Something went wrong.'
@@ -700,7 +685,7 @@ Press the button below and enter your code to unlock the file.
           new ModalBuilder()
 
             .setCustomId(
-              'audio_unlock_modal'
+              'unlock_modal'
             )
 
             .setTitle(
@@ -710,7 +695,9 @@ Press the button below and enter your code to unlock the file.
         const input =
           new TextInputBuilder()
 
-            .setCustomId('code')
+            .setCustomId(
+              'code'
+            )
 
             .setLabel(
               'Enter your code'
@@ -747,7 +734,7 @@ Press the button below and enter your code to unlock the file.
 
       if (
         interaction.customId ===
-        'audio_unlock_modal'
+        'unlock_modal'
       ) {
 
         const enteredCode =
@@ -795,13 +782,11 @@ Press the button below and enter your code to unlock the file.
         await interaction.reply({
 
           content:
-            'Your audio file is ready.',
+            'Unlocked audio file:',
 
           files: [
             data.outputPath
-          ],
-
-          ephemeral: true
+          ]
 
         });
 
