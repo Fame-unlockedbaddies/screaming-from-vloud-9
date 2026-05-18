@@ -5,7 +5,7 @@
 // - BLOCKS "playgrounds"
 // - /addsound COMMAND
 // - CODE LOCK SYSTEM
-// - ONLY USER CAN UNLOCK AUDIO
+// - FFmpeg Static Fixed
 // ======================================================
 
 const {
@@ -27,7 +27,16 @@ const {
 const express = require('express');
 const fs = require('fs');
 const path = require('path');
-const ffmpeg = require('fluent-ffmpeg');
+
+const ffmpeg =
+  require('fluent-ffmpeg');
+
+const ffmpegPath =
+  require('ffmpeg-static');
+
+ffmpeg.setFfmpegPath(
+  ffmpegPath
+);
 
 require('dotenv').config();
 
@@ -35,20 +44,27 @@ require('dotenv').config();
 // VARIABLES
 // ======================================================
 
-const TOKEN = process.env.TOKEN;
-const CLIENT_ID = process.env.CLIENT_ID;
+const TOKEN =
+  process.env.TOKEN;
+
+const CLIENT_ID =
+  process.env.CLIENT_ID;
 
 // ======================================================
 // CLIENT
 // ======================================================
 
 const client = new Client({
+
   intents: [
+
     GatewayIntentBits.Guilds,
     GatewayIntentBits.GuildMessages,
     GatewayIntentBits.MessageContent,
     GatewayIntentBits.DirectMessages
+
   ]
+
 });
 
 // ======================================================
@@ -58,13 +74,20 @@ const client = new Client({
 const app = express();
 
 app.get('/', (req, res) => {
+
   res.send('Bot Online');
+
 });
 
-const PORT = process.env.PORT || 3000;
+const PORT =
+  process.env.PORT || 3000;
 
 app.listen(PORT, () => {
-  console.log(`Web server running on port ${PORT}`);
+
+  console.log(
+    `Web server running on port ${PORT}`
+  );
+
 });
 
 // ======================================================
@@ -82,6 +105,7 @@ const commands = [
     )
 
     .addAttachmentOption(option =>
+
       option
 
         .setName('original_audio')
@@ -91,9 +115,11 @@ const commands = [
         )
 
         .setRequired(true)
+
     )
 
     .addAttachmentOption(option =>
+
       option
 
         .setName('new_audio')
@@ -103,9 +129,11 @@ const commands = [
         )
 
         .setRequired(true)
+
     )
 
     .addStringOption(option =>
+
       option
 
         .setName('position')
@@ -129,9 +157,12 @@ const commands = [
           }
 
         )
+
     )
 
-].map(command => command.toJSON());
+].map(command =>
+  command.toJSON()
+);
 
 // ======================================================
 // REGISTER COMMANDS
@@ -146,11 +177,18 @@ const rest =
   try {
 
     await rest.put(
-      Routes.applicationCommands(CLIENT_ID),
+
+      Routes.applicationCommands(
+        CLIENT_ID
+      ),
+
       { body: commands }
+
     );
 
-    console.log('Commands Loaded');
+    console.log(
+      'Commands Loaded'
+    );
 
   } catch (err) {
 
@@ -166,7 +204,9 @@ const rest =
 
 client.once('ready', () => {
 
-  console.log(`${client.user.tag} Online`);
+  console.log(
+    `${client.user.tag} Online`
+  );
 
 });
 
@@ -174,167 +214,198 @@ client.once('ready', () => {
 // AUDIO STORAGE
 // ======================================================
 
-const audioStorage = new Map();
+const audioStorage =
+  new Map();
 
 // ======================================================
 // AUTOMOD
 // ======================================================
 
-client.on('messageCreate', async message => {
+client.on(
+  'messageCreate',
 
-  if (message.author.bot) return;
-  if (!message.guild) return;
+  async message => {
 
-  if (
-    message.member.permissions.has(
-      PermissionsBitField.Flags.Administrator
-    )
-  ) return;
+    if (message.author.bot) return;
 
-  const content =
-    message.content.toLowerCase();
+    if (!message.guild) return;
 
-  // ======================================================
-  // BLOCK INVITE LINKS
-  // ======================================================
+    if (
 
-  if (
-    content.includes('discord.gg/') ||
-    content.includes('discord.com/invite/')
-  ) {
+      message.member.permissions.has(
+        PermissionsBitField.Flags.Administrator
+      )
 
-    await message.delete().catch(() => {});
+    ) return;
 
-    const warning =
-      await message.channel.send({
+    const content =
+      message.content.toLowerCase();
 
-        content:
-          `${message.author} 😡 Invite links or any promotional links are not allowed.`
+    // ==================================================
+    // BLOCK INVITES
+    // ==================================================
 
-      });
+    if (
 
-    setTimeout(async () => {
+      content.includes('discord.gg/') ||
+      content.includes('discord.com/invite/')
 
-      warning.delete().catch(() => {});
+    ) {
 
-    }, 3000);
+      await message.delete()
+        .catch(() => {});
 
-    return;
+      const warning =
+        await message.channel.send({
+
+          content:
+            `${message.author} 😡 Invite links or any promotional links are not allowed.`
+
+        });
+
+      setTimeout(async () => {
+
+        warning.delete()
+          .catch(() => {});
+
+      }, 3000);
+
+      return;
+
+    }
+
+    // ==================================================
+    // BLOCK PLAYGROUNDS
+    // ==================================================
+
+    if (
+      content.includes('playgrounds')
+    ) {
+
+      await message.delete()
+        .catch(() => {});
+
+      const warning =
+        await message.channel.send({
+
+          content:
+            `${message.author} 😡 The word "playgrounds" is not allowed here.`
+
+        });
+
+      setTimeout(async () => {
+
+        warning.delete()
+          .catch(() => {});
+
+      }, 3000);
+
+      return;
+
+    }
 
   }
-
-  // ======================================================
-  // BLOCK PLAYGROUNDS
-  // ======================================================
-
-  if (
-    content.includes('playgrounds')
-  ) {
-
-    await message.delete().catch(() => {});
-
-    const warning =
-      await message.channel.send({
-
-        content:
-          `${message.author} 😡 The word "playgrounds" is not allowed here.`
-
-      });
-
-    setTimeout(async () => {
-
-      warning.delete().catch(() => {});
-
-    }, 3000);
-
-    return;
-
-  }
-
-});
+);
 
 // ======================================================
 // INTERACTIONS
 // ======================================================
 
-client.on('interactionCreate', async interaction => {
+client.on(
+  'interactionCreate',
 
-  // ======================================================
-  // SLASH COMMAND
-  // ======================================================
+  async interaction => {
 
-  if (
-    interaction.isChatInputCommand()
-  ) {
-
-    // ======================================================
-    // ADD SOUND
-    // ======================================================
+    // ==================================================
+    // SLASH COMMAND
+    // ==================================================
 
     if (
-      interaction.commandName ===
-      'addsound'
+      interaction.isChatInputCommand()
     ) {
 
-      await interaction.deferReply({
-        ephemeral: true
-      });
+      // ================================================
+      // ADD SOUND
+      // ================================================
 
-      const originalAudio =
-        interaction.options.getAttachment(
-          'original_audio'
-        );
+      if (
+        interaction.commandName ===
+        'addsound'
+      ) {
 
-      const newAudio =
-        interaction.options.getAttachment(
-          'new_audio'
-        );
+        await interaction.deferReply({
+          ephemeral: true
+        });
 
-      const position =
-        interaction.options.getString(
-          'position'
-        );
+        const originalAudio =
+          interaction.options.getAttachment(
+            'original_audio'
+          );
 
-      const originalPath =
-        path.join(
-          __dirname,
-          `original_${Date.now()}.mp3`
-        );
+        const newAudio =
+          interaction.options.getAttachment(
+            'new_audio'
+          );
 
-      const newPath =
-        path.join(
-          __dirname,
-          `new_${Date.now()}.mp3`
-        );
+        const position =
+          interaction.options.getString(
+            'position'
+          );
 
-      const outputPath =
-        path.join(
-          __dirname,
-          `output_${Date.now()}.mp3`
-        );
+        const originalPath =
+          path.join(
 
-      const code =
-        Math.floor(
-          100000 + Math.random() * 900000
-        ).toString();
+            __dirname,
 
-      // ======================================================
-      // DM CODE
-      // ======================================================
+            `original_${Date.now()}.mp3`
 
-      try {
+          );
 
-        await interaction.user.send({
+        const newPath =
+          path.join(
 
-          embeds: [
+            __dirname,
 
-            new EmbedBuilder()
+            `new_${Date.now()}.mp3`
 
-              .setColor('#ff1493')
+          );
 
-              .setTitle('Your Audio Unlock Code')
+        const outputPath =
+          path.join(
 
-              .setDescription(`
+            __dirname,
+
+            `output_${Date.now()}.mp3`
+
+          );
+
+        const code =
+          Math.floor(
+
+            100000 +
+            Math.random() * 900000
+
+          ).toString();
+
+        // ================================================
+        // DM CODE
+        // ================================================
+
+        try {
+
+          await interaction.user.send({
+
+            embeds: [
+
+              new EmbedBuilder()
+
+                .setColor('#ff1493')
+
+                .setTitle(
+                  'Your Audio Unlock Code'
+                )
+
+                .setDescription(`
 Your unlock code is:
 
 # ${code}
@@ -342,315 +413,393 @@ Your unlock code is:
 Use this code to unlock your finished audio file.
 `)
 
-          ]
+            ]
 
-        });
+          });
 
-      } catch (err) {
+        } catch (err) {
 
-        return interaction.editReply({
-          content:
-            'Enable DMs first.'
-        });
+          return interaction.editReply({
 
-      }
+            content:
+              'Enable DMs first.'
 
-      // ======================================================
-      // DOWNLOAD FILES
-      // ======================================================
+          });
 
-      const downloadFile =
-        async (url, filePath) => {
+        }
 
-          const response =
-            await fetch(url);
+        // ================================================
+        // DOWNLOAD FILES
+        // ================================================
 
-          const buffer =
-            Buffer.from(
-              await response.arrayBuffer()
+        const downloadFile =
+          async (url, filePath) => {
+
+            const response =
+              await fetch(url);
+
+            const buffer =
+              Buffer.from(
+
+                await response.arrayBuffer()
+
+              );
+
+            fs.writeFileSync(
+              filePath,
+              buffer
             );
 
-          fs.writeFileSync(
-            filePath,
-            buffer
+          };
+
+        try {
+
+          await downloadFile(
+            originalAudio.url,
+            originalPath
           );
 
-        };
+          await downloadFile(
+            newAudio.url,
+            newPath
+          );
 
-      try {
+          // ==============================================
+          // START
+          // ==============================================
 
-        await downloadFile(
-          originalAudio.url,
-          originalPath
-        );
+          if (
+            position === 'start'
+          ) {
 
-        await downloadFile(
-          newAudio.url,
-          newPath
-        );
+            ffmpeg()
 
-        // ======================================================
-        // MERGE AUDIO
-        // ======================================================
+              .input(newPath)
 
-        if (position === 'start') {
+              .input(originalPath)
 
-          ffmpeg()
+              .on(
+                'end',
 
-            .input(newPath)
+                async () => {
 
-            .input(originalPath)
+                  audioStorage.set(
 
-            .on('end', async () => {
+                    interaction.user.id,
 
-              audioStorage.set(
-                interaction.user.id,
-                {
-                  code,
-                  outputPath
-                }
-              );
-
-              const unlockButton =
-                new ActionRowBuilder()
-
-                  .addComponents(
-
-                    new ButtonBuilder()
-
-                      .setCustomId(
-                        'unlock_audio'
-                      )
-
-                      .setLabel(
-                        'Unlock Audio'
-                      )
-
-                      .setStyle(
-                        ButtonStyle.Primary
-                      )
+                    {
+                      code,
+                      outputPath
+                    }
 
                   );
 
-              await interaction.editReply({
+                  const row =
+                    new ActionRowBuilder()
 
-                embeds: [
+                      .addComponents(
 
-                  new EmbedBuilder()
+                        new ButtonBuilder()
 
-                    .setColor('#ff1493')
+                          .setCustomId(
+                            'unlock_audio'
+                          )
 
-                    .setTitle(
-                      'Audio Ready'
-                    )
+                          .setLabel(
+                            'Unlock Audio'
+                          )
 
-                    .setDescription(`
+                          .setStyle(
+                            ButtonStyle.Primary
+                          )
+
+                      );
+
+                  await interaction.editReply({
+
+                    embeds: [
+
+                      new EmbedBuilder()
+
+                        .setColor('#ff1493')
+
+                        .setTitle(
+                          'Audio Ready'
+                        )
+
+                        .setDescription(`
 Your audio has finished processing.
 
-Press the button below to unlock your file using your code.
+Press the button below and enter your code to unlock the file.
 `)
 
-                ],
+                    ],
 
-                components: [
-                  unlockButton
-                ]
+                    components: [row]
 
-              });
+                  });
 
-            })
-
-            .mergeToFile(outputPath);
-
-        }
-
-        // ======================================================
-        // END
-        // ======================================================
-
-        if (position === 'end') {
-
-          ffmpeg()
-
-            .input(originalPath)
-
-            .input(newPath)
-
-            .on('end', async () => {
-
-              audioStorage.set(
-                interaction.user.id,
-                {
-                  code,
-                  outputPath
                 }
-              );
 
-              const unlockButton =
-                new ActionRowBuilder()
+              )
 
-                  .addComponents(
+              .on(
+                'error',
 
-                    new ButtonBuilder()
+                async err => {
 
-                      .setCustomId(
-                        'unlock_audio'
-                      )
+                  console.log(err);
 
-                      .setLabel(
-                        'Unlock Audio'
-                      )
+                  await interaction.editReply({
 
-                      .setStyle(
-                        ButtonStyle.Primary
-                      )
+                    content:
+                      'Failed to process audio.'
+
+                  });
+
+                }
+
+              )
+
+              .mergeToFile(outputPath);
+
+          }
+
+          // ==============================================
+          // END
+          // ==============================================
+
+          if (
+            position === 'end'
+          ) {
+
+            ffmpeg()
+
+              .input(originalPath)
+
+              .input(newPath)
+
+              .on(
+                'end',
+
+                async () => {
+
+                  audioStorage.set(
+
+                    interaction.user.id,
+
+                    {
+                      code,
+                      outputPath
+                    }
 
                   );
 
-              await interaction.editReply({
+                  const row =
+                    new ActionRowBuilder()
 
-                embeds: [
+                      .addComponents(
 
-                  new EmbedBuilder()
+                        new ButtonBuilder()
 
-                    .setColor('#ff1493')
+                          .setCustomId(
+                            'unlock_audio'
+                          )
 
-                    .setTitle(
-                      'Audio Ready'
-                    )
+                          .setLabel(
+                            'Unlock Audio'
+                          )
 
-                    .setDescription(`
+                          .setStyle(
+                            ButtonStyle.Primary
+                          )
+
+                      );
+
+                  await interaction.editReply({
+
+                    embeds: [
+
+                      new EmbedBuilder()
+
+                        .setColor('#ff1493')
+
+                        .setTitle(
+                          'Audio Ready'
+                        )
+
+                        .setDescription(`
 Your audio has finished processing.
 
-Press the button below to unlock your file using your code.
+Press the button below and enter your code to unlock the file.
 `)
 
-                ],
+                    ],
 
-                components: [
-                  unlockButton
-                ]
+                    components: [row]
 
-              });
+                  });
 
-            })
+                }
 
-            .mergeToFile(outputPath);
+              )
+
+              .on(
+                'error',
+
+                async err => {
+
+                  console.log(err);
+
+                  await interaction.editReply({
+
+                    content:
+                      'Failed to process audio.'
+
+                  });
+
+                }
+
+              )
+
+              .mergeToFile(outputPath);
+
+          }
+
+        } catch (err) {
+
+          console.log(err);
+
+          await interaction.editReply({
+
+            content:
+              'Something went wrong.'
+
+          });
 
         }
-
-      } catch (err) {
-
-        console.log(err);
-
-        await interaction.editReply({
-          content:
-            'Something went wrong.'
-        });
 
       }
 
     }
 
-  }
-
-  // ======================================================
-  // BUTTON
-  // ======================================================
-
-  if (
-    interaction.isButton()
-  ) {
+    // ==================================================
+    // BUTTON
+    // ==================================================
 
     if (
-      interaction.customId ===
-      'unlock_audio'
+      interaction.isButton()
     ) {
-
-      const modal =
-        new ModalBuilder()
-
-          .setCustomId(
-            'audio_code_modal'
-          )
-
-          .setTitle(
-            'Enter Unlock Code'
-          );
-
-      const codeInput =
-        new TextInputBuilder()
-
-          .setCustomId('code')
-
-          .setLabel(
-            'Enter your code'
-          )
-
-          .setStyle(
-            TextInputStyle.Short
-          )
-
-          .setRequired(true);
-
-      const row =
-        new ActionRowBuilder()
-          .addComponents(codeInput);
-
-      modal.addComponents(row);
-
-      await interaction.showModal(
-        modal
-      );
-
-    }
-
-  }
-
-  // ======================================================
-  // MODAL SUBMIT
-  // ======================================================
-
-  if (
-    interaction.isModalSubmit()
-  ) {
-
-    if (
-      interaction.customId ===
-      'audio_code_modal'
-    ) {
-
-      const enteredCode =
-        interaction.fields.getTextInputValue(
-          'code'
-        );
-
-      const data =
-        audioStorage.get(
-          interaction.user.id
-        );
-
-      if (!data) {
-
-        return interaction.reply({
-
-          content:
-            'No audio found.',
-
-          ephemeral: true
-
-        });
-
-      }
 
       if (
-        enteredCode !== data.code
+        interaction.customId ===
+        'unlock_audio'
       ) {
 
-        return interaction.reply({
+        const modal =
+          new ModalBuilder()
+
+            .setCustomId(
+              'audio_unlock_modal'
+            )
+
+            .setTitle(
+              'Enter Unlock Code'
+            );
+
+        const input =
+          new TextInputBuilder()
+
+            .setCustomId('code')
+
+            .setLabel(
+              'Enter your code'
+            )
+
+            .setStyle(
+              TextInputStyle.Short
+            )
+
+            .setRequired(true);
+
+        const row =
+          new ActionRowBuilder()
+
+            .addComponents(input);
+
+        modal.addComponents(row);
+
+        await interaction.showModal(
+          modal
+        );
+
+      }
+
+    }
+
+    // ==================================================
+    // MODAL SUBMIT
+    // ==================================================
+
+    if (
+      interaction.isModalSubmit()
+    ) {
+
+      if (
+        interaction.customId ===
+        'audio_unlock_modal'
+      ) {
+
+        const enteredCode =
+          interaction.fields.getTextInputValue(
+            'code'
+          );
+
+        const data =
+          audioStorage.get(
+            interaction.user.id
+          );
+
+        if (!data) {
+
+          return interaction.reply({
+
+            content:
+              'No audio found.',
+
+            ephemeral: true
+
+          });
+
+        }
+
+        if (
+          enteredCode !== data.code
+        ) {
+
+          return interaction.reply({
+
+            content:
+              'Invalid code.',
+
+            ephemeral: true
+
+          });
+
+        }
+
+        // ==============================================
+        // SEND AUDIO
+        // ==============================================
+
+        await interaction.reply({
 
           content:
-            'Invalid code.',
+            'Your audio file is ready.',
+
+          files: [
+            data.outputPath
+          ],
 
           ephemeral: true
 
@@ -658,28 +807,10 @@ Press the button below to unlock your file using your code.
 
       }
 
-      // ======================================================
-      // SEND AUDIO
-      // ======================================================
-
-      await interaction.reply({
-
-        content:
-          'Your audio file is ready.',
-
-        files: [
-          data.outputPath
-        ],
-
-        ephemeral: true
-
-      });
-
     }
 
   }
-
-});
+);
 
 // ======================================================
 // LOGIN
