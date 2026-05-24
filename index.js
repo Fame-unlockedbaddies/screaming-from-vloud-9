@@ -22,14 +22,6 @@ const {
 } = require('discord.js');
 
 const express = require('express');
-const fs = require('fs');
-const path = require('path');
-
-const ffmpeg = require('fluent-ffmpeg');
-const ffmpegPath = require('ffmpeg-static');
-
-ffmpeg.setFfmpegPath(ffmpegPath);
-
 require('dotenv').config();
 
 // ======================================================
@@ -75,48 +67,6 @@ app.listen(PORT, () => {
 const commands = [
 
   new SlashCommandBuilder()
-    .setName('addsound')
-    .setDescription('Add audio to another audio file')
-    .addAttachmentOption(option =>
-      option
-        .setName('original_audio')
-        .setDescription('Original audio')
-        .setRequired(true)
-    )
-    .addAttachmentOption(option =>
-      option
-        .setName('new_audio')
-        .setDescription('New audio')
-        .setRequired(true)
-    )
-    .addStringOption(option =>
-      option
-        .setName('position')
-        .setDescription('Where should new audio go?')
-        .setRequired(true)
-        .addChoices(
-          {
-            name: 'Start',
-            value: 'start'
-          },
-          {
-            name: 'End',
-            value: 'end'
-          }
-        )
-    )
-    .addBooleanOption(option =>
-      option
-        .setName('bass_boost')
-        .setDescription('Enable bass boost')
-        .setRequired(true)
-    ),
-
-  // ====================================================
-  // FIND COMMAND
-  // ====================================================
-
-  new SlashCommandBuilder()
     .setName('find')
     .setDescription('Open finder confirmation menu')
 
@@ -156,12 +106,6 @@ client.once('ready', () => {
 });
 
 // ======================================================
-// AUDIO STORAGE
-// ======================================================
-
-const audioStorage = new Map();
-
-// ======================================================
 // AUTOMOD
 // ======================================================
 
@@ -193,7 +137,7 @@ client.on('messageCreate', async message => {
       content: `${message.author} 😡 Invite links are not allowed.`
     });
 
-    setTimeout(async () => {
+    setTimeout(() => {
       warning.delete().catch(() => {});
     }, 3000);
 
@@ -213,7 +157,7 @@ client.on('messageCreate', async message => {
       content: `${message.author} 😡 The word playgrounds is not allowed here.`
     });
 
-    setTimeout(async () => {
+    setTimeout(() => {
       warning.delete().catch(() => {});
     }, 3000);
 
@@ -236,21 +180,6 @@ client.on('interactionCreate', async interaction => {
   if (interaction.isChatInputCommand()) {
 
     // ==================================================
-    // ADD SOUND
-    // ==================================================
-
-    if (interaction.commandName === 'addsound') {
-
-      await interaction.reply({
-        content: 'Processing your audio...',
-        ephemeral: true
-      });
-
-      // KEEP YOUR EXISTING AUDIO LOGIC HERE
-
-    }
-
-    // ==================================================
     // FIND COMMAND
     // ==================================================
 
@@ -259,9 +188,7 @@ client.on('interactionCreate', async interaction => {
       const embed = new EmbedBuilder()
         .setColor('#ff1493')
         .setTitle('Finder Confirmation')
-        .setDescription(
-          'Press Do It to continue or No to cancel.'
-        );
+        .setDescription('Press Do It to continue or No to cancel.');
 
       const row = new ActionRowBuilder()
         .addComponents(
@@ -295,31 +222,6 @@ client.on('interactionCreate', async interaction => {
   if (interaction.isButton()) {
 
     // ==================================================
-    // UNLOCK AUDIO
-    // ==================================================
-
-    if (interaction.customId === 'unlock_audio') {
-
-      const modal = new ModalBuilder()
-        .setCustomId('unlock_modal')
-        .setTitle('Enter Unlock Code');
-
-      const input = new TextInputBuilder()
-        .setCustomId('code')
-        .setLabel('Enter your code')
-        .setStyle(TextInputStyle.Short)
-        .setRequired(true);
-
-      const row = new ActionRowBuilder()
-        .addComponents(input);
-
-      modal.addComponents(row);
-
-      await interaction.showModal(modal);
-
-    }
-
-    // ==================================================
     // FIND NO BUTTON
     // ==================================================
 
@@ -348,11 +250,7 @@ client.on('interactionCreate', async interaction => {
             new EmbedBuilder()
               .setColor('#00ff99')
               .setTitle('Finder Results')
-              .setDescription(`
-This is a placeholder DM message.
-
-Replace this with your own safe functionality.
-              `)
+              .setDescription('Placeholder DM message.')
 
           ]
 
@@ -373,47 +271,6 @@ Replace this with your own safe functionality.
         });
 
       }
-
-    }
-
-  }
-
-  // ====================================================
-  // MODAL SUBMIT
-  // ====================================================
-
-  if (interaction.isModalSubmit()) {
-
-    if (interaction.customId === 'unlock_modal') {
-
-      const enteredCode =
-        interaction.fields.getTextInputValue('code');
-
-      const data =
-        audioStorage.get(interaction.user.id);
-
-      if (!data) {
-
-        return interaction.reply({
-          content: 'No audio found.',
-          ephemeral: true
-        });
-
-      }
-
-      if (enteredCode !== data.code) {
-
-        return interaction.reply({
-          content: 'Invalid code.',
-          ephemeral: true
-        });
-
-      }
-
-      await interaction.reply({
-        content: 'Unlocked audio file:',
-        files: [data.outputPath]
-      });
 
     }
 
