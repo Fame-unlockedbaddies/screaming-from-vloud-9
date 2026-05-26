@@ -1,19 +1,16 @@
 // ======================================================
 // FULL DISCORD BOT
 // FEATURES:
-// - BLOCK INVITES
+// - BLOCK INVITE LINKS
 // - BLOCK "playgrounds"
-// - CUSTOM EMBED COLORS
-// - CUSTOM TICKET EMBED TITLE
-// - CUSTOM TICKET EMBED DESCRIPTION
-// - CUSTOM PANEL TITLE
-// - CUSTOM PANEL DESCRIPTION
-// - CUSTOM PANEL IMAGE
+// - CUSTOM TICKET PANELS
+// - CUSTOM COLORS
 // - CUSTOM SECTIONS
 // - CUSTOM EMOJIS
-// - CUSTOM CATEGORIES
+// - CUSTOM CATEGORY IDS
 // - CLAIM BUTTON
 // - CLOSE BUTTON
+// - STAFF ONLY BUTTONS
 // ======================================================
 
 const {
@@ -119,7 +116,7 @@ const commands = [
     )
 
     // ==================================================
-    // PANEL SETTINGS
+    // REQUIRED OPTIONS
     // ==================================================
 
     .addStringOption(option =>
@@ -157,7 +154,7 @@ const commands = [
         .setName('panel_color')
 
         .setDescription(
-          'Panel embed color HEX'
+          'Panel HEX color'
         )
 
         .setRequired(true)
@@ -168,28 +165,10 @@ const commands = [
 
       option
 
-        .setName('panel_image')
-
-        .setDescription(
-          'Panel banner image URL'
-        )
-
-        .setRequired(false)
-
-    )
-
-    // ==================================================
-    // TICKET EMBED SETTINGS
-    // ==================================================
-
-    .addStringOption(option =>
-
-      option
-
         .setName('ticket_title')
 
         .setDescription(
-          'Ticket embed title'
+          'Ticket title'
         )
 
         .setRequired(true)
@@ -203,7 +182,7 @@ const commands = [
         .setName('ticket_description')
 
         .setDescription(
-          'Ticket embed description'
+          'Ticket description'
         )
 
         .setRequired(true)
@@ -217,7 +196,7 @@ const commands = [
         .setName('ticket_color')
 
         .setDescription(
-          'Ticket embed HEX color'
+          'Ticket HEX color'
         )
 
         .setRequired(true)
@@ -267,6 +246,24 @@ const commands = [
         )
 
         .setRequired(true)
+
+    )
+
+    // ==================================================
+    // OPTIONAL OPTIONS
+    // ==================================================
+
+    .addStringOption(option =>
+
+      option
+
+        .setName('panel_image')
+
+        .setDescription(
+          'Panel image URL'
+        )
+
+        .setRequired(false)
 
     )
 
@@ -632,10 +629,6 @@ client.on(
         'setticket'
       ) {
 
-        // ================================================
-        // PANEL SETTINGS
-        // ================================================
-
         const panelTitle =
           interaction.options.getString(
             'panel_title'
@@ -656,10 +649,6 @@ client.on(
             'panel_image'
           );
 
-        // ================================================
-        // TICKET SETTINGS
-        // ================================================
-
         const ticketTitle =
           interaction.options.getString(
             'ticket_title'
@@ -676,7 +665,7 @@ client.on(
           );
 
         // ================================================
-        // BUILD SECTIONS
+        // OPTIONS
         // ================================================
 
         const options = [];
@@ -929,15 +918,19 @@ client.on(
             )
 
             .setDescription(
+
               ticketDescription
+
                 .replace(
                   '{user}',
                   `${interaction.user}`
                 )
+
                 .replace(
                   '{section}',
                   section
                 )
+
             );
 
         await channel.send({
