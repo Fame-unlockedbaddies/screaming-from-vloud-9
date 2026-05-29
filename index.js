@@ -559,20 +559,11 @@ client.on('interactionCreate', async interaction => {
 
           .addComponents(menu);
 
-      await interaction.channel.send({
+      await interaction.reply({
 
         embeds: [embed],
 
         components: [row]
-
-      });
-
-      await interaction.reply({
-
-        content:
-          'Ticket panel created.',
-
-        ephemeral: true
 
       });
 
@@ -587,6 +578,14 @@ client.on('interactionCreate', async interaction => {
   if (interaction.isStringSelectMenu()) {
 
     if (interaction.customId === 'ticket_menu') {
+
+      // ==================================================
+      // FIX APPLICATION DIDNT RESPOND
+      // ==================================================
+
+      await interaction.deferReply({
+        ephemeral: true
+      });
 
       const data =
         interaction.values[0];
@@ -610,6 +609,10 @@ client.on('interactionCreate', async interaction => {
         split[4];
 
       ticketCount++;
+
+      // ==================================================
+      // CREATE CHANNEL
+      // ==================================================
 
       const channel =
         await interaction.guild.channels.create({
@@ -721,12 +724,14 @@ client.on('interactionCreate', async interaction => {
 
       });
 
-      await interaction.reply({
+      // ==================================================
+      // SUCCESS MESSAGE
+      // ==================================================
+
+      await interaction.editReply({
 
         content:
-          `Your ticket was created: ${channel}`,
-
-        ephemeral: true
+          `Your ticket was created: ${channel}`
 
       });
 
