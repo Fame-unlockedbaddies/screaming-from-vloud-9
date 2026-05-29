@@ -2,21 +2,17 @@
 // FULL DISCORD BOT
 // FEATURES:
 // - BLOCK INVITE LINKS
+// - TIMEOUT USERS FOR INVITES
+// - DM STAFF ROLES WHEN USER IS TIMED OUT
 // - BLOCK CUSTOM WORDS
 // - CUSTOM TICKET PANELS
-// - CUSTOM COLORS
-// - CUSTOM SECTIONS
-// - CUSTOM EMOJIS
-// - CUSTOM CATEGORY IDS
 // - CLAIM BUTTON
 // - CLOSE BUTTON
-// - STAFF ONLY BUTTONS
 // ======================================================
 
 const {
   Client,
   GatewayIntentBits,
-  PermissionsBitField,
   SlashCommandBuilder,
   REST,
   Routes,
@@ -54,6 +50,19 @@ const STAFF_ROLES = [
 ];
 
 // ======================================================
+// ROLES TO DM ON TIMEOUT
+// ======================================================
+
+const NOTIFY_ROLES = [
+
+  '1509385192853213184',
+  '1482560426972549232',
+  '1444833625362403381',
+  '1509385192853213184'
+
+];
+
+// ======================================================
 // CLIENT
 // ======================================================
 
@@ -63,6 +72,7 @@ const client = new Client({
 
     GatewayIntentBits.Guilds,
     GatewayIntentBits.GuildMessages,
+    GatewayIntentBits.GuildMembers,
     GatewayIntentBits.MessageContent
 
   ]
@@ -114,10 +124,6 @@ const commands = [
     .setDescription(
       'Create a custom ticket panel'
     )
-
-    // ==================================================
-    // REQUIRED OPTIONS
-    // ==================================================
 
     .addStringOption(option =>
 
@@ -203,10 +209,6 @@ const commands = [
 
     )
 
-    // ==================================================
-    // SECTION 1
-    // ==================================================
-
     .addStringOption(option =>
 
       option
@@ -249,10 +251,6 @@ const commands = [
 
     )
 
-    // ==================================================
-    // OPTIONAL OPTIONS
-    // ==================================================
-
     .addStringOption(option =>
 
       option
@@ -261,190 +259,6 @@ const commands = [
 
         .setDescription(
           'Panel image URL'
-        )
-
-        .setRequired(false)
-
-    )
-
-    // ==================================================
-    // SECTION 2
-    // ==================================================
-
-    .addStringOption(option =>
-
-      option
-
-        .setName('section2')
-
-        .setDescription(
-          'Section 2 name'
-        )
-
-        .setRequired(false)
-
-    )
-
-    .addStringOption(option =>
-
-      option
-
-        .setName('emoji2')
-
-        .setDescription(
-          'Emoji 2'
-        )
-
-        .setRequired(false)
-
-    )
-
-    .addStringOption(option =>
-
-      option
-
-        .setName('category2')
-
-        .setDescription(
-          'Category ID 2'
-        )
-
-        .setRequired(false)
-
-    )
-
-    // ==================================================
-    // SECTION 3
-    // ==================================================
-
-    .addStringOption(option =>
-
-      option
-
-        .setName('section3')
-
-        .setDescription(
-          'Section 3 name'
-        )
-
-        .setRequired(false)
-
-    )
-
-    .addStringOption(option =>
-
-      option
-
-        .setName('emoji3')
-
-        .setDescription(
-          'Emoji 3'
-        )
-
-        .setRequired(false)
-
-    )
-
-    .addStringOption(option =>
-
-      option
-
-        .setName('category3')
-
-        .setDescription(
-          'Category ID 3'
-        )
-
-        .setRequired(false)
-
-    )
-
-    // ==================================================
-    // SECTION 4
-    // ==================================================
-
-    .addStringOption(option =>
-
-      option
-
-        .setName('section4')
-
-        .setDescription(
-          'Section 4 name'
-        )
-
-        .setRequired(false)
-
-    )
-
-    .addStringOption(option =>
-
-      option
-
-        .setName('emoji4')
-
-        .setDescription(
-          'Emoji 4'
-        )
-
-        .setRequired(false)
-
-    )
-
-    .addStringOption(option =>
-
-      option
-
-        .setName('category4')
-
-        .setDescription(
-          'Category ID 4'
-        )
-
-        .setRequired(false)
-
-    )
-
-    // ==================================================
-    // SECTION 5
-    // ==================================================
-
-    .addStringOption(option =>
-
-      option
-
-        .setName('section5')
-
-        .setDescription(
-          'Section 5 name'
-        )
-
-        .setRequired(false)
-
-    )
-
-    .addStringOption(option =>
-
-      option
-
-        .setName('emoji5')
-
-        .setDescription(
-          'Emoji 5'
-        )
-
-        .setRequired(false)
-
-    )
-
-    .addStringOption(option =>
-
-      option
-
-        .setName('category5')
-
-        .setDescription(
-          'Category ID 5'
         )
 
         .setRequired(false)
@@ -541,6 +355,21 @@ client.on(
       await message.delete()
         .catch(() => {});
 
+      // ================================================
+      // TIMEOUT USER
+      // ================================================
+
+      await message.member.timeout(
+
+        10 * 60 * 1000,
+        'Posted Discord invite link'
+
+      ).catch(() => {});
+
+      // ================================================
+      // CHANNEL WARNING
+      // ================================================
+
       const warn =
         await message.channel.send({
 
@@ -551,7 +380,7 @@ client.on(
               .setColor('#FADADD')
 
               .setDescription(
-                `${message.author} 😡 Invite links are not allowed.`
+                `${message.author} 😡 Invite links are not allowed. You have been timed out for 10 minutes.`
               )
 
           ]
@@ -563,7 +392,40 @@ client.on(
         warn.delete()
           .catch(() => {});
 
-      }, 3000);
+      }, 5000);
+
+      // ================================================
+      // DM STAFF ROLES
+      // ================================================
+
+      for (const roleId of NOTIFY_ROLES) {
+
+        const role =
+          message.guild.roles.cache.get(roleId);
+
+        if (!role) continue;
+
+        for (const member of role.members.values()) {
+
+          member.send({
+
+            embeds: [
+
+              new EmbedBuilder()
+
+                .setColor('#FADADD')
+
+                .setDescription(
+                  `🚨 The bot has timed out ${message.author} for posting an invite link.`
+                )
+
+            ]
+
+          }).catch(() => {});
+
+        }
+
+      }
 
       return;
 
@@ -577,7 +439,8 @@ client.on(
 
       'playgrounds',
       'fame 2.0',
-      'jay'
+      'jay',
+      'dm me'
 
     ];
 
@@ -632,7 +495,7 @@ client.on(
 
     // ==================================================
     // /SETTICKET
-    // ======================================================
+    // ==================================================
 
     if (
       interaction.isChatInputCommand()
@@ -678,55 +541,20 @@ client.on(
             'ticket_color'
           );
 
-        // ================================================
-        // OPTIONS
-        // ================================================
+        const section =
+          interaction.options.getString(
+            'section1'
+          );
 
-        const options = [];
+        const emoji =
+          interaction.options.getString(
+            'emoji1'
+          );
 
-        for (let i = 1; i <= 5; i++) {
-
-          const section =
-            interaction.options.getString(
-              `section${i}`
-            );
-
-          const emoji =
-            interaction.options.getString(
-              `emoji${i}`
-            );
-
-          const category =
-            interaction.options.getString(
-              `category${i}`
-            );
-
-          if (
-            section &&
-            emoji &&
-            category
-          ) {
-
-            options.push({
-
-              label:
-                section,
-
-              emoji:
-                emoji,
-
-              value:
-                `${category}|${section}|${ticketTitle}|${ticketDescription}|${ticketColor}`
-
-            });
-
-          }
-
-        }
-
-        // ================================================
-        // PANEL EMBED
-        // ================================================
+        const category =
+          interaction.options.getString(
+            'category1'
+          );
 
         const embed =
           new EmbedBuilder()
@@ -751,10 +579,6 @@ client.on(
 
         }
 
-        // ================================================
-        // DROPDOWN
-        // ================================================
-
         const menu =
           new StringSelectMenuBuilder()
 
@@ -766,7 +590,18 @@ client.on(
               'Choose a section'
             )
 
-            .addOptions(options);
+            .addOptions({
+
+              label:
+                section,
+
+              emoji:
+                emoji,
+
+              value:
+                `${category}|${section}|${ticketTitle}|${ticketDescription}|${ticketColor}`
+
+            });
 
         const row =
           new ActionRowBuilder()
@@ -796,7 +631,7 @@ client.on(
 
     // ==================================================
     // CREATE TICKET
-    // ======================================================
+    // ==================================================
 
     if (
       interaction.isStringSelectMenu()
@@ -877,10 +712,6 @@ client.on(
 
           });
 
-        // ================================================
-        // BUTTONS
-        // ================================================
-
         const buttons =
           new ActionRowBuilder()
 
@@ -915,10 +746,6 @@ client.on(
                 )
 
             );
-
-        // ================================================
-        // TICKET EMBED
-        // ================================================
 
         const ticketEmbed =
           new EmbedBuilder()
