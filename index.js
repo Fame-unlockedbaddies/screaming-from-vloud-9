@@ -81,186 +81,133 @@ const client = new Client({
 });
 
 // ======================================================
-// TICKET COUNT
+// TICKET COUNTS
 // ======================================================
 
-let ticketCount = 0;
+const ticketCounts = {};
 
 // ======================================================
 // COMMANDS
 // ======================================================
 
+const ticketCommand = new SlashCommandBuilder()
+  .setName('setticket')
+  .setDescription('Create a custom ticket panel');
+
+// ======================================================
+// REQUIRED OPTIONS
+// ======================================================
+
+ticketCommand
+
+  .addStringOption(option =>
+    option
+      .setName('panel_title')
+      .setDescription('Panel title')
+      .setRequired(true)
+  )
+
+  .addStringOption(option =>
+    option
+      .setName('panel_description')
+      .setDescription('Panel description')
+      .setRequired(true)
+  )
+
+  .addStringOption(option =>
+    option
+      .setName('panel_color')
+      .setDescription('Panel HEX color')
+      .setRequired(true)
+  )
+
+  .addStringOption(option =>
+    option
+      .setName('ticket_title')
+      .setDescription('Ticket title')
+      .setRequired(true)
+  )
+
+  .addStringOption(option =>
+    option
+      .setName('ticket_description')
+      .setDescription('Ticket description')
+      .setRequired(true)
+  )
+
+  .addStringOption(option =>
+    option
+      .setName('ticket_color')
+      .setDescription('Ticket HEX color')
+      .setRequired(true)
+  )
+
+  .addStringOption(option =>
+    option
+      .setName('section1')
+      .setDescription('Section 1')
+      .setRequired(true)
+  )
+
+  .addStringOption(option =>
+    option
+      .setName('emoji1')
+      .setDescription('Emoji 1')
+      .setRequired(true)
+  )
+
+  .addStringOption(option =>
+    option
+      .setName('category1')
+      .setDescription('Category ID 1')
+      .setRequired(true)
+  );
+
+// ======================================================
+// OPTIONAL PANEL IMAGE
+// ======================================================
+
+ticketCommand.addStringOption(option =>
+  option
+    .setName('panel_image')
+    .setDescription('Banner image URL')
+    .setRequired(false)
+);
+
+// ======================================================
+// ADD 10 OPTIONAL SECTIONS
+// ======================================================
+
+for (let i = 2; i <= 10; i++) {
+
+  ticketCommand
+
+    .addStringOption(option =>
+      option
+        .setName(`section${i}`)
+        .setDescription(`Section ${i}`)
+        .setRequired(false)
+    )
+
+    .addStringOption(option =>
+      option
+        .setName(`emoji${i}`)
+        .setDescription(`Emoji ${i}`)
+        .setRequired(false)
+    )
+
+    .addStringOption(option =>
+      option
+        .setName(`category${i}`)
+        .setDescription(`Category ID ${i}`)
+        .setRequired(false)
+    );
+
+}
+
 const commands = [
-
-  new SlashCommandBuilder()
-
-    .setName('setticket')
-
-    .setDescription('Create a custom ticket panel')
-
-    // ==================================================
-    // REQUIRED OPTIONS
-    // ==================================================
-
-    .addStringOption(option =>
-      option
-        .setName('panel_title')
-        .setDescription('Panel title')
-        .setRequired(true)
-    )
-
-    .addStringOption(option =>
-      option
-        .setName('panel_description')
-        .setDescription('Panel description')
-        .setRequired(true)
-    )
-
-    .addStringOption(option =>
-      option
-        .setName('panel_color')
-        .setDescription('Panel HEX color')
-        .setRequired(true)
-    )
-
-    .addStringOption(option =>
-      option
-        .setName('ticket_title')
-        .setDescription('Ticket title')
-        .setRequired(true)
-    )
-
-    .addStringOption(option =>
-      option
-        .setName('ticket_description')
-        .setDescription('Ticket description')
-        .setRequired(true)
-    )
-
-    .addStringOption(option =>
-      option
-        .setName('ticket_color')
-        .setDescription('Ticket HEX color')
-        .setRequired(true)
-    )
-
-    .addStringOption(option =>
-      option
-        .setName('section1')
-        .setDescription('Section 1')
-        .setRequired(true)
-    )
-
-    .addStringOption(option =>
-      option
-        .setName('emoji1')
-        .setDescription('Emoji 1')
-        .setRequired(true)
-    )
-
-    .addStringOption(option =>
-      option
-        .setName('category1')
-        .setDescription('Category ID 1')
-        .setRequired(true)
-    )
-
-    // ==================================================
-    // OPTIONAL OPTIONS
-    // ==================================================
-
-    .addStringOption(option =>
-      option
-        .setName('panel_image')
-        .setDescription('Banner image URL')
-        .setRequired(false)
-    )
-
-    .addStringOption(option =>
-      option
-        .setName('section2')
-        .setDescription('Section 2')
-        .setRequired(false)
-    )
-
-    .addStringOption(option =>
-      option
-        .setName('emoji2')
-        .setDescription('Emoji 2')
-        .setRequired(false)
-    )
-
-    .addStringOption(option =>
-      option
-        .setName('category2')
-        .setDescription('Category ID 2')
-        .setRequired(false)
-    )
-
-    .addStringOption(option =>
-      option
-        .setName('section3')
-        .setDescription('Section 3')
-        .setRequired(false)
-    )
-
-    .addStringOption(option =>
-      option
-        .setName('emoji3')
-        .setDescription('Emoji 3')
-        .setRequired(false)
-    )
-
-    .addStringOption(option =>
-      option
-        .setName('category3')
-        .setDescription('Category ID 3')
-        .setRequired(false)
-    )
-
-    .addStringOption(option =>
-      option
-        .setName('section4')
-        .setDescription('Section 4')
-        .setRequired(false)
-    )
-
-    .addStringOption(option =>
-      option
-        .setName('emoji4')
-        .setDescription('Emoji 4')
-        .setRequired(false)
-    )
-
-    .addStringOption(option =>
-      option
-        .setName('category4')
-        .setDescription('Category ID 4')
-        .setRequired(false)
-    )
-
-    .addStringOption(option =>
-      option
-        .setName('section5')
-        .setDescription('Section 5')
-        .setRequired(false)
-    )
-
-    .addStringOption(option =>
-      option
-        .setName('emoji5')
-        .setDescription('Emoji 5')
-        .setRequired(false)
-    )
-
-    .addStringOption(option =>
-      option
-        .setName('category5')
-        .setDescription('Category ID 5')
-        .setRequired(false)
-    )
-
-].map(command => command.toJSON());
+  ticketCommand.toJSON()
+];
 
 // ======================================================
 // REGISTER COMMANDS
@@ -325,29 +272,17 @@ client.on('messageCreate', async message => {
   // ====================================================
 
   if (
-
     content.includes('discord.gg/') ||
     content.includes('discord.com/invite/') ||
     content.includes('discordapp.com/invite/')
-
   ) {
 
     await message.delete().catch(() => {});
 
-    // ==================================================
-    // TIMEOUT USER
-    // ==================================================
-
     await message.member.timeout(
-
       10 * 60 * 1000,
       'Posted invite link'
-
     ).catch(() => {});
-
-    // ==================================================
-    // WARNING MESSAGE
-    // ==================================================
 
     await message.channel.send({
 
@@ -364,10 +299,6 @@ client.on('messageCreate', async message => {
       ]
 
     });
-
-    // ==================================================
-    // DM STAFF ROLES
-    // ==================================================
 
     for (const roleId of NOTIFY_ROLES) {
 
@@ -444,9 +375,16 @@ client.on('interactionCreate', async interaction => {
   // /SETTICKET
   // ====================================================
 
-  if (interaction.isChatInputCommand()) {
+  if (
+    interaction.isChatInputCommand() &&
+    interaction.commandName === 'setticket'
+  ) {
 
-    if (interaction.commandName === 'setticket') {
+    try {
+
+      await interaction.deferReply({
+        ephemeral: true
+      });
 
       const panelTitle =
         interaction.options.getString('panel_title');
@@ -471,7 +409,11 @@ client.on('interactionCreate', async interaction => {
 
       const options = [];
 
-      for (let i = 1; i <= 5; i++) {
+      // ==================================================
+      // HANDLE ALL 10 SECTIONS
+      // ==================================================
+
+      for (let i = 1; i <= 10; i++) {
 
         const section =
           interaction.options.getString(`section${i}`);
@@ -490,16 +432,31 @@ client.on('interactionCreate', async interaction => {
 
           options.push({
 
-            label: section,
+            label:
+              section.substring(0, 100),
 
-            emoji: emoji,
+            emoji:
+              emoji,
 
             value:
-              `${category}|${section}|${ticketTitle}|${ticketDescription}|${ticketColor}`
+              `${category}|${section}`
 
           });
 
         }
+
+      }
+
+      // ==================================================
+      // DISCORD LIMIT FIX
+      // ==================================================
+
+      if (options.length > 25) {
+
+        return interaction.editReply({
+          content:
+            'Discord only allows 25 menu options.'
+        });
 
       }
 
@@ -526,7 +483,7 @@ client.on('interactionCreate', async interaction => {
           .setTimestamp();
 
       // ==================================================
-      // PANEL IMAGE SUPPORT
+      // IMAGE SUPPORT
       // ==================================================
 
       if (
@@ -551,7 +508,9 @@ client.on('interactionCreate', async interaction => {
       const menu =
         new StringSelectMenuBuilder()
 
-          .setCustomId('ticket_menu')
+          .setCustomId(
+            `ticket_menu_${Date.now()}`
+          )
 
           .setPlaceholder('Open Ticket')
 
@@ -562,13 +521,41 @@ client.on('interactionCreate', async interaction => {
 
           .addComponents(menu);
 
-      await interaction.reply({
+      // ==================================================
+      // SEND PANEL
+      // ==================================================
+
+      await interaction.channel.send({
 
         embeds: [embed],
 
         components: [row]
 
       });
+
+      await interaction.editReply({
+
+        content:
+          'Ticket panel created.'
+
+      });
+
+    } catch (err) {
+
+      console.log(err);
+
+      if (!interaction.replied) {
+
+        interaction.reply({
+
+          content:
+            'Something went wrong.',
+
+          ephemeral: true
+
+        }).catch(() => {});
+
+      }
 
     }
 
@@ -580,159 +567,185 @@ client.on('interactionCreate', async interaction => {
 
   if (interaction.isStringSelectMenu()) {
 
-    if (interaction.customId === 'ticket_menu') {
+    if (
+      interaction.customId.startsWith(
+        'ticket_menu_'
+      )
+    ) {
 
-      await interaction.deferReply({
-        ephemeral: true
-      });
+      try {
 
-      const data =
-        interaction.values[0];
+        await interaction.deferReply({
+          ephemeral: true
+        });
 
-      const split =
-        data.split('|');
+        const data =
+          interaction.values[0];
 
-      const categoryId =
-        split[0];
+        const split =
+          data.split('|');
 
-      const section =
-        split[1];
+        const categoryId =
+          split[0];
 
-      const ticketTitle =
-        split[2];
+        const section =
+          split[1];
 
-      const ticketDescription =
-        split[3];
+        // ==================================================
+        // CATEGORY COUNT
+        // ==================================================
 
-      const ticketColor =
-        split[4];
+        if (!ticketCounts[categoryId]) {
 
-      ticketCount++;
+          ticketCounts[categoryId] = 1;
 
-      // ==================================================
-      // CREATE CHANNEL
-      // ==================================================
+        } else {
 
-      const channel =
-        await interaction.guild.channels.create({
+          ticketCounts[categoryId]++;
 
-          name:
-            `${section}-${ticketCount}`,
+        }
 
-          type:
-            ChannelType.GuildText,
+        const ticketNumber =
+          ticketCounts[categoryId];
 
-          parent:
-            categoryId,
+        // ==================================================
+        // CREATE CHANNEL
+        // ==================================================
 
-          topic:
-            interaction.user.id,
+        const channel =
+          await interaction.guild.channels.create({
 
-          permissionOverwrites: [
+            name:
+              `${section}-${ticketNumber}`,
 
-            {
-              id:
-                interaction.guild.id,
+            type:
+              ChannelType.GuildText,
 
-              deny: [
-                PermissionFlagsBits.ViewChannel
-              ]
-            },
+            parent:
+              categoryId,
 
-            {
-              id:
-                interaction.user.id,
+            topic:
+              interaction.user.id,
 
-              allow: [
+            permissionOverwrites: [
 
-                PermissionFlagsBits.ViewChannel,
-                PermissionFlagsBits.SendMessages,
-                PermissionFlagsBits.ReadMessageHistory
+              {
+                id:
+                  interaction.guild.id,
 
-              ]
-            }
+                deny: [
+                  PermissionFlagsBits.ViewChannel
+                ]
+              },
 
-          ]
+              {
+                id:
+                  interaction.user.id,
+
+                allow: [
+
+                  PermissionFlagsBits.ViewChannel,
+                  PermissionFlagsBits.SendMessages,
+                  PermissionFlagsBits.ReadMessageHistory
+
+                ]
+              }
+
+            ]
+
+          });
+
+        // ==================================================
+        // BUTTONS
+        // ==================================================
+
+        const buttons =
+          new ActionRowBuilder()
+
+            .addComponents(
+
+              new ButtonBuilder()
+
+                .setCustomId('claim_ticket')
+
+                .setLabel('Claim Ticket')
+
+                .setStyle(ButtonStyle.Primary),
+
+              new ButtonBuilder()
+
+                .setCustomId('close_ticket')
+
+                .setLabel('Close Ticket')
+
+                .setStyle(ButtonStyle.Danger)
+
+            );
+
+        // ==================================================
+        // TICKET EMBED
+        // ==================================================
+
+        const embed =
+          new EmbedBuilder()
+
+            .setColor('#2b2d31')
+
+            .setTitle('Support Ticket')
+
+            .setDescription(
+              `Welcome ${interaction.user}\n\nPlease explain your issue and wait for staff to respond.`
+            )
+
+            .setFooter({
+
+              text:
+                `Category: ${section}`
+
+            })
+
+            .setTimestamp();
+
+        await channel.send({
+
+          content:
+            `${interaction.user}`,
+
+          embeds: [embed],
+
+          components: [buttons]
 
         });
 
-      // ==================================================
-      // BUTTONS
-      // ==================================================
+        // ==================================================
+        // SUCCESS
+        // ==================================================
 
-      const buttons =
-        new ActionRowBuilder()
+        await interaction.editReply({
 
-          .addComponents(
+          content:
+            `Your ticket was created: ${channel}`
 
-            new ButtonBuilder()
+        });
 
-              .setCustomId('claim_ticket')
+      } catch (err) {
 
-              .setLabel('Claim Ticket')
+        console.log(err);
 
-              .setStyle(ButtonStyle.Primary),
+        if (!interaction.replied) {
 
-            new ButtonBuilder()
+          interaction.reply({
 
-              .setCustomId('close_ticket')
+            content:
+              'Failed to create ticket.',
 
-              .setLabel('Close Ticket')
+            ephemeral: true
 
-              .setStyle(ButtonStyle.Danger)
+          }).catch(() => {});
 
-          );
+        }
 
-      // ==================================================
-      // TICKET EMBED
-      // ==================================================
-
-      const ticketEmbed =
-        new EmbedBuilder()
-
-          .setColor(ticketColor)
-
-          .setTitle(ticketTitle)
-
-          .setDescription(
-
-            ticketDescription
-
-              .replace(
-                '{user}',
-                `${interaction.user}`
-              )
-
-              .replace(
-                '{section}',
-                section
-              )
-
-          )
-
-          .setTimestamp();
-
-      await channel.send({
-
-        content:
-          `${interaction.user}`,
-
-        embeds: [ticketEmbed],
-
-        components: [buttons]
-
-      });
-
-      // ==================================================
-      // SUCCESS MESSAGE
-      // ==================================================
-
-      await interaction.editReply({
-
-        content:
-          `Your ticket was created: ${channel}`
-
-      });
+      }
 
     }
 
