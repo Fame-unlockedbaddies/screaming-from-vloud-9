@@ -90,7 +90,11 @@ const commands = [
 
     .setName('setticket')
 
-    .setDescription('Create a ticket panel')
+    .setDescription('Create a custom ticket panel')
+
+    // ==================================================
+    // PANEL SETTINGS
+    // ==================================================
 
     .addStringOption(option =>
       option
@@ -109,8 +113,15 @@ const commands = [
     .addStringOption(option =>
       option
         .setName('panel_color')
-        .setDescription('Panel color')
+        .setDescription('Panel HEX color')
         .setRequired(true)
+    )
+
+    .addStringOption(option =>
+      option
+        .setName('panel_image')
+        .setDescription('Banner image URL')
+        .setRequired(false)
     )
 
     .addStringOption(option =>
@@ -130,7 +141,7 @@ const commands = [
     .addStringOption(option =>
       option
         .setName('ticket_color')
-        .setDescription('Ticket color')
+        .setDescription('Ticket HEX color')
         .setRequired(true)
     )
 
@@ -385,6 +396,159 @@ client.on('messageCreate', async message => {
       return;
     }
   }
+});
+
+// ======================================================
+// INTERACTIONS
+// ======================================================
+
+client.on('interactionCreate', async interaction => {
+
+  // ====================================================
+  // /SETTICKET
+  // ====================================================
+
+  if (interaction.isChatInputCommand()) {
+
+    if (interaction.commandName === 'setticket') {
+
+      const panelTitle =
+        interaction.options.getString('panel_title');
+
+      const panelDescription =
+        interaction.options.getString('panel_description');
+
+      const panelColor =
+        interaction.options.getString('panel_color');
+
+      const panelImage =
+        interaction.options.getString('panel_image');
+
+      const ticketTitle =
+        interaction.options.getString('ticket_title');
+
+      const ticketDescription =
+        interaction.options.getString('ticket_description');
+
+      const ticketColor =
+        interaction.options.getString('ticket_color');
+
+      // ==================================================
+      // OPTIONS
+      // ==================================================
+
+      const options = [];
+
+      for (let i = 1; i <= 5; i++) {
+
+        const section =
+          interaction.options.getString(`section${i}`);
+
+        const emoji =
+          interaction.options.getString(`emoji${i}`);
+
+        const category =
+          interaction.options.getString(`category${i}`);
+
+        if (
+          section &&
+          emoji &&
+          category
+        ) {
+
+          options.push({
+
+            label: section,
+            emoji: emoji,
+
+            value:
+              `${category}|${section}|${ticketTitle}|${ticketDescription}|${ticketColor}`
+
+          });
+
+        }
+
+      }
+
+      // ==================================================
+      // EMBED
+      // ==================================================
+
+      const embed =
+        new EmbedBuilder()
+
+          .setColor(panelColor)
+
+          .setTitle(panelTitle)
+
+          .setDescription(panelDescription)
+
+          .setFooter({
+
+            text:
+              'Select a category below'
+
+          })
+
+          .setTimestamp();
+
+      // ==================================================
+      // CUSTOM IMAGE SUPPORT
+      // ==================================================
+
+      if (
+
+        panelImage &&
+        (
+          panelImage.startsWith('https://') ||
+          panelImage.startsWith('http://')
+        )
+
+      ) {
+
+        embed.setImage(panelImage);
+
+      }
+
+      // ==================================================
+      // MENU
+      // ==================================================
+
+      const menu =
+        new StringSelectMenuBuilder()
+
+          .setCustomId('ticket_menu')
+
+          .setPlaceholder('Open Ticket')
+
+          .addOptions(options);
+
+      const row =
+        new ActionRowBuilder()
+
+          .addComponents(menu);
+
+      await interaction.channel.send({
+
+        embeds: [embed],
+
+        components: [row]
+
+      });
+
+      await interaction.reply({
+
+        content:
+          'Ticket panel created.',
+
+        ephemeral: true
+
+      });
+
+    }
+
+  }
+
 });
 
 // ======================================================
