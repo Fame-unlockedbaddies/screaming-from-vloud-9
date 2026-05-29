@@ -1,15 +1,6 @@
 // ======================================================
 // ADVANCED DISCORD TICKET BOT
-// BEAUTIFUL & ORGANIZED
-// FEATURES:
-// - CUSTOM TICKET PANELS
-// - NUMBERED TICKETS
-// - CATEGORY TICKET NAMES
-// - STAFF CLAIM SYSTEM
-// - USER + STAFF CLOSE
-// - AUTOMOD
-// - INVITE TIMEOUT
-// - BLOCKED WORDS
+// RENDER READY
 // ======================================================
 
 const {
@@ -27,7 +18,29 @@ const {
   PermissionFlagsBits
 } = require('discord.js');
 
+const express = require('express');
+
 require('dotenv').config();
+
+// ======================================================
+// EXPRESS SERVER FOR RENDER
+// ======================================================
+
+const app = express();
+
+app.get('/', (req, res) => {
+
+  res.send('Bot Online');
+
+});
+
+app.listen(process.env.PORT || 3000, () => {
+
+  console.log(
+    `Web server running on port ${process.env.PORT || 3000}`
+  );
+
+});
 
 // ======================================================
 // CONFIG
@@ -51,7 +64,7 @@ const STAFF_ROLES = [
 ];
 
 // ======================================================
-// NOTIFY ROLES
+// ROLES TO DM WHEN USER IS TIMED OUT
 // ======================================================
 
 const NOTIFY_ROLES = [
@@ -103,7 +116,7 @@ const commands = [
     .setName('setticket')
 
     .setDescription(
-      'Create a custom ticket panel'
+      'Create a ticket panel'
     )
 
     .addStringOption(option =>
@@ -141,7 +154,7 @@ const commands = [
         .setName('panel_color')
 
         .setDescription(
-          'Panel embed color'
+          'Panel color'
         )
 
         .setRequired(true)
@@ -183,7 +196,7 @@ const commands = [
         .setName('ticket_color')
 
         .setDescription(
-          'Ticket embed color'
+          'Ticket color'
         )
 
         .setRequired(true)
@@ -211,7 +224,7 @@ const commands = [
         .setName('emoji')
 
         .setDescription(
-          'Section emoji'
+          'Emoji'
         )
 
         .setRequired(true)
@@ -323,7 +336,7 @@ client.on(
         .catch(() => {});
 
       // ================================================
-      // TIMEOUT
+      // TIMEOUT USER
       // ================================================
 
       await message.member.timeout(
@@ -334,7 +347,7 @@ client.on(
       ).catch(() => {});
 
       // ================================================
-      // WARNING
+      // WARNING MESSAGE
       // ================================================
 
       const warn =
@@ -347,7 +360,7 @@ client.on(
               .setColor('#ff4d4d')
 
               .setDescription(
-                `${message.author} invite links are not allowed.`
+                `${message.author} invite links are not allowed and you have been timed out.`
               )
 
           ]
@@ -362,7 +375,7 @@ client.on(
       }, 5000);
 
       // ================================================
-      // DM STAFF
+      // DM STAFF ROLES
       // ================================================
 
       for (const roleId of NOTIFY_ROLES) {
@@ -403,7 +416,7 @@ client.on(
     }
 
     // ==================================================
-    // BLOCKED WORDS
+    // BLOCK WORDS
     // ==================================================
 
     for (const word of BLOCKED_WORDS) {
@@ -536,7 +549,7 @@ client.on(
             .setTimestamp();
 
         // ==============================================
-        // DROPDOWN
+        // DROPDOWN MENU
         // ==============================================
 
         const menu =
@@ -845,7 +858,7 @@ client.on(
     ) {
 
       // ================================================
-      // CLAIM
+      // CLAIM TICKET
       // ================================================
 
       if (
@@ -889,7 +902,7 @@ client.on(
       }
 
       // ================================================
-      // CLOSE
+      // CLOSE TICKET
       // ================================================
 
       if (
