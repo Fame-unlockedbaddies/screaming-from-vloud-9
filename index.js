@@ -2,7 +2,7 @@
 // FULL DISCORD BOT
 // FEATURES:
 // - BLOCK INVITE LINKS
-// - BLOCK "playgrounds"
+// - BLOCK CUSTOM WORDS
 // - CUSTOM TICKET PANELS
 // - CUSTOM COLORS
 // - CUSTOM SECTIONS
@@ -565,42 +565,56 @@ client.on(
 
       }, 3000);
 
+      return;
+
     }
 
     // ==================================================
-    // BLOCK PLAYGROUNDS
+    // BLOCK WORDS
     // ==================================================
 
-    if (
-      content.includes('playgrounds')
-    ) {
+    const blockedWords = [
 
-      await message.delete()
-        .catch(() => {});
+      'playgrounds',
+      'fame 2.0',
+      'jay'
 
-      const warn =
-        await message.channel.send({
+    ];
 
-          embeds: [
+    for (const word of blockedWords) {
 
-            new EmbedBuilder()
+      if (content.includes(word)) {
 
-              .setColor('#FADADD')
-
-              .setDescription(
-                `${message.author} 😡 The word "playgrounds" is not allowed.`
-              )
-
-          ]
-
-        });
-
-      setTimeout(() => {
-
-        warn.delete()
+        await message.delete()
           .catch(() => {});
 
-      }, 3000);
+        const warn =
+          await message.channel.send({
+
+            embeds: [
+
+              new EmbedBuilder()
+
+                .setColor('#FADADD')
+
+                .setDescription(
+                  `${message.author} 😡 We do not use that word.`
+                )
+
+            ]
+
+          });
+
+        setTimeout(() => {
+
+          warn.delete()
+            .catch(() => {});
+
+        }, 3000);
+
+        return;
+
+      }
 
     }
 
@@ -618,7 +632,7 @@ client.on(
 
     // ==================================================
     // /SETTICKET
-    // ==================================================
+    // ======================================================
 
     if (
       interaction.isChatInputCommand()
@@ -782,7 +796,7 @@ client.on(
 
     // ==================================================
     // CREATE TICKET
-    // ==================================================
+    // ======================================================
 
     if (
       interaction.isStringSelectMenu()
@@ -956,7 +970,7 @@ client.on(
 
     // ==================================================
     // BUTTONS
-    // ==================================================
+    // ======================================================
 
     if (
       interaction.isButton()
