@@ -8,7 +8,7 @@ const {
   ActionRowBuilder,
   StringSelectMenuBuilder,
   ButtonBuilder,
-  ButtonStyle,
+ ButtonStyle,
   ChannelType,
   PermissionFlagsBits
 } = require('discord.js');
@@ -47,7 +47,7 @@ const STAFF_ROLES = [
 ];
 
 // ======================================================
-// NOTIFY ROLES
+// ROLES TO DM
 // ======================================================
 
 const NOTIFY_ROLES = [
@@ -81,6 +81,12 @@ const client = new Client({
 });
 
 // ======================================================
+// TICKET COUNT
+// ======================================================
+
+let ticketCount = 0;
+
+// ======================================================
 // COMMANDS
 // ======================================================
 
@@ -93,7 +99,7 @@ const commands = [
     .setDescription('Create a custom ticket panel')
 
     // ==================================================
-    // PANEL SETTINGS
+    // REQUIRED OPTIONS
     // ==================================================
 
     .addStringOption(option =>
@@ -119,13 +125,6 @@ const commands = [
 
     .addStringOption(option =>
       option
-        .setName('panel_image')
-        .setDescription('Banner image URL')
-        .setRequired(false)
-    )
-
-    .addStringOption(option =>
-      option
         .setName('ticket_title')
         .setDescription('Ticket title')
         .setRequired(true)
@@ -144,10 +143,6 @@ const commands = [
         .setDescription('Ticket HEX color')
         .setRequired(true)
     )
-
-    // ==================================================
-    // SECTION 1
-    // ==================================================
 
     .addStringOption(option =>
       option
@@ -171,8 +166,15 @@ const commands = [
     )
 
     // ==================================================
-    // SECTION 2
+    // OPTIONAL OPTIONS
     // ==================================================
+
+    .addStringOption(option =>
+      option
+        .setName('panel_image')
+        .setDescription('Banner image URL')
+        .setRequired(false)
+    )
 
     .addStringOption(option =>
       option
@@ -195,10 +197,6 @@ const commands = [
         .setRequired(false)
     )
 
-    // ==================================================
-    // SECTION 3
-    // ==================================================
-
     .addStringOption(option =>
       option
         .setName('section3')
@@ -220,10 +218,6 @@ const commands = [
         .setRequired(false)
     )
 
-    // ==================================================
-    // SECTION 4
-    // ==================================================
-
     .addStringOption(option =>
       option
         .setName('section4')
@@ -244,10 +238,6 @@ const commands = [
         .setDescription('Category ID 4')
         .setRequired(false)
     )
-
-    // ==================================================
-    // SECTION 5
-    // ==================================================
 
     .addStringOption(option =>
       option
@@ -302,7 +292,9 @@ const rest = new REST({ version: '10' }).setToken(TOKEN);
 // ======================================================
 
 client.once('ready', () => {
+
   console.log(`${client.user.tag} Online`);
+
 });
 
 // ======================================================
@@ -333,44 +325,72 @@ client.on('messageCreate', async message => {
   // ====================================================
 
   if (
+
     content.includes('discord.gg/') ||
     content.includes('discord.com/invite/') ||
     content.includes('discordapp.com/invite/')
+
   ) {
 
     await message.delete().catch(() => {});
 
+    // ==================================================
+    // TIMEOUT USER
+    // ==================================================
+
     await message.member.timeout(
+
       10 * 60 * 1000,
       'Posted invite link'
+
     ).catch(() => {});
 
+    // ==================================================
+    // WARNING MESSAGE
+    // ==================================================
+
     await message.channel.send({
+
       embeds: [
+
         new EmbedBuilder()
+
           .setColor('#ff0000')
+
           .setDescription(
             `${message.author} invite links are not allowed.`
           )
+
       ]
+
     });
+
+    // ==================================================
+    // DM STAFF ROLES
+    // ==================================================
 
     for (const roleId of NOTIFY_ROLES) {
 
-      const role = message.guild.roles.cache.get(roleId);
+      const role =
+        message.guild.roles.cache.get(roleId);
 
       if (!role) continue;
 
       for (const member of role.members.values()) {
 
         member.send({
-          content: `The bot has timed out ${message.author}.`
+
+          content:
+            `The bot has timed out ${message.author}.`
+
         }).catch(() => {});
 
       }
+
     }
 
     return;
+
   }
 
   // ====================================================
@@ -383,19 +403,35 @@ client.on('messageCreate', async message => {
 
       await message.delete().catch(() => {});
 
-      await message.channel.send({
-        embeds: [
-          new EmbedBuilder()
-            .setColor('#ff0000')
-            .setDescription(
-              `${message.author} we do not use that word.`
-            )
-        ]
-      });
+      const warn =
+        await message.channel.send({
+
+          embeds: [
+
+            new EmbedBuilder()
+
+              .setColor('#ff0000')
+
+              .setDescription(
+                `${message.author} we do not use that word.`
+              )
+
+          ]
+
+        });
+
+      setTimeout(() => {
+
+        warn.delete().catch(() => {});
+
+      }, 3000);
 
       return;
+
     }
+
   }
+
 });
 
 // ======================================================
@@ -433,10 +469,6 @@ client.on('interactionCreate', async interaction => {
       const ticketColor =
         interaction.options.getString('ticket_color');
 
-      // ==================================================
-      // OPTIONS
-      // ==================================================
-
       const options = [];
 
       for (let i = 1; i <= 5; i++) {
@@ -459,6 +491,7 @@ client.on('interactionCreate', async interaction => {
           options.push({
 
             label: section,
+
             emoji: emoji,
 
             value:
@@ -471,7 +504,7 @@ client.on('interactionCreate', async interaction => {
       }
 
       // ==================================================
-      // EMBED
+      // PANEL EMBED
       // ==================================================
 
       const embed =
@@ -493,17 +526,15 @@ client.on('interactionCreate', async interaction => {
           .setTimestamp();
 
       // ==================================================
-      // CUSTOM IMAGE SUPPORT
+      // PANEL IMAGE
       // ==================================================
 
       if (
-
         panelImage &&
         (
           panelImage.startsWith('https://') ||
           panelImage.startsWith('http://')
         )
-
       ) {
 
         embed.setImage(panelImage);
@@ -544,6 +575,258 @@ client.on('interactionCreate', async interaction => {
         ephemeral: true
 
       });
+
+    }
+
+  }
+
+  // ====================================================
+  // CREATE TICKET
+  // ====================================================
+
+  if (interaction.isStringSelectMenu()) {
+
+    if (interaction.customId === 'ticket_menu') {
+
+      const data =
+        interaction.values[0];
+
+      const split =
+        data.split('|');
+
+      const categoryId =
+        split[0];
+
+      const section =
+        split[1];
+
+      const ticketTitle =
+        split[2];
+
+      const ticketDescription =
+        split[3];
+
+      const ticketColor =
+        split[4];
+
+      ticketCount++;
+
+      const channel =
+        await interaction.guild.channels.create({
+
+          name:
+            `${section}-${ticketCount}`,
+
+          type:
+            ChannelType.GuildText,
+
+          parent:
+            categoryId,
+
+          topic:
+            interaction.user.id,
+
+          permissionOverwrites: [
+
+            {
+              id:
+                interaction.guild.id,
+
+              deny: [
+                PermissionFlagsBits.ViewChannel
+              ]
+            },
+
+            {
+              id:
+                interaction.user.id,
+
+              allow: [
+
+                PermissionFlagsBits.ViewChannel,
+                PermissionFlagsBits.SendMessages,
+                PermissionFlagsBits.ReadMessageHistory
+
+              ]
+            }
+
+          ]
+
+        });
+
+      // ==================================================
+      // BUTTONS
+      // ==================================================
+
+      const buttons =
+        new ActionRowBuilder()
+
+          .addComponents(
+
+            new ButtonBuilder()
+
+              .setCustomId('claim_ticket')
+
+              .setLabel('Claim Ticket')
+
+              .setStyle(ButtonStyle.Primary),
+
+            new ButtonBuilder()
+
+              .setCustomId('close_ticket')
+
+              .setLabel('Close Ticket')
+
+              .setStyle(ButtonStyle.Danger)
+
+          );
+
+      // ==================================================
+      // TICKET EMBED
+      // ==================================================
+
+      const ticketEmbed =
+        new EmbedBuilder()
+
+          .setColor(ticketColor)
+
+          .setTitle(ticketTitle)
+
+          .setDescription(
+
+            ticketDescription
+
+              .replace(
+                '{user}',
+                `${interaction.user}`
+              )
+
+              .replace(
+                '{section}',
+                section
+              )
+
+          )
+
+          .setTimestamp();
+
+      await channel.send({
+
+        content:
+          `${interaction.user}`,
+
+        embeds: [ticketEmbed],
+
+        components: [buttons]
+
+      });
+
+      await interaction.reply({
+
+        content:
+          `Your ticket was created: ${channel}`,
+
+        ephemeral: true
+
+      });
+
+    }
+
+  }
+
+  // ====================================================
+  // BUTTONS
+  // ====================================================
+
+  if (interaction.isButton()) {
+
+    // ==================================================
+    // CLAIM
+    // ==================================================
+
+    if (interaction.customId === 'claim_ticket') {
+
+      if (!isStaff(interaction.member)) {
+
+        return interaction.reply({
+
+          content:
+            'Only staff can claim tickets.',
+
+          ephemeral: true
+
+        });
+
+      }
+
+      await interaction.reply({
+
+        embeds: [
+
+          new EmbedBuilder()
+
+            .setColor('#00ff00')
+
+            .setDescription(
+              `${interaction.user} claimed this ticket.`
+            )
+
+        ]
+
+      });
+
+    }
+
+    // ==================================================
+    // CLOSE
+    // ==================================================
+
+    if (interaction.customId === 'close_ticket') {
+
+      const ownerId =
+        interaction.channel.topic;
+
+      const isOwner =
+        interaction.user.id === ownerId;
+
+      const staff =
+        isStaff(interaction.member);
+
+      if (!isOwner && !staff) {
+
+        return interaction.reply({
+
+          content:
+            'Only the ticket owner or staff can close this ticket.',
+
+          ephemeral: true
+
+        });
+
+      }
+
+      await interaction.reply({
+
+        embeds: [
+
+          new EmbedBuilder()
+
+            .setColor('#ff0000')
+
+            .setDescription(
+              'Ticket closing in 5 seconds.'
+            )
+
+        ]
+
+      });
+
+      setTimeout(async () => {
+
+        await interaction.channel.delete()
+          .catch(() => {});
+
+      }, 5000);
 
     }
 
