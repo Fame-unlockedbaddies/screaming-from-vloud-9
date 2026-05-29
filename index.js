@@ -8,7 +8,7 @@ const {
   ActionRowBuilder,
   StringSelectMenuBuilder,
   ButtonBuilder,
- ButtonStyle,
+  ButtonStyle,
   ChannelType,
   PermissionFlagsBits
 } = require('discord.js');
@@ -526,14 +526,17 @@ client.on('interactionCreate', async interaction => {
           .setTimestamp();
 
       // ==================================================
-      // PANEL IMAGE
+      // PANEL IMAGE SUPPORT
       // ==================================================
 
       if (
         panelImage &&
         (
           panelImage.startsWith('https://') ||
-          panelImage.startsWith('http://')
+          panelImage.startsWith('http://') ||
+          panelImage.includes('cdn.discordapp.com') ||
+          panelImage.includes('media.discordapp.net') ||
+          panelImage.includes('discord.com')
         )
       ) {
 
@@ -578,10 +581,6 @@ client.on('interactionCreate', async interaction => {
   if (interaction.isStringSelectMenu()) {
 
     if (interaction.customId === 'ticket_menu') {
-
-      // ==================================================
-      // FIX APPLICATION DIDNT RESPOND
-      // ==================================================
 
       await interaction.deferReply({
         ephemeral: true
