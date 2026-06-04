@@ -68,6 +68,76 @@ const BLOCKED_WORDS = [
 ];
 
 // ======================================================
+// HARDCODED TICKET OPTIONS
+// label  - what shows in the dropdown
+// emoji  - emoji shown next to label
+// value  - categoryId|channelNamePrefix
+//
+// REPLACE THE CATEGORY IDs BELOW WITH YOUR OWN:
+//   CATEGORY_CONTENT_CREATOR  → category for content creator apps
+//   CATEGORY_REPORT_HACKER    → category for hacker reports
+//   CATEGORY_CC_REWARDS       → category for CC reward claims
+//   CATEGORY_BUG_REPORTS      → category for bug reports
+//   CATEGORY_FEEDBACK         → category for feedback
+//   CATEGORY_REPORT_STAFF     → category for staff reports
+//   CATEGORY_REPORT_ADMIN     → category for admin reports
+// ======================================================
+
+const TICKET_OPTIONS = [
+  {
+    label: 'Apply for Content Creator',
+    value: 'CATEGORY_CONTENT_CREATOR|content-creator'
+  },
+  {
+    label: 'Report a Hacker',
+    value: 'CATEGORY_REPORT_HACKER|report-hacker'
+  },
+  {
+    label: 'CC Rewards',
+    value: 'CATEGORY_CC_REWARDS|cc-rewards'
+  },
+  {
+    label: 'Bug Reports',
+    value: 'CATEGORY_BUG_REPORTS|bug-report'
+  },
+  {
+    label: 'Feedback',
+    value: 'CATEGORY_FEEDBACK|feedback'
+  },
+  {
+    label: 'Report a Staff',
+    value: 'CATEGORY_REPORT_STAFF|report-staff'
+  },
+  {
+    label: 'Report an Admin',
+    value: 'CATEGORY_REPORT_ADMIN|report-admin'
+  }
+];
+
+// ======================================================
+// PANEL CONFIG
+// Customise the panel embed that appears in the channel
+// ======================================================
+
+const PANEL_CONFIG = {
+  title: 'Support Tickets',
+  description: 'Select a category below to open a ticket. Our staff will assist you as soon as possible.',
+  color: '#5865F2',
+  image: null // Set to a URL string to show a banner image, or leave null
+};
+
+// ======================================================
+// TICKET EMBED CONFIG
+// Customise the embed that appears inside each ticket
+// ======================================================
+
+const TICKET_CONFIG = {
+  title: 'Support Ticket',
+  description: 'Welcome {user}\n\nPlease explain your issue and wait for staff to respond.',
+  color: '#2b2d31'
+};
+
+// ======================================================
 // CLIENT
 // ======================================================
 
@@ -90,123 +160,11 @@ const ticketCounts = {};
 // COMMANDS
 // ======================================================
 
-const ticketCommand = new SlashCommandBuilder()
-  .setName('setticket')
-  .setDescription('Create a custom ticket panel');
-
-// ======================================================
-// REQUIRED OPTIONS
-// ======================================================
-
-ticketCommand
-
-  .addStringOption(option =>
-    option
-      .setName('panel_title')
-      .setDescription('Panel title')
-      .setRequired(true)
-  )
-
-  .addStringOption(option =>
-    option
-      .setName('panel_description')
-      .setDescription('Panel description')
-      .setRequired(true)
-  )
-
-  .addStringOption(option =>
-    option
-      .setName('panel_color')
-      .setDescription('Panel HEX color')
-      .setRequired(true)
-  )
-
-  .addStringOption(option =>
-    option
-      .setName('ticket_title')
-      .setDescription('Ticket title')
-      .setRequired(true)
-  )
-
-  .addStringOption(option =>
-    option
-      .setName('ticket_description')
-      .setDescription('Ticket description')
-      .setRequired(true)
-  )
-
-  .addStringOption(option =>
-    option
-      .setName('ticket_color')
-      .setDescription('Ticket HEX color')
-      .setRequired(true)
-  )
-
-  .addStringOption(option =>
-    option
-      .setName('section1')
-      .setDescription('Section 1')
-      .setRequired(true)
-  )
-
-  .addStringOption(option =>
-    option
-      .setName('emoji1')
-      .setDescription('Emoji 1')
-      .setRequired(true)
-  )
-
-  .addStringOption(option =>
-    option
-      .setName('category1')
-      .setDescription('Category ID 1')
-      .setRequired(true)
-  );
-
-// ======================================================
-// OPTIONAL PANEL IMAGE
-// ======================================================
-
-ticketCommand.addStringOption(option =>
-  option
-    .setName('panel_image')
-    .setDescription('Banner image URL')
-    .setRequired(false)
-);
-
-// ======================================================
-// ADD 10 OPTIONAL SECTIONS
-// ======================================================
-
-for (let i = 2; i <= 10; i++) {
-
-  ticketCommand
-
-    .addStringOption(option =>
-      option
-        .setName(`section${i}`)
-        .setDescription(`Section ${i}`)
-        .setRequired(false)
-    )
-
-    .addStringOption(option =>
-      option
-        .setName(`emoji${i}`)
-        .setDescription(`Emoji ${i}`)
-        .setRequired(false)
-    )
-
-    .addStringOption(option =>
-      option
-        .setName(`category${i}`)
-        .setDescription(`Category ID ${i}`)
-        .setRequired(false)
-    );
-
-}
-
 const commands = [
-  ticketCommand.toJSON()
+  new SlashCommandBuilder()
+    .setName('setticket')
+    .setDescription('Send the ticket panel to this channel')
+    .toJSON()
 ];
 
 // ======================================================
@@ -280,7 +238,7 @@ client.on('messageCreate', async message => {
     await message.delete().catch(() => {});
 
     await message.member.timeout(
-      10 * 60 * 1000,
+      5 * 60 * 1000,
       'Posted invite link'
     ).catch(() => {});
 
@@ -382,163 +340,65 @@ client.on('interactionCreate', async interaction => {
 
     try {
 
-      await interaction.deferReply({
-        ephemeral: true
-      });
-
-      const panelTitle =
-        interaction.options.getString('panel_title');
-
-      const panelDescription =
-        interaction.options.getString('panel_description');
-
-      const panelColor =
-        interaction.options.getString('panel_color');
-
-      const panelImage =
-        interaction.options.getString('panel_image');
-
-      const ticketTitle =
-        interaction.options.getString('ticket_title');
-
-      const ticketDescription =
-        interaction.options.getString('ticket_description');
-
-      const ticketColor =
-        interaction.options.getString('ticket_color');
-
-      const options = [];
+      await interaction.deferReply({ ephemeral: true });
 
       // ==================================================
-      // HANDLE ALL 10 SECTIONS
+      // BUILD PANEL EMBED
       // ==================================================
 
-      for (let i = 1; i <= 10; i++) {
+      const embed = new EmbedBuilder()
 
-        const section =
-          interaction.options.getString(`section${i}`);
+        .setColor(PANEL_CONFIG.color)
 
-        const emoji =
-          interaction.options.getString(`emoji${i}`);
+        .setTitle(PANEL_CONFIG.title)
 
-        const category =
-          interaction.options.getString(`category${i}`);
+        .setDescription(PANEL_CONFIG.description)
 
-        if (
-          section &&
-          emoji &&
-          category
-        ) {
+        .setFooter({ text: 'Select a category below' })
 
-          options.push({
-
-            label:
-              section.substring(0, 100),
-
-            emoji:
-              emoji,
-
-            value:
-              `${category}|${section}`
-
-          });
-
-        }
-
-      }
-
-      // ==================================================
-      // DISCORD LIMIT FIX
-      // ==================================================
-
-      if (options.length > 25) {
-
-        return interaction.editReply({
-          content:
-            'Discord only allows 25 menu options.'
-        });
-
-      }
-
-      // ==================================================
-      // PANEL EMBED
-      // ==================================================
-
-      const embed =
-        new EmbedBuilder()
-
-          .setColor(panelColor)
-
-          .setTitle(panelTitle)
-
-          .setDescription(panelDescription)
-
-          .setFooter({
-
-            text:
-              'Select a category below'
-
-          })
-
-          .setTimestamp();
-
-      // ==================================================
-      // IMAGE SUPPORT
-      // ==================================================
+        .setTimestamp();
 
       if (
-        panelImage &&
+        PANEL_CONFIG.image &&
         (
-          panelImage.startsWith('https://') ||
-          panelImage.startsWith('http://') ||
-          panelImage.includes('cdn.discordapp.com') ||
-          panelImage.includes('media.discordapp.net') ||
-          panelImage.includes('discord.com')
+          PANEL_CONFIG.image.startsWith('https://') ||
+          PANEL_CONFIG.image.startsWith('http://')
         )
       ) {
 
-        embed.setImage(panelImage);
+        embed.setImage(PANEL_CONFIG.image);
 
       }
 
       // ==================================================
-      // MENU
+      // BUILD DROPDOWN MENU
       // ==================================================
 
-      const menu =
-        new StringSelectMenuBuilder()
+      const menu = new StringSelectMenuBuilder()
 
-          .setCustomId(
-            `ticket_menu_${Date.now()}`
-          )
+        .setCustomId(`ticket_menu_${Date.now()}`)
 
-          .setPlaceholder('Open Ticket')
+        .setPlaceholder('Open a Ticket')
 
-          .addOptions(options);
+        .addOptions(
+          TICKET_OPTIONS.map(opt => ({
+            label: opt.label,
+            value: opt.value
+          }))
+        );
 
-      const row =
-        new ActionRowBuilder()
-
-          .addComponents(menu);
+      const row = new ActionRowBuilder().addComponents(menu);
 
       // ==================================================
       // SEND PANEL
       // ==================================================
 
       await interaction.channel.send({
-
         embeds: [embed],
-
         components: [row]
-
       });
 
-      await interaction.editReply({
-
-        content:
-          'Ticket panel created.'
-
-      });
+      await interaction.editReply({ content: 'Ticket panel created.' });
 
     } catch (err) {
 
@@ -547,12 +407,8 @@ client.on('interactionCreate', async interaction => {
       if (!interaction.replied) {
 
         interaction.reply({
-
-          content:
-            'Something went wrong.',
-
+          content: 'Something went wrong.',
           ephemeral: true
-
         }).catch(() => {});
 
       }
@@ -562,154 +418,117 @@ client.on('interactionCreate', async interaction => {
   }
 
   // ====================================================
-  // CREATE TICKET
+  // CREATE TICKET (dropdown selected)
   // ====================================================
 
   if (interaction.isStringSelectMenu()) {
 
-    if (
-      interaction.customId.startsWith(
-        'ticket_menu_'
-      )
-    ) {
+    if (interaction.customId.startsWith('ticket_menu_')) {
 
       try {
 
-        await interaction.deferReply({
-          ephemeral: true
-        });
+        await interaction.deferReply({ ephemeral: true });
 
-        const data =
-          interaction.values[0];
+        const data = interaction.values[0];
+        const [categoryId, channelPrefix] = data.split('|');
 
-        const split =
-          data.split('|');
+        // Find the matching option for the label
+        const selectedOption = TICKET_OPTIONS.find(
+          opt => opt.value === data
+        );
 
-        const categoryId =
-          split[0];
-
-        const section =
-          split[1];
+        const sectionLabel = selectedOption
+          ? selectedOption.label
+          : channelPrefix;
 
         // ==================================================
-        // CATEGORY COUNT
+        // TICKET COUNT PER CATEGORY
         // ==================================================
 
         if (!ticketCounts[categoryId]) {
-
           ticketCounts[categoryId] = 1;
-
         } else {
-
           ticketCounts[categoryId]++;
-
         }
 
-        const ticketNumber =
-          ticketCounts[categoryId];
+        const ticketNumber = ticketCounts[categoryId];
 
         // ==================================================
-        // CREATE CHANNEL
+        // CREATE TICKET CHANNEL
         // ==================================================
 
-        const channel =
-          await interaction.guild.channels.create({
+        const channel = await interaction.guild.channels.create({
 
-            name:
-              `${section}-${ticketNumber}`,
+          name: `${channelPrefix}-${ticketNumber}`,
 
-            type:
-              ChannelType.GuildText,
+          type: ChannelType.GuildText,
 
-            parent:
-              categoryId,
+          parent: categoryId,
 
-            topic:
-              interaction.user.id,
+          topic: interaction.user.id,
 
-            permissionOverwrites: [
+          permissionOverwrites: [
 
-              {
-                id:
-                  interaction.guild.id,
+            {
+              id: interaction.guild.id,
+              deny: [PermissionFlagsBits.ViewChannel]
+            },
 
-                deny: [
-                  PermissionFlagsBits.ViewChannel
-                ]
-              },
+            {
+              id: interaction.user.id,
+              allow: [
+                PermissionFlagsBits.ViewChannel,
+                PermissionFlagsBits.SendMessages,
+                PermissionFlagsBits.ReadMessageHistory
+              ]
+            }
 
-              {
-                id:
-                  interaction.user.id,
+          ]
 
-                allow: [
-
-                  PermissionFlagsBits.ViewChannel,
-                  PermissionFlagsBits.SendMessages,
-                  PermissionFlagsBits.ReadMessageHistory
-
-                ]
-              }
-
-            ]
-
-          });
+        });
 
         // ==================================================
-        // BUTTONS
+        // TICKET BUTTONS
         // ==================================================
 
-        const buttons =
-          new ActionRowBuilder()
+        const buttons = new ActionRowBuilder()
 
-            .addComponents(
+          .addComponents(
 
-              new ButtonBuilder()
+            new ButtonBuilder()
+              .setCustomId('claim_ticket')
+              .setLabel('Claim Ticket')
+              .setStyle(ButtonStyle.Primary),
 
-                .setCustomId('claim_ticket')
+            new ButtonBuilder()
+              .setCustomId('close_ticket')
+              .setLabel('Close Ticket')
+              .setStyle(ButtonStyle.Danger)
 
-                .setLabel('Claim Ticket')
-
-                .setStyle(ButtonStyle.Primary),
-
-              new ButtonBuilder()
-
-                .setCustomId('close_ticket')
-
-                .setLabel('Close Ticket')
-
-                .setStyle(ButtonStyle.Danger)
-
-            );
+          );
 
         // ==================================================
         // TICKET EMBED
         // ==================================================
 
-        const embed =
-          new EmbedBuilder()
+        const ticketDescription = TICKET_CONFIG.description
+          .replace('{user}', `${interaction.user}`);
 
-            .setColor('#2b2d31')
+        const embed = new EmbedBuilder()
 
-            .setTitle('Support Ticket')
+          .setColor(TICKET_CONFIG.color)
 
-            .setDescription(
-              `Welcome ${interaction.user}\n\nPlease explain your issue and wait for staff to respond.`
-            )
+          .setTitle(TICKET_CONFIG.title)
 
-            .setFooter({
+          .setDescription(ticketDescription)
 
-              text:
-                `Category: ${section}`
+          .setFooter({ text: `Category: ${sectionLabel}` })
 
-            })
-
-            .setTimestamp();
+          .setTimestamp();
 
         await channel.send({
 
-          content:
-            `${interaction.user}`,
+          content: `${interaction.user}`,
 
           embeds: [embed],
 
@@ -718,14 +537,11 @@ client.on('interactionCreate', async interaction => {
         });
 
         // ==================================================
-        // SUCCESS
+        // REPLY TO USER
         // ==================================================
 
         await interaction.editReply({
-
-          content:
-            `Your ticket was created: ${channel}`
-
+          content: `Your ticket was created: ${channel}`
         });
 
       } catch (err) {
@@ -735,12 +551,8 @@ client.on('interactionCreate', async interaction => {
         if (!interaction.replied) {
 
           interaction.reply({
-
-            content:
-              'Failed to create ticket.',
-
+            content: 'Failed to create ticket.',
             ephemeral: true
-
           }).catch(() => {});
 
         }
@@ -766,12 +578,8 @@ client.on('interactionCreate', async interaction => {
       if (!isStaff(interaction.member)) {
 
         return interaction.reply({
-
-          content:
-            'Only staff can claim tickets.',
-
+          content: 'Only staff can claim tickets.',
           ephemeral: true
-
         });
 
       }
@@ -800,24 +608,15 @@ client.on('interactionCreate', async interaction => {
 
     if (interaction.customId === 'close_ticket') {
 
-      const ownerId =
-        interaction.channel.topic;
-
-      const isOwner =
-        interaction.user.id === ownerId;
-
-      const staff =
-        isStaff(interaction.member);
+      const ownerId = interaction.channel.topic;
+      const isOwner = interaction.user.id === ownerId;
+      const staff = isStaff(interaction.member);
 
       if (!isOwner && !staff) {
 
         return interaction.reply({
-
-          content:
-            'Only the ticket owner or staff can close this ticket.',
-
+          content: 'Only the ticket owner or staff can close this ticket.',
           ephemeral: true
-
         });
 
       }
@@ -830,9 +629,7 @@ client.on('interactionCreate', async interaction => {
 
             .setColor('#ff0000')
 
-            .setDescription(
-              'Ticket closing in 5 seconds.'
-            )
+            .setDescription('Ticket closing in 5 seconds.')
 
         ]
 
@@ -840,8 +637,7 @@ client.on('interactionCreate', async interaction => {
 
       setTimeout(async () => {
 
-        await interaction.channel.delete()
-          .catch(() => {});
+        await interaction.channel.delete().catch(() => {});
 
       }, 5000);
 
