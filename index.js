@@ -31,7 +31,10 @@ app.listen(process.env.PORT || 3000, () => {
 });
 
 // ======================================================
-// CONFIG
+// CONFIG — set these in your .env or Render env vars
+// TOKEN     = your bot token
+// CLIENT_ID = your bot application ID
+// GUILD_ID  = your server ID
 // ======================================================
 
 const TOKEN = process.env.TOKEN;
@@ -40,25 +43,27 @@ const GUILD_ID = process.env.GUILD_ID;
 
 // ======================================================
 // STAFF ROLES
+// Add the role IDs that count as staff
 // ======================================================
 
 const STAFF_ROLES = [
-  '111111111111111111',
-  '222222222222222222'
+  'YOUR_STAFF_ROLE_ID_HERE',
+  'YOUR_STAFF_ROLE_ID_HERE'
 ];
 
 // ======================================================
-// ROLES TO DM
+// ROLES TO DM WHEN AUTOMOD FIRES
+// Add role IDs that should be notified via DM
 // ======================================================
 
 const NOTIFY_ROLES = [
-  '1509385192853213184',
-  '1482560426972549232',
-  '1444833625362403381'
+  'YOUR_NOTIFY_ROLE_ID_HERE',
+  'YOUR_NOTIFY_ROLE_ID_HERE'
 ];
 
 // ======================================================
 // BLOCKED WORDS
+// Any message containing these will be deleted
 // ======================================================
 
 const BLOCKED_WORDS = [
@@ -72,70 +77,69 @@ const BLOCKED_WORDS = [
 // TICKET OPTIONS
 //
 // label      - text shown in the dropdown
-// emoji      - emoji shown next to the label in the dropdown
-//              use a unicode emoji e.g. 'star'
-//              or a custom server emoji e.g. '<:name:id>'
-//              set to null for no emoji
-// categoryId - REPLACE with your Discord category ID
-//              right-click a category > Copy ID
+// emoji      - emoji next to the label
+//              unicode:       null or 'star'
+//              custom emoji:  '<:name:id>'
+//              none:          null
+// categoryId - right-click a category in Discord > Copy ID
 // prefix     - channel name prefix e.g. "content-creator-1"
 // ======================================================
 
 const TICKET_OPTIONS = [
   {
     label: 'Apply for Content Creator',
-    emoji: null,                          // e.g. '<:cc:1234567890>'
-    categoryId: 'YOUR_CATEGORY_ID_HERE', // content creator category
+    emoji: null,
+    categoryId: 'YOUR_CATEGORY_ID_HERE',
     prefix: 'content-creator'
   },
   {
     label: 'Report a Hacker',
-    emoji: null,                          // e.g. '<:hacker:1234567890>'
-    categoryId: 'YOUR_CATEGORY_ID_HERE', // hacker reports category
+    emoji: null,
+    categoryId: 'YOUR_CATEGORY_ID_HERE',
     prefix: 'report-hacker'
   },
   {
     label: 'CC Rewards',
-    emoji: null,                          // e.g. '<:reward:1234567890>'
-    categoryId: 'YOUR_CATEGORY_ID_HERE', // cc rewards category
+    emoji: null,
+    categoryId: 'YOUR_CATEGORY_ID_HERE',
     prefix: 'cc-rewards'
   },
   {
     label: 'Bug Reports',
-    emoji: null,                          // e.g. '<:bug:1234567890>'
-    categoryId: 'YOUR_CATEGORY_ID_HERE', // bug reports category
+    emoji: null,
+    categoryId: 'YOUR_CATEGORY_ID_HERE',
     prefix: 'bug-report'
   },
   {
     label: 'Feedback',
-    emoji: null,                          // e.g. '<:feedback:1234567890>'
-    categoryId: 'YOUR_CATEGORY_ID_HERE', // feedback category
+    emoji: null,
+    categoryId: 'YOUR_CATEGORY_ID_HERE',
     prefix: 'feedback'
   },
   {
     label: 'Report a Staff',
-    emoji: null,                          // e.g. '<:staff:1234567890>'
-    categoryId: 'YOUR_CATEGORY_ID_HERE', // report staff category
+    emoji: null,
+    categoryId: 'YOUR_CATEGORY_ID_HERE',
     prefix: 'report-staff'
   },
   {
     label: 'Report an Admin',
-    emoji: null,                          // e.g. '<:admin:1234567890>'
-    categoryId: 'YOUR_CATEGORY_ID_HERE', // report admin category
+    emoji: null,
+    categoryId: 'YOUR_CATEGORY_ID_HERE',
     prefix: 'report-admin'
   }
 ];
 
 // ======================================================
-// PANEL CONFIG
-// The embed posted in the channel when you run /setticket
+// PANEL EMBED CONFIG
+// The embed posted when you run /setticket
 // ======================================================
 
 const PANEL_CONFIG = {
   title: 'Support Tickets',
-  description: 'Select a category below to open a ticket. Our staff will assist you as soon as possible.',
-  color: '#5865F2',  // change to any HEX colour
-  image: null        // set to an image URL or leave null
+  description: 'Select a category below to open a ticket.\nOur staff will assist you as soon as possible.',
+  color: '#5865F2',
+  image: null
 };
 
 // ======================================================
@@ -146,7 +150,7 @@ const PANEL_CONFIG = {
 const TICKET_CONFIG = {
   title: 'Support Ticket',
   description: 'Welcome {user}\n\nPlease explain your issue and wait for staff to respond.',
-  color: '#2b2d31'   // change to any HEX colour
+  color: '#2b2d31'
 };
 
 // ======================================================
@@ -185,10 +189,80 @@ const ticketCounts = {};
 // ======================================================
 
 const commands = [
+
+  // ====================================================
+  // /setticket — posts the ticket panel
+  // ====================================================
+
   new SlashCommandBuilder()
     .setName('setticket')
     .setDescription('Send the ticket panel to this channel')
+    .setDefaultMemberPermissions(PermissionFlagsBits.ManageChannels)
+    .toJSON(),
+
+  // ====================================================
+  // /close — closes the ticket channel
+  // ====================================================
+
+  new SlashCommandBuilder()
+    .setName('close')
+    .setDescription('Close this ticket')
+    .toJSON(),
+
+  // ====================================================
+  // /claim — claim this ticket as a staff member
+  // ====================================================
+
+  new SlashCommandBuilder()
+    .setName('claim')
+    .setDescription('Claim this ticket')
+    .toJSON(),
+
+  // ====================================================
+  // /add — add a user to this ticket
+  // ====================================================
+
+  new SlashCommandBuilder()
+    .setName('add')
+    .setDescription('Add a user to this ticket')
+    .addUserOption(option =>
+      option
+        .setName('user')
+        .setDescription('User to add')
+        .setRequired(true)
+    )
+    .toJSON(),
+
+  // ====================================================
+  // /remove — remove a user from this ticket
+  // ====================================================
+
+  new SlashCommandBuilder()
+    .setName('remove')
+    .setDescription('Remove a user from this ticket')
+    .addUserOption(option =>
+      option
+        .setName('user')
+        .setDescription('User to remove')
+        .setRequired(true)
+    )
+    .toJSON(),
+
+  // ====================================================
+  // /rename — rename the ticket channel
+  // ====================================================
+
+  new SlashCommandBuilder()
+    .setName('rename')
+    .setDescription('Rename this ticket channel')
+    .addStringOption(option =>
+      option
+        .setName('name')
+        .setDescription('New channel name')
+        .setRequired(true)
+    )
     .toJSON()
+
 ];
 
 // ======================================================
@@ -284,18 +358,14 @@ client.on('messageCreate', async message => {
 
     for (const roleId of NOTIFY_ROLES) {
 
-      const role =
-        message.guild.roles.cache.get(roleId);
+      const role = message.guild.roles.cache.get(roleId);
 
       if (!role) continue;
 
       for (const member of role.members.values()) {
 
         member.send({
-
-          content:
-            `The bot has timed out ${message.author} for posting an invite link.`
-
+          content: `The bot has timed out ${message.author} for posting an invite link.`
         }).catch(() => {});
 
       }
@@ -316,22 +386,21 @@ client.on('messageCreate', async message => {
 
       await message.delete().catch(() => {});
 
-      const warn =
-        await message.channel.send({
+      const warn = await message.channel.send({
 
-          embeds: [
+        embeds: [
 
-            new EmbedBuilder()
+          new EmbedBuilder()
 
-              .setColor(AUTOMOD_CONFIG.blockedWordEmbedColor)
+            .setColor(AUTOMOD_CONFIG.blockedWordEmbedColor)
 
-              .setDescription(
-                `${message.author} we do not use that word.`
-              )
+            .setDescription(
+              `${message.author} we do not use that word.`
+            )
 
-          ]
+        ]
 
-        });
+      });
 
       setTimeout(() => {
 
@@ -366,20 +435,11 @@ client.on('interactionCreate', async interaction => {
 
       await interaction.deferReply({ ephemeral: true });
 
-      // ==================================================
-      // BUILD PANEL EMBED
-      // ==================================================
-
       const embed = new EmbedBuilder()
-
         .setColor(PANEL_CONFIG.color)
-
         .setTitle(PANEL_CONFIG.title)
-
         .setDescription(PANEL_CONFIG.description)
-
         .setFooter({ text: 'Select a category below' })
-
         .setTimestamp();
 
       if (
@@ -389,14 +449,8 @@ client.on('interactionCreate', async interaction => {
           PANEL_CONFIG.image.startsWith('http://')
         )
       ) {
-
         embed.setImage(PANEL_CONFIG.image);
-
       }
-
-      // ==================================================
-      // BUILD DROPDOWN MENU
-      // ==================================================
 
       const menuOptions = TICKET_OPTIONS.map((opt, index) => {
 
@@ -414,18 +468,11 @@ client.on('interactionCreate', async interaction => {
       });
 
       const menu = new StringSelectMenuBuilder()
-
         .setCustomId(`ticket_menu_${Date.now()}`)
-
         .setPlaceholder('Open a Ticket')
-
         .addOptions(menuOptions);
 
       const row = new ActionRowBuilder().addComponents(menu);
-
-      // ==================================================
-      // SEND PANEL
-      // ==================================================
 
       await interaction.channel.send({
         embeds: [embed],
@@ -439,12 +486,10 @@ client.on('interactionCreate', async interaction => {
       console.log(err);
 
       if (!interaction.replied) {
-
         interaction.reply({
           content: 'Something went wrong.',
           ephemeral: true
         }).catch(() => {});
-
       }
 
     }
@@ -452,7 +497,197 @@ client.on('interactionCreate', async interaction => {
   }
 
   // ====================================================
-  // CREATE TICKET (dropdown selected)
+  // /CLOSE
+  // ====================================================
+
+  if (
+    interaction.isChatInputCommand() &&
+    interaction.commandName === 'close'
+  ) {
+
+    const ownerId = interaction.channel.topic;
+    const isOwner = interaction.user.id === ownerId;
+    const staff = isStaff(interaction.member);
+
+    if (!isOwner && !staff) {
+
+      return interaction.reply({
+        content: 'Only the ticket owner or staff can close this ticket.',
+        ephemeral: true
+      });
+
+    }
+
+    await interaction.reply({
+
+      embeds: [
+
+        new EmbedBuilder()
+          .setColor('#ff0000')
+          .setDescription('Ticket closing in 5 seconds.')
+
+      ]
+
+    });
+
+    setTimeout(async () => {
+
+      await interaction.channel.delete().catch(() => {});
+
+    }, 5000);
+
+  }
+
+  // ====================================================
+  // /CLAIM
+  // ====================================================
+
+  if (
+    interaction.isChatInputCommand() &&
+    interaction.commandName === 'claim'
+  ) {
+
+    if (!isStaff(interaction.member)) {
+
+      return interaction.reply({
+        content: 'Only staff can claim tickets.',
+        ephemeral: true
+      });
+
+    }
+
+    await interaction.reply({
+
+      embeds: [
+
+        new EmbedBuilder()
+          .setColor('#00ff00')
+          .setDescription(`${interaction.user} claimed this ticket.`)
+
+      ]
+
+    });
+
+  }
+
+  // ====================================================
+  // /ADD
+  // ====================================================
+
+  if (
+    interaction.isChatInputCommand() &&
+    interaction.commandName === 'add'
+  ) {
+
+    if (!isStaff(interaction.member)) {
+
+      return interaction.reply({
+        content: 'Only staff can add users to tickets.',
+        ephemeral: true
+      });
+
+    }
+
+    const user = interaction.options.getUser('user');
+
+    await interaction.channel.permissionOverwrites.edit(user, {
+      ViewChannel: true,
+      SendMessages: true,
+      ReadMessageHistory: true
+    });
+
+    await interaction.reply({
+
+      embeds: [
+
+        new EmbedBuilder()
+          .setColor('#00ff00')
+          .setDescription(`${user} has been added to this ticket.`)
+
+      ]
+
+    });
+
+  }
+
+  // ====================================================
+  // /REMOVE
+  // ====================================================
+
+  if (
+    interaction.isChatInputCommand() &&
+    interaction.commandName === 'remove'
+  ) {
+
+    if (!isStaff(interaction.member)) {
+
+      return interaction.reply({
+        content: 'Only staff can remove users from tickets.',
+        ephemeral: true
+      });
+
+    }
+
+    const user = interaction.options.getUser('user');
+
+    await interaction.channel.permissionOverwrites.edit(user, {
+      ViewChannel: false,
+      SendMessages: false,
+      ReadMessageHistory: false
+    });
+
+    await interaction.reply({
+
+      embeds: [
+
+        new EmbedBuilder()
+          .setColor('#ff0000')
+          .setDescription(`${user} has been removed from this ticket.`)
+
+      ]
+
+    });
+
+  }
+
+  // ====================================================
+  // /RENAME
+  // ====================================================
+
+  if (
+    interaction.isChatInputCommand() &&
+    interaction.commandName === 'rename'
+  ) {
+
+    if (!isStaff(interaction.member)) {
+
+      return interaction.reply({
+        content: 'Only staff can rename tickets.',
+        ephemeral: true
+      });
+
+    }
+
+    const name = interaction.options.getString('name');
+
+    await interaction.channel.setName(name).catch(() => {});
+
+    await interaction.reply({
+
+      embeds: [
+
+        new EmbedBuilder()
+          .setColor('#5865F2')
+          .setDescription(`Ticket renamed to **${name}**.`)
+
+      ]
+
+    });
+
+  }
+
+  // ====================================================
+  // DROPDOWN — CREATE TICKET
   // ====================================================
 
   if (interaction.isStringSelectMenu()) {
@@ -476,10 +711,6 @@ client.on('interactionCreate', async interaction => {
 
         const { label, categoryId, prefix } = selected;
 
-        // ==================================================
-        // TICKET COUNT PER CATEGORY
-        // ==================================================
-
         if (!ticketCounts[categoryId]) {
           ticketCounts[categoryId] = 1;
         } else {
@@ -487,10 +718,6 @@ client.on('interactionCreate', async interaction => {
         }
 
         const ticketNumber = ticketCounts[categoryId];
-
-        // ==================================================
-        // CREATE TICKET CHANNEL
-        // ==================================================
 
         const channel = await interaction.guild.channels.create({
 
@@ -522,10 +749,6 @@ client.on('interactionCreate', async interaction => {
 
         });
 
-        // ==================================================
-        // TICKET BUTTONS
-        // ==================================================
-
         const buttons = new ActionRowBuilder()
 
           .addComponents(
@@ -542,38 +765,21 @@ client.on('interactionCreate', async interaction => {
 
           );
 
-        // ==================================================
-        // TICKET EMBED
-        // ==================================================
-
         const ticketDescription = TICKET_CONFIG.description
           .replace('{user}', `${interaction.user}`);
 
         const embed = new EmbedBuilder()
-
           .setColor(TICKET_CONFIG.color)
-
           .setTitle(TICKET_CONFIG.title)
-
           .setDescription(ticketDescription)
-
           .setFooter({ text: `Category: ${label}` })
-
           .setTimestamp();
 
         await channel.send({
-
           content: `${interaction.user}`,
-
           embeds: [embed],
-
           components: [buttons]
-
         });
-
-        // ==================================================
-        // REPLY TO USER
-        // ==================================================
 
         await interaction.editReply({
           content: `Your ticket was created: ${channel}`
@@ -584,12 +790,10 @@ client.on('interactionCreate', async interaction => {
         console.log(err);
 
         if (!interaction.replied) {
-
           interaction.reply({
             content: 'Failed to create ticket.',
             ephemeral: true
           }).catch(() => {});
-
         }
 
       }
@@ -605,7 +809,7 @@ client.on('interactionCreate', async interaction => {
   if (interaction.isButton()) {
 
     // ==================================================
-    // CLAIM
+    // CLAIM BUTTON
     // ==================================================
 
     if (interaction.customId === 'claim_ticket') {
@@ -624,12 +828,8 @@ client.on('interactionCreate', async interaction => {
         embeds: [
 
           new EmbedBuilder()
-
             .setColor('#00ff00')
-
-            .setDescription(
-              `${interaction.user} claimed this ticket.`
-            )
+            .setDescription(`${interaction.user} claimed this ticket.`)
 
         ]
 
@@ -638,7 +838,7 @@ client.on('interactionCreate', async interaction => {
     }
 
     // ==================================================
-    // CLOSE
+    // CLOSE BUTTON
     // ==================================================
 
     if (interaction.customId === 'close_ticket') {
@@ -661,9 +861,7 @@ client.on('interactionCreate', async interaction => {
         embeds: [
 
           new EmbedBuilder()
-
             .setColor('#ff0000')
-
             .setDescription('Ticket closing in 5 seconds.')
 
         ]
