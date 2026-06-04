@@ -68,73 +68,96 @@ const BLOCKED_WORDS = [
 ];
 
 // ======================================================
-// HARDCODED TICKET OPTIONS
-// label  - what shows in the dropdown
-// emoji  - emoji shown next to label
-// value  - categoryId|channelNamePrefix
+// TICKET OPTIONS
 //
-// REPLACE THE CATEGORY IDs BELOW WITH YOUR OWN:
-//   CATEGORY_CONTENT_CREATOR  → category for content creator apps
-//   CATEGORY_REPORT_HACKER    → category for hacker reports
-//   CATEGORY_CC_REWARDS       → category for CC reward claims
-//   CATEGORY_BUG_REPORTS      → category for bug reports
-//   CATEGORY_FEEDBACK         → category for feedback
-//   CATEGORY_REPORT_STAFF     → category for staff reports
-//   CATEGORY_REPORT_ADMIN     → category for admin reports
+// label      - text shown in the dropdown
+// emoji      - emoji shown next to the label (use a
+//              unicode emoji or a Discord emoji string
+//              like '<:name:id>' for custom server emojis)
+//              set to null to show no emoji
+// categoryId - the Discord category ID where the ticket
+//              channel will be created
+// prefix     - the channel name prefix e.g. "content-creator-1"
 // ======================================================
 
 const TICKET_OPTIONS = [
   {
-    label: 'Apply for Content Creator',
-    value: 'CATEGORY_CONTENT_CREATOR|content-creator'
+    label: 'Apply for Content Creator', 
+    emoji: null,
+    categoryId: 'YOUR_CATEGORY_ID_HERE', // 🎬
+    prefix: 'content-creator'
   },
   {
     label: 'Report a Hacker',
-    value: 'CATEGORY_REPORT_HACKER|report-hacker'
+    emoji: null,
+    categoryId: 'YOUR_CATEGORY_ID_HERE', // 🚨
+    prefix: 'report-hacker'
   },
   {
     label: 'CC Rewards',
-    value: 'CATEGORY_CC_REWARDS|cc-rewards'
+    emoji: null,
+    categoryId: 'YOUR_CATEGORY_ID_HERE', // 🏆
+    prefix: 'cc-rewards'
   },
   {
     label: 'Bug Reports',
-    value: 'CATEGORY_BUG_REPORTS|bug-report'
+    emoji: null,
+    categoryId: 'YOUR_CATEGORY_ID_HERE', // 🐛
+    prefix: 'bug-report'
   },
   {
     label: 'Feedback',
-    value: 'CATEGORY_FEEDBACK|feedback'
+    emoji: null,
+    categoryId: 'YOUR_CATEGORY_ID_HERE', // 💬
+    prefix: 'feedback'
   },
   {
     label: 'Report a Staff',
-    value: 'CATEGORY_REPORT_STAFF|report-staff'
+    emoji: null,
+    categoryId: 'YOUR_CATEGORY_ID_HERE', // ⚠️
+    prefix: 'report-staff'
   },
   {
     label: 'Report an Admin',
-    value: 'CATEGORY_REPORT_ADMIN|report-admin'
+    emoji: null,
+    categoryId: 'YOUR_CATEGORY_ID_HERE', // 🔴
+    prefix: 'report-admin'
   }
 ];
 
 // ======================================================
 // PANEL CONFIG
-// Customise the panel embed that appears in the channel
+// The embed that gets posted when you run /setticket
 // ======================================================
 
 const PANEL_CONFIG = {
   title: 'Support Tickets',
   description: 'Select a category below to open a ticket. Our staff will assist you as soon as possible.',
-  color: '#5865F2',
-  image: null // Set to a URL string to show a banner image, or leave null
+  color: '#5865F2',     // <-- change this HEX to any colour you want
+  image: null           // <-- set to an image URL string or leave null
 };
 
 // ======================================================
 // TICKET EMBED CONFIG
-// Customise the embed that appears inside each ticket
+// The embed posted inside each ticket channel
 // ======================================================
 
 const TICKET_CONFIG = {
   title: 'Support Ticket',
   description: 'Welcome {user}\n\nPlease explain your issue and wait for staff to respond.',
-  color: '#2b2d31'
+  color: '#2b2d31'      // <-- change this HEX to any colour you want
+};
+
+// ======================================================
+// AUTOMOD CONFIG
+// ======================================================
+
+const AUTOMOD_CONFIG = {
+  inviteTimeoutMs: 5 * 60 * 1000,    // 5 minutes
+  inviteTimeoutReason: 'Posted invite link',
+  inviteEmbedColor: '#ff0000',
+  blockedWordEmbedColor: '#ff0000',
+  blockedWordDeleteMs: 3000
 };
 
 // ======================================================
@@ -238,8 +261,8 @@ client.on('messageCreate', async message => {
     await message.delete().catch(() => {});
 
     await message.member.timeout(
-      5 * 60 * 1000,
-      'Posted invite link'
+      AUTOMOD_CONFIG.inviteTimeoutMs,
+      AUTOMOD_CONFIG.inviteTimeoutReason
     ).catch(() => {});
 
     await message.channel.send({
@@ -248,7 +271,7 @@ client.on('messageCreate', async message => {
 
         new EmbedBuilder()
 
-          .setColor('#ff0000')
+          .setColor(AUTOMOD_CONFIG.inviteEmbedColor)
 
           .setDescription(
             `${message.author} invite links are not allowed.`
@@ -270,7 +293,7 @@ client.on('messageCreate', async message => {
         member.send({
 
           content:
-            `The bot has timed out ${message.author}.`
+            `The bot has timed out ${message.author} for posting an invite link.`
 
         }).catch(() => {});
 
@@ -299,7 +322,7 @@ client.on('messageCreate', async message => {
 
             new EmbedBuilder()
 
-              .setColor('#ff0000')
+              .setColor(AUTOMOD_CONFIG.blockedWordEmbedColor)
 
               .setDescription(
                 `${message.author} we do not use that word.`
@@ -313,7 +336,7 @@ client.on('messageCreate', async message => {
 
         warn.delete().catch(() => {});
 
-      }, 3000);
+      }, AUTOMOD_CONFIG.blockedWordDeleteMs);
 
       return;
 
@@ -374,18 +397,28 @@ client.on('interactionCreate', async interaction => {
       // BUILD DROPDOWN MENU
       // ==================================================
 
+      const menuOptions = TICKET_OPTIONS.map((opt, index) => {
+
+        const option = {
+          label: opt.label,
+          value: String(index)
+        };
+
+        if (opt.emoji) {
+          option.emoji = opt.emoji;
+        }
+
+        return option;
+
+      });
+
       const menu = new StringSelectMenuBuilder()
 
         .setCustomId(`ticket_menu_${Date.now()}`)
 
         .setPlaceholder('Open a Ticket')
 
-        .addOptions(
-          TICKET_OPTIONS.map(opt => ({
-            label: opt.label,
-            value: opt.value
-          }))
-        );
+        .addOptions(menuOptions);
 
       const row = new ActionRowBuilder().addComponents(menu);
 
@@ -429,17 +462,18 @@ client.on('interactionCreate', async interaction => {
 
         await interaction.deferReply({ ephemeral: true });
 
-        const data = interaction.values[0];
-        const [categoryId, channelPrefix] = data.split('|');
+        const optionIndex = parseInt(interaction.values[0]);
+        const selected = TICKET_OPTIONS[optionIndex];
 
-        // Find the matching option for the label
-        const selectedOption = TICKET_OPTIONS.find(
-          opt => opt.value === data
-        );
+        if (!selected) {
 
-        const sectionLabel = selectedOption
-          ? selectedOption.label
-          : channelPrefix;
+          return interaction.editReply({
+            content: 'Invalid ticket option.'
+          });
+
+        }
+
+        const { label, categoryId, prefix } = selected;
 
         // ==================================================
         // TICKET COUNT PER CATEGORY
@@ -459,7 +493,7 @@ client.on('interactionCreate', async interaction => {
 
         const channel = await interaction.guild.channels.create({
 
-          name: `${channelPrefix}-${ticketNumber}`,
+          name: `${prefix}-${ticketNumber}`,
 
           type: ChannelType.GuildText,
 
@@ -522,7 +556,7 @@ client.on('interactionCreate', async interaction => {
 
           .setDescription(ticketDescription)
 
-          .setFooter({ text: `Category: ${sectionLabel}` })
+          .setFooter({ text: `Category: ${label}` })
 
           .setTimestamp();
 
