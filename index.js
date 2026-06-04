@@ -57,39 +57,39 @@ const setticket = new SlashCommandBuilder()
   // Panel Settings
   .addStringOption(o => o.setName('panel_title').setDescription('Panel title').setRequired(true))
   .addStringOption(o => o.setName('panel_description').setDescription('Panel description').setRequired(true))
-  .addStringOption(o => o.setName('panel_color').setDescription('Panel color HEX').setRequired(true))
-  .addStringOption(o => o.setName('ticket_color').setDescription('Ticket embed color HEX').setRequired(true))
+  .addStringOption(o => o.setName('panel_color').setDescription('Panel color HEX (e.g. #5865F2)').setRequired(true))
+  .addStringOption(o => o.setName('ticket_color').setDescription('Ticket color HEX (e.g. #2b2d31)').setRequired(true))
   .addStringOption(o => o.setName('panel_image').setDescription('Optional banner image URL').setRequired(false))
 
-  // Category 1 - Apply for Content Creator
-  .addStringOption(o => o.setName('cat1_label').setDescription('Label for Apply for Content Creator').setRequired(false))
-  .addStringOption(o => o.setName('cat1_id').setDescription('Category ID for tickets').setRequired(false))
+  // === CATEGORY 1 ===
+  .addStringOption(o => o.setName('cat1_label').setDescription('Label - Apply for Content Creator').setRequired(false))
+  .addStringOption(o => o.setName('cat1_id').setDescription('Category ID (required for this category)').setRequired(false))
   .addStringOption(o => o.setName('cat1_emoji').setDescription('Emoji').setRequired(false))
-  .addStringOption(o => o.setName('cat1_prefix').setDescription('Channel prefix').setRequired(false))
+  .addStringOption(o => o.setName('cat1_prefix').setDescription('Prefix (e.g. content-creator)').setRequired(false))
 
-  // Category 2 - Report a Hacker
-  .addStringOption(o => o.setName('cat2_label').setDescription('Label for Report a Hacker').setRequired(false))
-  .addStringOption(o => o.setName('cat2_id').setDescription('Category ID for tickets').setRequired(false))
+  // === CATEGORY 2 ===
+  .addStringOption(o => o.setName('cat2_label').setDescription('Label - Report a Hacker').setRequired(false))
+  .addStringOption(o => o.setName('cat2_id').setDescription('Category ID').setRequired(false))
   .addStringOption(o => o.setName('cat2_emoji').setDescription('Emoji').setRequired(false))
-  .addStringOption(o => o.setName('cat2_prefix').setDescription('Channel prefix').setRequired(false))
+  .addStringOption(o => o.setName('cat2_prefix').setDescription('Prefix').setRequired(false))
 
-  // Category 3 - CC Rewards
-  .addStringOption(o => o.setName('cat3_label').setDescription('Label for CC Rewards').setRequired(false))
-  .addStringOption(o => o.setName('cat3_id').setDescription('Category ID for tickets').setRequired(false))
+  // === CATEGORY 3 ===
+  .addStringOption(o => o.setName('cat3_label').setDescription('Label - CC Rewards').setRequired(false))
+  .addStringOption(o => o.setName('cat3_id').setDescription('Category ID').setRequired(false))
   .addStringOption(o => o.setName('cat3_emoji').setDescription('Emoji').setRequired(false))
-  .addStringOption(o => o.setName('cat3_prefix').setDescription('Channel prefix').setRequired(false))
+  .addStringOption(o => o.setName('cat3_prefix').setDescription('Prefix').setRequired(false))
 
-  // Category 4 - Report Staff
-  .addStringOption(o => o.setName('cat4_label').setDescription('Label for Report Staff').setRequired(false))
-  .addStringOption(o => o.setName('cat4_id').setDescription('Category ID for tickets').setRequired(false))
+  // === CATEGORY 4 ===
+  .addStringOption(o => o.setName('cat4_label').setDescription('Label - Report Staff').setRequired(false))
+  .addStringOption(o => o.setName('cat4_id').setDescription('Category ID').setRequired(false))
   .addStringOption(o => o.setName('cat4_emoji').setDescription('Emoji').setRequired(false))
-  .addStringOption(o => o.setName('cat4_prefix').setDescription('Channel prefix').setRequired(false))
+  .addStringOption(o => o.setName('cat4_prefix').setDescription('Prefix').setRequired(false))
 
-  // Category 5 - Report Admin
-  .addStringOption(o => o.setName('cat5_label').setDescription('Label for Report Admin').setRequired(false))
-  .addStringOption(o => o.setName('cat5_id').setDescription('Category ID for tickets').setRequired(false))
+  // === CATEGORY 5 ===
+  .addStringOption(o => o.setName('cat5_label').setDescription('Label - Report Admin').setRequired(false))
+  .addStringOption(o => o.setName('cat5_id').setDescription('Category ID').setRequired(false))
   .addStringOption(o => o.setName('cat5_emoji').setDescription('Emoji').setRequired(false))
-  .addStringOption(o => o.setName('cat5_prefix').setDescription('Channel prefix').setRequired(false));
+  .addStringOption(o => o.setName('cat5_prefix').setDescription('Prefix').setRequired(false));
 
 const commands = [
   setticket.toJSON(),
@@ -112,7 +112,7 @@ const rest = new REST({ version: '10' }).setToken(TOKEN);
 })();
 
 // ======================================================
-// READY
+// READY + STAFF
 // ======================================================
 client.once('ready', () => console.log(`${client.user.tag} is online`));
 
@@ -127,56 +127,57 @@ client.on('interactionCreate', async interaction => {
   if (interaction.isChatInputCommand() && interaction.commandName === 'setticket') {
     try {
       await interaction.deferReply({ ephemeral: true });
-
       const o = interaction.options;
 
-      // Default categories
       const defaults = [
-        { label: 'Apply for Content Creator', emoji: '🎥', prefix: 'content-creator' },
-        { label: 'Report a Hacker', emoji: '🚨', prefix: 'report-hacker' },
-        { label: 'CC Rewards', emoji: '🏆', prefix: 'cc-rewards' },
-        { label: 'Report Staff', emoji: '📛', prefix: 'report-staff' },
-        { label: 'Report Admin', emoji: '👑', prefix: 'report-admin' }
+        { label: "Apply for Content Creator", emoji: "🎥", prefix: "content-creator" },
+        { label: "Report a Hacker", emoji: "🚨", prefix: "report-hacker" },
+        { label: "CC Rewards", emoji: "🏆", prefix: "cc-rewards" },
+        { label: "Report Staff", emoji: "📛", prefix: "report-staff" },
+        { label: "Report Admin", emoji: "👑", prefix: "report-admin" }
       ];
 
       const ticketOptions = [];
 
       for (let i = 1; i <= 5; i++) {
-        const label = o.getString(`cat${i}_label`) || defaults[i-1].label;
-        const categoryId = o.getString(`cat${i}_id`);
-        
-        if (!categoryId) continue; // Skip if no category ID provided
+        const catId = o.getString(`cat${i}_id`);
+        if (!catId) continue; // Only add category if ID is provided
 
         ticketOptions.push({
-          label,
-          categoryId,
+          label: o.getString(`cat${i}_label`) || defaults[i-1].label,
+          categoryId: catId,
           emoji: o.getString(`cat${i}_emoji`) || defaults[i-1].emoji,
           prefix: o.getString(`cat${i}_prefix`) || defaults[i-1].prefix
         });
       }
 
       if (ticketOptions.length === 0) {
-        return interaction.editReply({ content: '❌ You must provide at least one **Category ID**.' });
+        return interaction.editReply({ 
+          content: '❌ Please provide at least **one** Category ID (cat1_id, cat2_id, etc.) so tickets can be created.' 
+        });
       }
 
-      const categoryList = ticketOptions.map(opt => `${opt.emoji ? opt.emoji + ' ' : ''}**${opt.label}**`).join('\n');
+      // Build Embed
+      const categoryList = ticketOptions.map(opt => `${opt.emoji} **${opt.label}**`).join('\n');
 
       const embed = new EmbedBuilder()
         .setColor(o.getString('panel_color'))
         .setTitle(o.getString('panel_title'))
         .setDescription(o.getString('panel_description') + `\n\n**Available Categories:**\n${categoryList}`)
-        .setFooter({ text: 'Select a category below' })
+        .setFooter({ text: 'Select a category below to open a ticket' })
         .setTimestamp();
 
-      if (o.getString('panel_image')?.startsWith('http')) embed.setImage(o.getString('panel_image'));
+      const image = o.getString('panel_image');
+      if (image && image.startsWith('http')) embed.setImage(image);
 
+      // Dropdown
       const menuId = `ticket_menu_${Date.now()}`;
       const menu = new StringSelectMenuBuilder()
         .setCustomId(menuId)
         .setPlaceholder('Open a Ticket')
-        .addOptions(ticketOptions.map((opt, i) => ({
+        .addOptions(ticketOptions.map((opt, index) => ({
           label: opt.label,
-          value: i.toString(),
+          value: index.toString(),
           emoji: opt.emoji
         })));
 
@@ -188,20 +189,20 @@ client.on('interactionCreate', async interaction => {
       panelStore[menuId] = { ticketOptions, ticketColor: o.getString('ticket_color') };
 
       await interaction.channel.send({ embeds: [embed], components: [row1, row2] });
-      await interaction.editReply({ content: '✅ Ticket panel created/updated successfully!' });
+      await interaction.editReply({ content: '✅ Ticket panel sent successfully!' });
 
     } catch (err) {
       console.error(err);
-      interaction.editReply({ content: '❌ Error creating panel.' }).catch(() => {});
+      interaction.editReply({ content: '❌ Something went wrong.' }).catch(() => {});
     }
   }
 
-  // Ticket Creation
+  // ==================== TICKET CREATION ====================
   if (interaction.isStringSelectMenu() && interaction.customId.startsWith('ticket_menu_')) {
     try {
       await interaction.deferReply({ ephemeral: true });
       const panel = panelStore[interaction.customId];
-      if (!panel) return interaction.editReply({ content: 'Panel outdated. Run /setticket again.' });
+      if (!panel) return interaction.editReply({ content: 'This panel is outdated. Run /setticket again.' });
 
       const selected = panel.ticketOptions[parseInt(interaction.values[0])];
       const { label, categoryId, prefix } = selected;
@@ -231,7 +232,6 @@ client.on('interactionCreate', async interaction => {
           .setTitle('New Support Ticket')
           .setDescription(`Welcome ${interaction.user}\n\nPlease explain your issue.`)
           .setFooter({ text: `Category: ${label}` })
-          .setTimestamp()
         ],
         components: [buttons]
       });
@@ -243,25 +243,22 @@ client.on('interactionCreate', async interaction => {
     }
   }
 
-  // Edit Button
+  // Edit Panel Button
   if (interaction.isButton() && interaction.customId === 'edit_panel') {
-    if (!isStaff(interaction.member)) return interaction.reply({ content: 'Only staff can edit.', ephemeral: true });
-    await interaction.reply({ content: 'Run `/setticket` again to edit categories, emojis, etc.', ephemeral: true });
+    if (!isStaff(interaction.member)) return interaction.reply({ content: 'Only staff can edit the panel.', ephemeral: true });
+    await interaction.reply({ content: 'Just run `/setticket` again in this channel to change anything.', ephemeral: true });
   }
 
-  // Close & Claim buttons
+  // Close & Claim
   if (interaction.isButton()) {
-    if (interaction.customId === 'close_ticket' || interaction.commandName === 'close') {
-      const ownerId = interaction.channel?.topic;
-      const isOwner = interaction.user.id === ownerId;
-      const staff = isStaff(interaction.member);
-      if (!isOwner && !staff) return interaction.reply({ content: 'Only owner or staff can close.', ephemeral: true });
-
+    if (interaction.customId === 'close_ticket') {
+      const isOwner = interaction.user.id === interaction.channel.topic;
+      if (!isOwner && !isStaff(interaction.member)) return interaction.reply({ content: 'Only owner or staff.', ephemeral: true });
       await interaction.reply({ embeds: [new EmbedBuilder().setColor('#ff0000').setDescription('Ticket closing in 5 seconds.')] });
       setTimeout(() => interaction.channel.delete().catch(() => {}), 5000);
     }
 
-    if (interaction.customId === 'claim_ticket' || interaction.commandName === 'claim') {
+    if (interaction.customId === 'claim_ticket') {
       if (!isStaff(interaction.member)) return interaction.reply({ content: 'Only staff.', ephemeral: true });
       await interaction.reply({ embeds: [new EmbedBuilder().setColor('#00ff00').setDescription(`${interaction.user} claimed this ticket.`)] });
     }
