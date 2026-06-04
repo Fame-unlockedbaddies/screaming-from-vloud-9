@@ -71,81 +71,81 @@ const BLOCKED_WORDS = [
 // TICKET OPTIONS
 //
 // label      - text shown in the dropdown
-// emoji      - emoji shown next to the label (use a
-//              unicode emoji or a Discord emoji string
-//              like '<:name:id>' for custom server emojis)
-//              set to null to show no emoji
-// categoryId - the Discord category ID where the ticket
-//              channel will be created
-// prefix     - the channel name prefix e.g. "content-creator-1"
+// emoji      - emoji shown next to the label in the dropdown
+//              use a unicode emoji e.g. 'star'
+//              or a custom server emoji e.g. '<:name:id>'
+//              set to null for no emoji
+// categoryId - REPLACE with your Discord category ID
+//              right-click a category > Copy ID
+// prefix     - channel name prefix e.g. "content-creator-1"
 // ======================================================
 
 const TICKET_OPTIONS = [
   {
-    label: 'Apply for Content Creator', 
-    emoji: null,
-    categoryId: 'YOUR_CATEGORY_ID_HERE', // 🎬
+    label: 'Apply for Content Creator',
+    emoji: null,                          // e.g. '<:cc:1234567890>'
+    categoryId: 'YOUR_CATEGORY_ID_HERE', // content creator category
     prefix: 'content-creator'
   },
   {
     label: 'Report a Hacker',
-    emoji: null,
-    categoryId: 'YOUR_CATEGORY_ID_HERE', // 🚨
+    emoji: null,                          // e.g. '<:hacker:1234567890>'
+    categoryId: 'YOUR_CATEGORY_ID_HERE', // hacker reports category
     prefix: 'report-hacker'
   },
   {
     label: 'CC Rewards',
-    emoji: null,
-    categoryId: 'YOUR_CATEGORY_ID_HERE', // 🏆
+    emoji: null,                          // e.g. '<:reward:1234567890>'
+    categoryId: 'YOUR_CATEGORY_ID_HERE', // cc rewards category
     prefix: 'cc-rewards'
   },
   {
     label: 'Bug Reports',
-    emoji: null,
-    categoryId: 'YOUR_CATEGORY_ID_HERE', // 🐛
+    emoji: null,                          // e.g. '<:bug:1234567890>'
+    categoryId: 'YOUR_CATEGORY_ID_HERE', // bug reports category
     prefix: 'bug-report'
   },
   {
     label: 'Feedback',
-    emoji: null,
-    categoryId: 'YOUR_CATEGORY_ID_HERE', // 💬
+    emoji: null,                          // e.g. '<:feedback:1234567890>'
+    categoryId: 'YOUR_CATEGORY_ID_HERE', // feedback category
     prefix: 'feedback'
   },
   {
     label: 'Report a Staff',
-    emoji: null,
-    categoryId: 'YOUR_CATEGORY_ID_HERE', // ⚠️
+    emoji: null,                          // e.g. '<:staff:1234567890>'
+    categoryId: 'YOUR_CATEGORY_ID_HERE', // report staff category
     prefix: 'report-staff'
   },
   {
     label: 'Report an Admin',
-    emoji: null,
-    categoryId: 'YOUR_CATEGORY_ID_HERE', // 🔴
+    emoji: null,                          // e.g. '<:admin:1234567890>'
+    categoryId: 'YOUR_CATEGORY_ID_HERE', // report admin category
     prefix: 'report-admin'
   }
 ];
 
 // ======================================================
 // PANEL CONFIG
-// The embed that gets posted when you run /setticket
+// The embed posted in the channel when you run /setticket
 // ======================================================
 
 const PANEL_CONFIG = {
   title: 'Support Tickets',
   description: 'Select a category below to open a ticket. Our staff will assist you as soon as possible.',
-  color: '#5865F2',     // <-- change this HEX to any colour you want
-  image: null           // <-- set to an image URL string or leave null
+  color: '#5865F2',  // change to any HEX colour
+  image: null        // set to an image URL or leave null
 };
 
 // ======================================================
 // TICKET EMBED CONFIG
-// The embed posted inside each ticket channel
+// The embed posted inside each opened ticket channel
 // ======================================================
 
 const TICKET_CONFIG = {
   title: 'Support Ticket',
   description: 'Welcome {user}\n\nPlease explain your issue and wait for staff to respond.',
-  color: '#2b2d31'      // <-- change this HEX to any colour you want
+  color: '#2b2d31'   // change to any HEX colour
 };
 
 // ======================================================
@@ -153,7 +153,7 @@ const TICKET_CONFIG = {
 // ======================================================
 
 const AUTOMOD_CONFIG = {
-  inviteTimeoutMs: 5 * 60 * 1000,    // 5 minutes
+  inviteTimeoutMs: 5 * 60 * 1000,
   inviteTimeoutReason: 'Posted invite link',
   inviteEmbedColor: '#ff0000',
   blockedWordEmbedColor: '#ff0000',
