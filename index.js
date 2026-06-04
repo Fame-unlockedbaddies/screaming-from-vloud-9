@@ -38,7 +38,7 @@ const GUILD_ID = process.env.GUILD_ID;
 const STAFF_ROLES = ['YOUR_STAFF_ROLE_ID_HERE', 'YOUR_STAFF_ROLE_ID_HERE'];
 
 // ======================================================
-// AUTOMOD CONFIG
+// AUTOMOD
 // ======================================================
 const AUTOMOD_CONFIG = {
   inviteTimeoutMs: 5 * 60 * 1000,
@@ -51,7 +51,7 @@ const AUTOMOD_CONFIG = {
 // ======================================================
 // STORES
 // ======================================================
-const panelStore = {};   // For ticket panel data
+const panelStore = {};
 const ticketCounts = {};
 
 // ======================================================
@@ -77,48 +77,82 @@ const setticket = new SlashCommandBuilder()
   // Panel Settings
   .addStringOption(o => o.setName('panel_title').setDescription('Panel title').setRequired(true))
   .addStringOption(o => o.setName('panel_description').setDescription('Panel description').setRequired(true))
-  .addStringOption(o => o.setName('panel_color').setDescription('Panel color (HEX)').setRequired(true))
-  .addStringOption(o => o.setName('ticket_color').setDescription('Ticket embed color (HEX)').setRequired(true))
+  .addStringOption(o => o.setName('panel_color').setDescription('Panel color HEX (e.g. #5865F2)').setRequired(true))
+  .addStringOption(o => o.setName('ticket_color').setDescription('Ticket embed color HEX (e.g. #2b2d31)').setRequired(true))
   .addStringOption(o => o.setName('panel_image').setDescription('Optional banner image URL').setRequired(false))
 
-  // === CATEGORY 1 ===
+  // Category 1
   .addStringOption(o => o.setName('cat1_label').setDescription('Category 1 Label').setRequired(true))
   .addStringOption(o => o.setName('cat1_id').setDescription('Category Channel ID where tickets go').setRequired(true))
-  .addStringOption(o => o.setName('cat1_emoji').setDescription('Emoji for Category 1').setRequired(false))
-  .addStringOption(o => o.setName('cat1_prefix').setDescription('Channel prefix (e.g. content-creator)').setRequired(true))
+  .addStringOption(o => o.setName('cat1_emoji').setDescription('Emoji for Category 1 (optional)').setRequired(false))
+  .addStringOption(o => o.setName('cat1_prefix').setDescription('Channel prefix e.g. content-creator').setRequired(true))
 
-  // === CATEGORY 2 ===
+  // Category 2
   .addStringOption(o => o.setName('cat2_label').setDescription('Category 2 Label').setRequired(true))
   .addStringOption(o => o.setName('cat2_id').setDescription('Category Channel ID where tickets go').setRequired(true))
-  .addStringOption(o => o.setName('cat2_emoji').setDescription('Emoji for Category 2').setRequired(false))
+  .addStringOption(o => o.setName('cat2_emoji').setDescription('Emoji for Category 2 (optional)').setRequired(false))
   .addStringOption(o => o.setName('cat2_prefix').setDescription('Channel prefix').setRequired(true))
 
-  // === CATEGORY 3 ===
+  // Category 3
   .addStringOption(o => o.setName('cat3_label').setDescription('Category 3 Label').setRequired(false))
   .addStringOption(o => o.setName('cat3_id').setDescription('Category Channel ID where tickets go').setRequired(false))
-  .addStringOption(o => o.setName('cat3_emoji').setDescription('Emoji').setRequired(false))
+  .addStringOption(o => o.setName('cat3_emoji').setDescription('Emoji (optional)').setRequired(false))
   .addStringOption(o => o.setName('cat3_prefix').setDescription('Channel prefix').setRequired(false))
 
-  // === CATEGORY 4 ===
+  // Category 4
   .addStringOption(o => o.setName('cat4_label').setDescription('Category 4 Label').setRequired(false))
   .addStringOption(o => o.setName('cat4_id').setDescription('Category Channel ID where tickets go').setRequired(false))
-  .addStringOption(o => o.setName('cat4_emoji').setDescription('Emoji').setRequired(false))
+  .addStringOption(o => o.setName('cat4_emoji').setDescription('Emoji (optional)').setRequired(false))
   .addStringOption(o => o.setName('cat4_prefix').setDescription('Channel prefix').setRequired(false))
 
-  // === CATEGORY 5 ===
+  // Category 5
   .addStringOption(o => o.setName('cat5_label').setDescription('Category 5 Label').setRequired(false))
   .addStringOption(o => o.setName('cat5_id').setDescription('Category Channel ID where tickets go').setRequired(false))
-  .addStringOption(o => o.setName('cat5_emoji').setDescription('Emoji').setRequired(false))
-  .addStringOption(o => o.setName('cat5_prefix').setDescription('Channel prefix').setRequired(false))
+  .addStringOption(o => o.setName('cat5_emoji').setDescription('Emoji (optional)').setRequired(false))
+  .addStringOption(o => o.setName('cat5_prefix').setDescription('Channel prefix').setRequired(false));
 
-  // Add more if needed (up to Discord limit of 25 options)
+const commands = [
+  setticket.toJSON(),
 
-const commands = [setticket.toJSON(), 
-  new SlashCommandBuilder().setName('close').setDescription('Close this ticket').toJSON(),
-  new SlashCommandBuilder().setName('claim').setDescription('Claim this ticket').toJSON(),
-  new SlashCommandBuilder().setName('add').setDescription('Add user to ticket').addUserOption(o => o.setName('user').setRequired(true)).toJSON(),
-  new SlashCommandBuilder().setName('remove').setDescription('Remove user from ticket').addUserOption(o => o.setName('user').setRequired(true)).toJSON(),
-  new SlashCommandBuilder().setName('rename').setDescription('Rename ticket').addStringOption(o => o.setName('name').setRequired(true)).toJSON()
+  new SlashCommandBuilder()
+    .setName('close')
+    .setDescription('Close this ticket')
+    .toJSON(),
+
+  new SlashCommandBuilder()
+    .setName('claim')
+    .setDescription('Claim this ticket')
+    .toJSON(),
+
+  new SlashCommandBuilder()
+    .setName('add')
+    .setDescription('Add a user to this ticket')
+    .addUserOption(o => o
+      .setName('user')
+      .setDescription('User to add')
+      .setRequired(true)
+    )
+    .toJSON(),
+
+  new SlashCommandBuilder()
+    .setName('remove')
+    .setDescription('Remove a user from this ticket')
+    .addUserOption(o => o
+      .setName('user')
+      .setDescription('User to remove')
+      .setRequired(true)
+    )
+    .toJSON(),
+
+  new SlashCommandBuilder()
+    .setName('rename')
+    .setDescription('Rename this ticket channel')
+    .addStringOption(o => o
+      .setName('name')
+      .setDescription('New channel name')
+      .setRequired(true)
+    )
+    .toJSON()
 ];
 
 // Register Commands
@@ -126,45 +160,41 @@ const rest = new REST({ version: '10' }).setToken(TOKEN);
 (async () => {
   try {
     await rest.put(Routes.applicationGuildCommands(CLIENT_ID, GUILD_ID), { body: commands });
-    console.log('✅ Commands registered');
+    console.log('✅ Commands registered successfully');
   } catch (err) {
-    console.error(err);
+    console.error('Command registration failed:', err);
   }
 })();
 
 // ======================================================
-// READY + STAFF CHECK
+// READY
 // ======================================================
-client.once('ready', () => console.log(`${client.user.tag} is online`));
+client.once('ready', () => {
+  console.log(`${client.user.tag} is online`);
+});
 
 function isStaff(member) {
   return STAFF_ROLES.some(role => member.roles.cache.has(role));
 }
 
 // ======================================================
-// INTERACTION HANDLER
+// INTERACTIONS
 // ======================================================
 client.on('interactionCreate', async interaction => {
-  // ====================== SETTICKET ======================
+  // SETTICKET
   if (interaction.isChatInputCommand() && interaction.commandName === 'setticket') {
     try {
       await interaction.deferReply({ ephemeral: true });
 
       const o = interaction.options;
-      const panelTitle = o.getString('panel_title');
-      const panelDesc = o.getString('panel_description');
-      const panelColor = o.getString('panel_color');
-      const ticketColor = o.getString('ticket_color');
-      const panelImage = o.getString('panel_image');
-
-      // Collect all categories
       const ticketOptions = [];
-      for (let i = 1; i <= 5; i++) {  // You can increase this number
+
+      for (let i = 1; i <= 5; i++) {
         const label = o.getString(`cat${i}_label`);
         if (!label) continue;
 
         ticketOptions.push({
-          label: label,
+          label,
           categoryId: o.getString(`cat${i}_id`),
           emoji: o.getString(`cat${i}_emoji`) || null,
           prefix: o.getString(`cat${i}_prefix`) || `ticket-${i}`
@@ -172,24 +202,23 @@ client.on('interactionCreate', async interaction => {
       }
 
       if (ticketOptions.length === 0) {
-        return interaction.editReply({ content: '❌ You must add at least one category.' });
+        return interaction.editReply({ content: '❌ You must provide at least one category.' });
       }
 
-      // Build Embed
       const categoryList = ticketOptions.map(opt => 
         `${opt.emoji ? opt.emoji + ' ' : ''}**${opt.label}**`
       ).join('\n');
 
       const embed = new EmbedBuilder()
-        .setColor(panelColor)
-        .setTitle(panelTitle)
-        .setDescription(panelDesc + `\n\n**📋 Available Categories:**\n${categoryList}`)
+        .setColor(o.getString('panel_color'))
+        .setTitle(o.getString('panel_title'))
+        .setDescription(o.getString('panel_description') + `\n\n**📋 Available Categories:**\n${categoryList}`)
         .setFooter({ text: 'Select a category below to open a ticket' })
         .setTimestamp();
 
+      const panelImage = o.getString('panel_image');
       if (panelImage?.startsWith('http')) embed.setImage(panelImage);
 
-      // Dropdown Menu
       const menuId = `ticket_menu_${Date.now()}`;
       const menu = new StringSelectMenuBuilder()
         .setCustomId(menuId)
@@ -208,36 +237,35 @@ client.on('interactionCreate', async interaction => {
           .setStyle(ButtonStyle.Secondary)
       );
 
-      // Store data
-      panelStore[menuId] = { ticketOptions, ticketColor };
+      panelStore[menuId] = { ticketOptions, ticketColor: o.getString('ticket_color') };
 
       await interaction.channel.send({ embeds: [embed], components: [row1, row2] });
-      await interaction.editReply({ content: '✅ Ticket panel created successfully!' });
+      await interaction.editReply({ content: '✅ Ticket panel created/updated!' });
 
     } catch (err) {
       console.error(err);
-      interaction.editReply({ content: '❌ Error creating panel.' }).catch(() => {});
+      interaction.editReply({ content: '❌ Failed to create panel.' }).catch(() => {});
     }
   }
 
-  // ====================== TICKET CREATION ======================
+  // TICKET CREATION
   if (interaction.isStringSelectMenu() && interaction.customId.startsWith('ticket_menu_')) {
     try {
       await interaction.deferReply({ ephemeral: true });
 
       const panel = panelStore[interaction.customId];
-      if (!panel) return interaction.editReply({ content: 'This panel is outdated. Please run /setticket again.' });
+      if (!panel) return interaction.editReply({ content: 'This panel is outdated. Run /setticket again.' });
 
       const selected = panel.ticketOptions[parseInt(interaction.values[0])];
-      if (!selected) return interaction.editReply({ content: 'Invalid selection.' });
+      if (!selected) return interaction.editReply({ content: 'Invalid option.' });
 
       const { label, categoryId, prefix } = selected;
 
-      if (!ticketCounts[categoryId]) ticketCounts[categoryId] = 1;
-      else ticketCounts[categoryId]++;
+      ticketCounts[categoryId] = (ticketCounts[categoryId] || 0) + 1;
+      const ticketNumber = ticketCounts[categoryId];
 
       const channel = await interaction.guild.channels.create({
-        name: `${prefix}-${ticketCounts[categoryId]}`,
+        name: `${prefix}-${ticketNumber}`,
         type: ChannelType.GuildText,
         parent: categoryId,
         topic: interaction.user.id,
@@ -260,7 +288,7 @@ client.on('interactionCreate', async interaction => {
         .setTimestamp();
 
       await channel.send({ content: `${interaction.user}`, embeds: [ticketEmbed], components: [buttons] });
-      await interaction.editReply({ content: `✅ Your ticket has been created: ${channel}` });
+      await interaction.editReply({ content: `✅ Ticket created: ${channel}` });
 
     } catch (err) {
       console.error(err);
@@ -273,11 +301,35 @@ client.on('interactionCreate', async interaction => {
     if (!isStaff(interaction.member)) {
       return interaction.reply({ content: 'Only staff can edit the panel.', ephemeral: true });
     }
-    await interaction.reply({ content: 'Just run `/setticket` again in this channel to update everything.', ephemeral: true });
+    await interaction.reply({ content: 'Run `/setticket` again in this channel to update the panel.', ephemeral: true });
   }
 
-  // Close, Claim, Add, Remove, Rename commands + buttons (same as before)
-  // ... (You can copy the rest from the previous version if you need them)
+  // Close Command
+  if (interaction.isChatInputCommand() && interaction.commandName === 'close') {
+    const ownerId = interaction.channel.topic;
+    const isOwner = interaction.user.id === ownerId;
+    const staff = isStaff(interaction.member);
+    if (!isOwner && !staff) return interaction.reply({ content: 'Only ticket owner or staff can close this.', ephemeral: true });
+
+    await interaction.reply({ embeds: [new EmbedBuilder().setColor('#ff0000').setDescription('Ticket closing in 5 seconds.')] });
+    setTimeout(() => interaction.channel.delete().catch(() => {}), 5000);
+  }
+
+  // Claim Button & Command (you can expand the rest as needed)
+  if (interaction.isButton() && interaction.customId === 'claim_ticket') {
+    if (!isStaff(interaction.member)) return interaction.reply({ content: 'Only staff can claim tickets.', ephemeral: true });
+    await interaction.reply({ embeds: [new EmbedBuilder().setColor('#00ff00').setDescription(`${interaction.user} claimed this ticket.`)] });
+  }
+
+  if (interaction.isButton() && interaction.customId === 'close_ticket') {
+    const ownerId = interaction.channel.topic;
+    const isOwner = interaction.user.id === ownerId;
+    const staff = isStaff(interaction.member);
+    if (!isOwner && !staff) return interaction.reply({ content: 'Only ticket owner or staff can close this.', ephemeral: true });
+
+    await interaction.reply({ embeds: [new EmbedBuilder().setColor('#ff0000').setDescription('Ticket closing in 5 seconds.')] });
+    setTimeout(() => interaction.channel.delete().catch(() => {}), 5000);
+  }
 });
 
 client.login(TOKEN);
