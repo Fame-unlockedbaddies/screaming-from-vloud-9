@@ -36,6 +36,7 @@ app.listen(process.env.PORT || 3000, () => {
 
 const TOKEN = process.env.TOKEN;
 const CLIENT_ID = process.env.CLIENT_ID;
+const GUILD_ID = process.env.GUILD_ID;
 
 // ======================================================
 // STAFF ROLES
@@ -191,7 +192,7 @@ const commands = [
 ];
 
 // ======================================================
-// REGISTER COMMANDS
+// REGISTER COMMANDS — GUILD SCOPED (instant updates)
 // ======================================================
 
 const rest = new REST({ version: '10' }).setToken(TOKEN);
@@ -201,11 +202,11 @@ const rest = new REST({ version: '10' }).setToken(TOKEN);
   try {
 
     await rest.put(
-      Routes.applicationCommands(CLIENT_ID),
+      Routes.applicationGuildCommands(CLIENT_ID, GUILD_ID),
       { body: commands }
     );
 
-    console.log('Commands Loaded');
+    console.log('Commands Loaded (guild)');
 
   } catch (err) {
 
