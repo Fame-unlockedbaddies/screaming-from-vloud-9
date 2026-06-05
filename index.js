@@ -59,25 +59,25 @@ const setticket = new SlashCommandBuilder()
   .addStringOption(o => o.setName('panel_color').setDescription('Embed Color HEX (e.g. #c2ecff)').setRequired(true))
   .addStringOption(o => o.setName('panel_image').setDescription('Banner Image URL (optional)').setRequired(false))
 
-  // Category 1 - Apply for Content Creator
+  // Category 1
   .addStringOption(o => o.setName('cat1_emoji').setDescription('Emoji for Apply for Content Creator').setRequired(false))
-  .addStringOption(o => o.setName('cat1_id').setDescription('Category ID').setRequired(true))
+  .addStringOption(o => o.setName('cat1_id').setDescription('Category ID for Apply for Content Creator').setRequired(false))
 
-  // Category 2 - Report a Exploiter
+  // Category 2
   .addStringOption(o => o.setName('cat2_emoji').setDescription('Emoji for Report a Exploiter').setRequired(false))
-  .addStringOption(o => o.setName('cat2_id').setDescription('Category ID').setRequired(true))
+  .addStringOption(o => o.setName('cat2_id').setDescription('Category ID for Report a Exploiter').setRequired(false))
 
-  // Category 3 - CC Rewards
+  // Category 3
   .addStringOption(o => o.setName('cat3_emoji').setDescription('Emoji for CC Rewards').setRequired(false))
-  .addStringOption(o => o.setName('cat3_id').setDescription('Category ID').setRequired(true))
+  .addStringOption(o => o.setName('cat3_id').setDescription('Category ID for CC Rewards').setRequired(false))
 
-  // Category 4 - Report a Staff
+  // Category 4
   .addStringOption(o => o.setName('cat4_emoji').setDescription('Emoji for Report a Staff').setRequired(false))
-  .addStringOption(o => o.setName('cat4_id').setDescription('Category ID').setRequired(true))
+  .addStringOption(o => o.setName('cat4_id').setDescription('Category ID for Report a Staff').setRequired(false))
 
-  // Category 5 - Report a Admin
+  // Category 5
   .addStringOption(o => o.setName('cat5_emoji').setDescription('Emoji for Report a Admin').setRequired(false))
-  .addStringOption(o => o.setName('cat5_id').setDescription('Category ID').setRequired(true));
+  .addStringOption(o => o.setName('cat5_id').setDescription('Category ID for Report a Admin').setRequired(false));
 
 const commands = [
   setticket.toJSON(),
@@ -116,38 +116,61 @@ client.on('interactionCreate', async interaction => {
       await interaction.deferReply({ ephemeral: true });
       const o = interaction.options;
 
-      const ticketOptions = [
-        {
+      const ticketOptions = [];
+
+      // Category 1
+      if (o.getString('cat1_id')) {
+        ticketOptions.push({
           label: "Apply for Content Creator",
           categoryId: o.getString('cat1_id'),
           emoji: o.getString('cat1_emoji') || null,
           prefix: "content-creator"
-        },
-        {
+        });
+      }
+
+      // Category 2
+      if (o.getString('cat2_id')) {
+        ticketOptions.push({
           label: "Report a Exploiter",
           categoryId: o.getString('cat2_id'),
           emoji: o.getString('cat2_emoji') || null,
           prefix: "report-exploiter"
-        },
-        {
+        });
+      }
+
+      // Category 3
+      if (o.getString('cat3_id')) {
+        ticketOptions.push({
           label: "CC Rewards",
           categoryId: o.getString('cat3_id'),
           emoji: o.getString('cat3_emoji') || null,
           prefix: "cc-rewards"
-        },
-        {
+        });
+      }
+
+      // Category 4
+      if (o.getString('cat4_id')) {
+        ticketOptions.push({
           label: "Report a Staff",
           categoryId: o.getString('cat4_id'),
           emoji: o.getString('cat4_emoji') || null,
           prefix: "report-staff"
-        },
-        {
+        });
+      }
+
+      // Category 5
+      if (o.getString('cat5_id')) {
+        ticketOptions.push({
           label: "Report a Admin",
           categoryId: o.getString('cat5_id'),
           emoji: o.getString('cat5_emoji') || null,
           prefix: "report-admin"
-        }
-      ];
+        });
+      }
+
+      if (ticketOptions.length === 0) {
+        return interaction.editReply({ content: '❌ You must provide at least one **Category ID**.' });
+      }
 
       const categoryList = ticketOptions.map(opt => 
         `${opt.emoji ? opt.emoji + ' ' : ''}**${opt.label}**`
@@ -185,11 +208,11 @@ client.on('interactionCreate', async interaction => {
 
     } catch (err) {
       console.error(err);
-      interaction.editReply({ content: '❌ Error creating panel.' }).catch(() => {});
+      interaction.editReply({ content: '❌ Error creating panel. Make sure Category IDs are correct.' }).catch(() => {});
     }
   }
 
-  // CREATE TICKET
+  // CREATE TICKET FROM DROPDOWN
   if (interaction.isStringSelectMenu() && interaction.customId.startsWith('ticket_menu_')) {
     try {
       await interaction.deferReply({ ephemeral: true });
@@ -239,7 +262,7 @@ client.on('interactionCreate', async interaction => {
   if (interaction.isButton()) {
     if (interaction.customId === 'edit_panel') {
       if (!isStaff(interaction.member)) return interaction.reply({ content: 'Only staff can edit the panel.', ephemeral: true });
-      return interaction.reply({ content: 'Run /setticket again to change title, description, color or emojis.', ephemeral: true });
+      return interaction.reply({ content: 'Run /setticket again to edit.', ephemeral: true });
     }
 
     if (interaction.customId === 'close_ticket') {
