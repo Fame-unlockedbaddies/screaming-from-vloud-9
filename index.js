@@ -117,7 +117,7 @@ client.on('interactionCreate', async interaction => {
       const menuId = `ticket_menu_${Date.now()}`;
       const menu = new StringSelectMenuBuilder()
         .setCustomId(menuId)
-        .setPlaceholder('Open a Ticket')
+        .setPlaceholder('Create a Ticket')           // ← Changed as requested
         .addOptions(ticketOptions.map((opt, i) => ({
           label: opt.label,
           value: i.toString()
