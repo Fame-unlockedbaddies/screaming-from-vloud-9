@@ -103,13 +103,15 @@ client.on('interactionCreate', async interaction => {
       await interaction.deferReply({ ephemeral: true });
       const o = interaction.options;
 
-      // UPDATED CATEGORIES WITH YOUR LATEST IDs
+      // ALL CATEGORIES (Updated with new ones)
       const ticketOptions = [
         { label: "Apply for Content Creator", categoryId: "1510798983344160889", prefix: "content-creator" },
         { label: "Report a Exploiter",       categoryId: "1510798973517172859", prefix: "report-exploiter" },
         { label: "CC Rewards",               categoryId: "1512272256208736326", prefix: "cc-rewards" },
         { label: "Report a Staff",           categoryId: "1512253003820699698", prefix: "report-staff" },
-        { label: "Report a Admin",           categoryId: "1512253208872095795", prefix: "report-admin" }
+        { label: "Report a Admin",           categoryId: "1512253208872095795", prefix: "report-admin" },
+        { label: "Report Glitch",            categoryId: "1512279045159518290", prefix: "report-glitch" },
+        { label: "Report Bugs",              categoryId: "1512279115741401128", prefix: "report-bugs" }
       ];
 
       const categoryList = ticketOptions.map(opt => `**${opt.label}**`).join('\n');
@@ -135,7 +137,7 @@ client.on('interactionCreate', async interaction => {
 
       const row = new ActionRowBuilder().addComponents(menu);
 
-      panelStore[menuId] = { ticketOptions, ticketColor: '#c2ecff' }; // Consistent color
+      panelStore[menuId] = { ticketOptions, ticketColor: '#c2ecff' };
 
       await interaction.channel.send({ embeds: [embed], components: [row] });
       await interaction.editReply({ content: '✅ Ticket panel created successfully!' });
