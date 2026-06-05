@@ -30,14 +30,9 @@ const TOKEN = process.env.TOKEN;
 const CLIENT_ID = process.env.CLIENT_ID;
 const GUILD_ID = process.env.GUILD_ID;
 
-// SPECIAL ROLE THAT CAN USE /SENDMESSAGE
+// ROLES
+const STAFF_ROLES = ['1505376743001821334', '1505379855137509538'];
 const SEND_ROLE = '1510682894388039800';
-
-// STAFF ROLES (for ticket management)
-const STAFF_ROLES = [
-  '1505376743001821334',
-  '1505379855137509538'
-];
 
 // STORES
 const panelStore = {};
@@ -102,7 +97,7 @@ function canSendMessage(member) {
 // ======================================================
 client.on('interactionCreate', async interaction => {
 
-  // /SETTICKET
+  // ====================== /SETTICKET ======================
   if (interaction.isChatInputCommand() && interaction.commandName === 'setticket') {
     try {
       await interaction.deferReply({ ephemeral: true });
@@ -121,7 +116,7 @@ client.on('interactionCreate', async interaction => {
       const embed = new EmbedBuilder()
         .setColor('#c2ecff')
         .setTitle(o.getString('panel_title'))
-        .setDescription(o.getString('panel_description') + `\n\n**Available Categories:**\n${categoryList}`)
+        .setDescription((o.getString('panel_description') || "Select a category to open a ticket.") + `\n\n**Available Categories:**\n${categoryList}`)
         .setFooter({ text: 'Select a category below to open a ticket' })
         .setTimestamp();
 
@@ -140,13 +135,14 @@ client.on('interactionCreate', async interaction => {
 
       await interaction.channel.send({ embeds: [embed], components: [row] });
       await interaction.editReply({ content: '✅ Ticket panel created successfully!' });
+
     } catch (err) {
       console.error(err);
       interaction.editReply({ content: '❌ Error creating panel.' }).catch(() => {});
     }
   }
 
-  // /SENDMESSAGE - Only specific role can use
+  // ====================== /SENDMESSAGE ======================
   if (interaction.isChatInputCommand() && interaction.commandName === 'sendmessage') {
     if (!canSendMessage(interaction.member)) {
       return interaction.reply({ content: 'You do not have permission to use this command.', ephemeral: true });
@@ -156,14 +152,13 @@ client.on('interactionCreate', async interaction => {
 
     try {
       await interaction.channel.send(messageContent);
-      await interaction.reply({ content: '✅ Message sent successfully!', ephemeral: true });
+      await interaction.reply({ content: '✅ Message sent!', ephemeral: true });
     } catch (err) {
-      console.error(err);
       await interaction.reply({ content: '❌ Failed to send message.', ephemeral: true });
     }
   }
 
-  // TICKET CREATION
+  // ====================== TICKET CREATION ======================
   if (interaction.isStringSelectMenu() && interaction.customId.startsWith('ticket_menu_')) {
     try {
       await interaction.deferReply({ ephemeral: true });
