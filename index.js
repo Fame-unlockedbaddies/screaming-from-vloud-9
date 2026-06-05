@@ -50,34 +50,11 @@ const client = new Client({
 // ======================================================
 const setticket = new SlashCommandBuilder()
   .setName('setticket')
-  .setDescription('Create or edit the ticket panel')
+  .setDescription('Send the ticket panel')
   .setDefaultMemberPermissions(PermissionFlagsBits.ManageChannels)
-
-  // Panel Settings
   .addStringOption(o => o.setName('panel_title').setDescription('Panel Title').setRequired(true))
   .addStringOption(o => o.setName('panel_description').setDescription('Panel Description').setRequired(true))
-  .addStringOption(o => o.setName('panel_color').setDescription('Embed Color HEX (e.g. #c2ecff)').setRequired(true))
-  .addStringOption(o => o.setName('panel_image').setDescription('Banner Image URL (optional)').setRequired(false))
-
-  // Category 1
-  .addStringOption(o => o.setName('cat1_emoji').setDescription('Emoji for Apply for Content Creator').setRequired(false))
-  .addStringOption(o => o.setName('cat1_id').setDescription('Category ID for Apply for Content Creator').setRequired(false))
-
-  // Category 2
-  .addStringOption(o => o.setName('cat2_emoji').setDescription('Emoji for Report a Exploiter').setRequired(false))
-  .addStringOption(o => o.setName('cat2_id').setDescription('Category ID for Report a Exploiter').setRequired(false))
-
-  // Category 3
-  .addStringOption(o => o.setName('cat3_emoji').setDescription('Emoji for CC Rewards').setRequired(false))
-  .addStringOption(o => o.setName('cat3_id').setDescription('Category ID for CC Rewards').setRequired(false))
-
-  // Category 4
-  .addStringOption(o => o.setName('cat4_emoji').setDescription('Emoji for Report a Staff').setRequired(false))
-  .addStringOption(o => o.setName('cat4_id').setDescription('Category ID for Report a Staff').setRequired(false))
-
-  // Category 5
-  .addStringOption(o => o.setName('cat5_emoji').setDescription('Emoji for Report a Admin').setRequired(false))
-  .addStringOption(o => o.setName('cat5_id').setDescription('Category ID for Report a Admin').setRequired(false));
+  .addStringOption(o => o.setName('panel_image').setDescription('Banner Image URL (optional)').setRequired(false));
 
 const commands = [
   setticket.toJSON(),
@@ -116,68 +93,19 @@ client.on('interactionCreate', async interaction => {
       await interaction.deferReply({ ephemeral: true });
       const o = interaction.options;
 
-      const ticketOptions = [];
+      // HARDCODED CATEGORIES (No Emojis)
+      const ticketOptions = [
+        { label: "Apply for Content Creator", categoryId: "1510798983344160889", prefix: "content-creator" },
+        { label: "Report a Exploiter",       categoryId: "1510798973517172859", prefix: "report-exploiter" },
+        { label: "CC Rewards",               categoryId: "1510798973517172859", prefix: "cc-rewards" },
+        { label: "Report a Staff",           categoryId: "1512253003820699698", prefix: "report-staff" },
+        { label: "Report a Admin",           categoryId: "1512253208872095795", prefix: "report-admin" }
+      ];
 
-      // Category 1
-      if (o.getString('cat1_id')) {
-        ticketOptions.push({
-          label: "Apply for Content Creator",
-          categoryId: o.getString('cat1_id'),
-          emoji: o.getString('cat1_emoji') || null,
-          prefix: "content-creator"
-        });
-      }
-
-      // Category 2
-      if (o.getString('cat2_id')) {
-        ticketOptions.push({
-          label: "Report a Exploiter",
-          categoryId: o.getString('cat2_id'),
-          emoji: o.getString('cat2_emoji') || null,
-          prefix: "report-exploiter"
-        });
-      }
-
-      // Category 3
-      if (o.getString('cat3_id')) {
-        ticketOptions.push({
-          label: "CC Rewards",
-          categoryId: o.getString('cat3_id'),
-          emoji: o.getString('cat3_emoji') || null,
-          prefix: "cc-rewards"
-        });
-      }
-
-      // Category 4
-      if (o.getString('cat4_id')) {
-        ticketOptions.push({
-          label: "Report a Staff",
-          categoryId: o.getString('cat4_id'),
-          emoji: o.getString('cat4_emoji') || null,
-          prefix: "report-staff"
-        });
-      }
-
-      // Category 5
-      if (o.getString('cat5_id')) {
-        ticketOptions.push({
-          label: "Report a Admin",
-          categoryId: o.getString('cat5_id'),
-          emoji: o.getString('cat5_emoji') || null,
-          prefix: "report-admin"
-        });
-      }
-
-      if (ticketOptions.length === 0) {
-        return interaction.editReply({ content: '❌ You must provide at least one **Category ID**.' });
-      }
-
-      const categoryList = ticketOptions.map(opt => 
-        `${opt.emoji ? opt.emoji + ' ' : ''}**${opt.label}**`
-      ).join('\n');
+      const categoryList = ticketOptions.map(opt => `**${opt.label}**`).join('\n');
 
       const embed = new EmbedBuilder()
-        .setColor(o.getString('panel_color'))
+        .setColor('#c2ecff')
         .setTitle(o.getString('panel_title'))
         .setDescription(o.getString('panel_description') + `\n\n**Available Categories:**\n${categoryList}`)
         .setFooter({ text: 'Select a category below to open a ticket' })
@@ -192,8 +120,7 @@ client.on('interactionCreate', async interaction => {
         .setPlaceholder('Open a Ticket')
         .addOptions(ticketOptions.map((opt, i) => ({
           label: opt.label,
-          value: i.toString(),
-          emoji: opt.emoji
+          value: i.toString()
         })));
 
       const row1 = new ActionRowBuilder().addComponents(menu);
@@ -208,11 +135,11 @@ client.on('interactionCreate', async interaction => {
 
     } catch (err) {
       console.error(err);
-      interaction.editReply({ content: '❌ Error creating panel. Make sure Category IDs are correct.' }).catch(() => {});
+      interaction.editReply({ content: '❌ Error creating panel.' }).catch(() => {});
     }
   }
 
-  // CREATE TICKET FROM DROPDOWN
+  // CREATE TICKET
   if (interaction.isStringSelectMenu() && interaction.customId.startsWith('ticket_menu_')) {
     try {
       await interaction.deferReply({ ephemeral: true });
@@ -262,7 +189,7 @@ client.on('interactionCreate', async interaction => {
   if (interaction.isButton()) {
     if (interaction.customId === 'edit_panel') {
       if (!isStaff(interaction.member)) return interaction.reply({ content: 'Only staff can edit the panel.', ephemeral: true });
-      return interaction.reply({ content: 'Run /setticket again to edit.', ephemeral: true });
+      return interaction.reply({ content: 'Run /setticket again to update title or description.', ephemeral: true });
     }
 
     if (interaction.customId === 'close_ticket') {
