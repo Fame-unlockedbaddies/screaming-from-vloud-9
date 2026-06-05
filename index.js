@@ -103,10 +103,11 @@ client.on('interactionCreate', async interaction => {
       await interaction.deferReply({ ephemeral: true });
       const o = interaction.options;
 
+      // UPDATED CATEGORIES WITH YOUR LATEST IDs
       const ticketOptions = [
         { label: "Apply for Content Creator", categoryId: "1510798983344160889", prefix: "content-creator" },
         { label: "Report a Exploiter",       categoryId: "1510798973517172859", prefix: "report-exploiter" },
-        { label: "CC Rewards",               categoryId: "1510798973517172859", prefix: "cc-rewards" },
+        { label: "CC Rewards",               categoryId: "1512272256208736326", prefix: "cc-rewards" },
         { label: "Report a Staff",           categoryId: "1512253003820699698", prefix: "report-staff" },
         { label: "Report a Admin",           categoryId: "1512253208872095795", prefix: "report-admin" }
       ];
@@ -116,7 +117,7 @@ client.on('interactionCreate', async interaction => {
       const embed = new EmbedBuilder()
         .setColor('#c2ecff')
         .setTitle(o.getString('panel_title'))
-        .setDescription((o.getString('panel_description') || "Select a category to open a ticket.") + `\n\n**Available Categories:**\n${categoryList}`)
+        .setDescription((o.getString('panel_description') || "Select a category below to open a ticket.") + `\n\n**Available Categories:**\n${categoryList}`)
         .setFooter({ text: 'Select a category below to open a ticket' })
         .setTimestamp();
 
@@ -127,11 +128,14 @@ client.on('interactionCreate', async interaction => {
       const menu = new StringSelectMenuBuilder()
         .setCustomId(menuId)
         .setPlaceholder('Create a Ticket')
-        .addOptions(ticketOptions.map((opt, i) => ({ label: opt.label, value: i.toString() })));
+        .addOptions(ticketOptions.map((opt, i) => ({
+          label: opt.label,
+          value: i.toString()
+        })));
 
       const row = new ActionRowBuilder().addComponents(menu);
 
-      panelStore[menuId] = { ticketOptions, ticketColor: '#2b2d31' };
+      panelStore[menuId] = { ticketOptions, ticketColor: '#c2ecff' }; // Consistent color
 
       await interaction.channel.send({ embeds: [embed], components: [row] });
       await interaction.editReply({ content: '✅ Ticket panel created successfully!' });
@@ -152,9 +156,9 @@ client.on('interactionCreate', async interaction => {
 
     try {
       await interaction.channel.send(messageContent);
-      await interaction.reply({ content: '✅ Message sent!', ephemeral: true });
+      await interaction.reply({ content: '✅ Message sent successfully!', ephemeral: true });
     } catch (err) {
-      await interaction.reply({ content: '❌ Failed to send message.', ephemeral: true });
+      await interaction.reply({ content: '❌ Failed to send the message.', ephemeral: true });
     }
   }
 
