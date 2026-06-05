@@ -93,6 +93,9 @@ client.on('interactionCreate', async interaction => {
       await interaction.deferReply({ ephemeral: true });
       const o = interaction.options;
 
+      const panelTitle = o.getString('panel_title');
+      const panelDesc = o.getString('panel_description') || "Select a category below to create a ticket.";
+
       // BUILT-IN CATEGORIES
       const ticketOptions = [
         { label: "Apply for Content Creator", categoryId: "1510798983344160889", prefix: "content-creator" },
@@ -106,8 +109,8 @@ client.on('interactionCreate', async interaction => {
 
       const embed = new EmbedBuilder()
         .setColor('#c2ecff')
-        .setTitle(o.getString('panel_title'))
-        .setDescription(o.getString('panel_description') + `\n\n**Available Categories:**\n${categoryList}`)
+        .setTitle(panelTitle)
+        .setDescription(panelDesc + `\n\n**Available Categories:**\n${categoryList}`)
         .setFooter({ text: 'Select a category below to open a ticket' })
         .setTimestamp();
 
@@ -117,7 +120,7 @@ client.on('interactionCreate', async interaction => {
       const menuId = `ticket_menu_${Date.now()}`;
       const menu = new StringSelectMenuBuilder()
         .setCustomId(menuId)
-        .setPlaceholder('Create a Ticket')           // ← Changed as requested
+        .setPlaceholder('Create a Ticket')
         .addOptions(ticketOptions.map((opt, i) => ({
           label: opt.label,
           value: i.toString()
