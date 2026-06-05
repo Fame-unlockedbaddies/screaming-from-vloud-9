@@ -10,10 +10,7 @@ const {
   ButtonBuilder,
   ButtonStyle,
   ChannelType,
-  PermissionFlagsBits,
-  ModalBuilder,
-  TextInputBuilder,
-  TextInputStyle
+  PermissionFlagsBits
 } = require('discord.js');
 
 const express = require('express');
@@ -36,15 +33,11 @@ const GUILD_ID = process.env.GUILD_ID;
 // STAFF ROLES
 const STAFF_ROLES = ['YOUR_STAFF_ROLE_ID_HERE', 'YOUR_STAFF_ROLE_ID_HERE'];
 
-// ======================================================
 // STORES
-// ======================================================
 const panelStore = {};
 const ticketCounts = {};
 
-// ======================================================
 // CLIENT
-// ======================================================
 const client = new Client({
   intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMessages, GatewayIntentBits.GuildMembers, GatewayIntentBits.MessageContent]
 });
@@ -54,13 +47,17 @@ const client = new Client({
 // ======================================================
 const setticket = new SlashCommandBuilder()
   .setName('setticket')
-  .setDescription('Open the ticket panel editor')
-  .setDefaultMemberPermissions(PermissionFlagsBits.ManageChannels);
+  .setDescription('Send the ticket panel')
+  .setDefaultMemberPermissions(PermissionFlagsBits.ManageChannels)
+  .addStringOption(o => o.setName('panel_title').setDescription('Panel Title').setRequired(true))
+  .addStringOption(o => o.setName('panel_description').setDescription('Panel Description').setRequired(true))
+  .addStringOption(o => o.setName('panel_color').setDescription('Embed Color HEX (e.g. #c2ecff)').setRequired(true))
+  .addStringOption(o => o.setName('panel_image').setDescription('Banner Image URL (optional)').setRequired(false));
 
 const commands = [
   setticket.toJSON(),
-  new SlashCommandBuilder().setName('close').setDescription('Close this ticket').toJSON(),
-  new SlashCommandBuilder().setName('claim').setDescription('Claim this ticket').toJSON(),
+  new SlashCommandBuilder().setName('close').setDescription('Close ticket').toJSON(),
+  new SlashCommandBuilder().setName('claim').setDescription('Claim ticket').toJSON(),
   new SlashCommandBuilder().setName('add').setDescription('Add user').addUserOption(o => o.setName('user').setDescription('User to add').setRequired(true)).toJSON(),
   new SlashCommandBuilder().setName('remove').setDescription('Remove user').addUserOption(o => o.setName('user').setDescription('User to remove').setRequired(true)).toJSON(),
   new SlashCommandBuilder().setName('rename').setDescription('Rename ticket').addStringOption(o => o.setName('name').setDescription('New name').setRequired(true)).toJSON()
@@ -77,9 +74,7 @@ const rest = new REST({ version: '10' }).setToken(TOKEN);
   }
 })();
 
-// ======================================================
 // READY
-// ======================================================
 client.once('ready', () => console.log(`${client.user.tag} is online`));
 
 function isStaff(member) {
@@ -90,125 +85,56 @@ function isStaff(member) {
 // INTERACTIONS
 // ======================================================
 client.on('interactionCreate', async interaction => {
-  // ====================== /SETTICKET - OPEN MODAL ======================
+
   if (interaction.isChatInputCommand() && interaction.commandName === 'setticket') {
-    const modal = new ModalBuilder()
-      .setCustomId('ticket_panel_modal')
-      .setTitle('Create / Edit Ticket Panel');
-
-    // Panel Settings
-    const panelTitle = new TextInputBuilder()
-      .setCustomId('panel_title')
-      .setLabel('Panel Title')
-      .setStyle(TextInputStyle.Short)
-      .setRequired(true)
-      .setValue('Server Support Tickets');
-
-    const panelDesc = new TextInputBuilder()
-      .setCustomId('panel_description')
-      .setLabel('Panel Description')
-      .setStyle(TextInputStyle.Paragraph)
-      .setRequired(true)
-      .setValue('Open a ticket below to get help from staff.');
-
-    const panelColor = new TextInputBuilder()
-      .setCustomId('panel_color')
-      .setLabel('Panel Embed Color (HEX)')
-      .setStyle(TextInputStyle.Short)
-      .setRequired(true)
-      .setValue('#5865F2');
-
-    const ticketColor = new TextInputBuilder()
-      .setCustomId('ticket_color')
-      .setLabel('Ticket Embed Color (HEX)')
-      .setStyle(TextInputStyle.Short)
-      .setRequired(true)
-      .setValue('#2b2d31');
-
-    const panelImage = new TextInputBuilder()
-      .setCustomId('panel_image')
-      .setLabel('Banner Image URL (optional)')
-      .setStyle(TextInputStyle.Short)
-      .setRequired(false);
-
-    // Category 1
-    const cat1Label = new TextInputBuilder().setCustomId('cat1_label').setLabel('Cat 1 Label').setStyle(TextInputStyle.Short).setRequired(false).setValue('Apply for Content Creator');
-    const cat1Id = new TextInputBuilder().setCustomId('cat1_id').setLabel('Cat 1 Category ID').setStyle(TextInputStyle.Short).setRequired(false);
-    const cat1Emoji = new TextInputBuilder().setCustomId('cat1_emoji').setLabel('Cat 1 Emoji').setStyle(TextInputStyle.Short).setRequired(false).setValue('🎥');
-    const cat1Prefix = new TextInputBuilder().setCustomId('cat1_prefix').setLabel('Cat 1 Prefix').setStyle(TextInputStyle.Short).setRequired(false).setValue('content-creator');
-
-    // Category 2
-    const cat2Label = new TextInputBuilder().setCustomId('cat2_label').setLabel('Cat 2 Label').setStyle(TextInputStyle.Short).setRequired(false).setValue('Report a Hacker');
-    const cat2Id = new TextInputBuilder().setCustomId('cat2_id').setLabel('Cat 2 Category ID').setStyle(TextInputStyle.Short).setRequired(false);
-    const cat2Emoji = new TextInputBuilder().setCustomId('cat2_emoji').setLabel('Cat 2 Emoji').setStyle(TextInputStyle.Short).setRequired(false).setValue('🚨');
-    const cat2Prefix = new TextInputBuilder().setCustomId('cat2_prefix').setLabel('Cat 2 Prefix').setStyle(TextInputStyle.Short).setRequired(false).setValue('report-hacker');
-
-    // You can add more categories if needed (max 5 rows per modal, so we use multiple rows)
-
-    const row1 = new ActionRowBuilder().addComponents(panelTitle);
-    const row2 = new ActionRowBuilder().addComponents(panelDesc);
-    const row3 = new ActionRowBuilder().addComponents(panelColor);
-    const row4 = new ActionRowBuilder().addComponents(ticketColor);
-    const row5 = new ActionRowBuilder().addComponents(panelImage);
-
-    const row6 = new ActionRowBuilder().addComponents(cat1Label);
-    const row7 = new ActionRowBuilder().addComponents(cat1Id);
-    const row8 = new ActionRowBuilder().addComponents(cat1Emoji);
-    const row9 = new ActionRowBuilder().addComponents(cat1Prefix);
-
-    const row10 = new ActionRowBuilder().addComponents(cat2Label);
-    const row11 = new ActionRowBuilder().addComponents(cat2Id);
-    const row12 = new ActionRowBuilder().addComponents(cat2Emoji);
-    const row13 = new ActionRowBuilder().addComponents(cat2Prefix);
-
-    modal.addComponents(row1, row2, row3, row4, row5, row6, row7, row8, row9, row10, row11, row12, row13);
-
-    await interaction.showModal(modal);
-  }
-
-  // ====================== MODAL SUBMISSION ======================
-  if (interaction.isModalSubmit() && interaction.customId === 'ticket_panel_modal') {
     try {
-      const o = interaction.fields;
+      await interaction.deferReply({ ephemeral: true });
+      const o = interaction.options;
 
-      const ticketOptions = [];
-
-      // Category 1
-      if (o.getTextInputValue('cat1_id')) {
-        ticketOptions.push({
-          label: o.getTextInputValue('cat1_label') || 'Apply for Content Creator',
-          categoryId: o.getTextInputValue('cat1_id'),
-          emoji: o.getTextInputValue('cat1_emoji') || '🎥',
-          prefix: o.getTextInputValue('cat1_prefix') || 'content-creator'
-        });
-      }
-
-      // Category 2
-      if (o.getTextInputValue('cat2_id')) {
-        ticketOptions.push({
-          label: o.getTextInputValue('cat2_label') || 'Report a Hacker',
-          categoryId: o.getTextInputValue('cat2_id'),
-          emoji: o.getTextInputValue('cat2_emoji') || '🚨',
-          prefix: o.getTextInputValue('cat2_prefix') || 'report-hacker'
-        });
-      }
-
-      // Add Cat 3,4,5 similarly if you want (I kept 2 for modal size, you can extend)
-
-      if (ticketOptions.length === 0) {
-        return interaction.reply({ content: '❌ You must fill at least one Category ID.', ephemeral: true });
-      }
+      // BUILT-IN CATEGORIES WITH YOUR CATEGORY IDs
+      const ticketOptions = [
+        {
+          label: "Apply for Content Creator",
+          categoryId: "1510798983344160889",
+          emoji: "🎥",
+          prefix: "content-creator"
+        },
+        {
+          label: "Report a Exploiter",
+          categoryId: "1510798973517172859",
+          emoji: "🚨",
+          prefix: "report-exploiter"
+        },
+        {
+          label: "CC Rewards",
+          categoryId: "1510798973517172859",
+          emoji: "🏆",
+          prefix: "cc-rewards"
+        },
+        {
+          label: "Report a Staff",
+          categoryId: "1512253003820699698",
+          emoji: "📛",
+          prefix: "report-staff"
+        },
+        {
+          label: "Report a Admin",
+          categoryId: "1512253208872095795",
+          emoji: "👑",
+          prefix: "report-admin"
+        }
+      ];
 
       const categoryList = ticketOptions.map(opt => `${opt.emoji} **${opt.label}**`).join('\n');
 
       const embed = new EmbedBuilder()
-        .setColor(o.getTextInputValue('panel_color'))
-        .setTitle(o.getTextInputValue('panel_title'))
-        .setDescription(o.getTextInputValue('panel_description') + `\n\n**Available Categories:**\n${categoryList}`)
+        .setColor(o.getString('panel_color'))
+        .setTitle(o.getString('panel_title'))
+        .setDescription(o.getString('panel_description') + `\n\n**Available Categories:**\n${categoryList}`)
         .setFooter({ text: 'Select a category below to open a ticket' })
         .setTimestamp();
 
-      const image = o.getTextInputValue('panel_image');
+      const image = o.getString('panel_image');
       if (image && image.startsWith('http')) embed.setImage(image);
 
       const menuId = `ticket_menu_${Date.now()}`;
@@ -228,25 +154,24 @@ client.on('interactionCreate', async interaction => {
 
       panelStore[menuId] = { 
         ticketOptions, 
-        ticketColor: o.getTextInputValue('ticket_color') 
+        ticketColor: '#2b2d31' 
       };
 
       await interaction.channel.send({ embeds: [embed], components: [row1, row2] });
-      await interaction.reply({ content: '✅ Ticket panel created successfully!', ephemeral: true });
+      await interaction.editReply({ content: '✅ Ticket panel sent successfully!' });
 
     } catch (err) {
       console.error(err);
-      interaction.reply({ content: '❌ Error creating panel.', ephemeral: true });
+      interaction.editReply({ content: '❌ Error creating panel.' }).catch(() => {});
     }
   }
 
-  // Ticket Creation, Buttons, etc. (same as before)
+  // CREATE TICKET FROM DROPDOWN
   if (interaction.isStringSelectMenu() && interaction.customId.startsWith('ticket_menu_')) {
-    // ... (copy from previous version - ticket creation logic)
     try {
       await interaction.deferReply({ ephemeral: true });
       const panel = panelStore[interaction.customId];
-      if (!panel) return interaction.editReply({ content: 'Panel outdated.' });
+      if (!panel) return interaction.editReply({ content: 'This panel is outdated. Run /setticket again.' });
 
       const selected = panel.ticketOptions[parseInt(interaction.values[0])];
       const { label, categoryId, prefix } = selected;
@@ -287,14 +212,24 @@ client.on('interactionCreate', async interaction => {
     }
   }
 
-  // Edit Panel & Button Handlers
-  if (interaction.isButton() && interaction.customId === 'edit_panel') {
-    if (!isStaff(interaction.member)) return interaction.reply({ content: 'Only staff.', ephemeral: true });
-    await interaction.reply({ content: 'Run `/setticket` again to edit via form.', ephemeral: true });
-  }
+  // BUTTONS
+  if (interaction.isButton()) {
+    if (interaction.customId === 'edit_panel') {
+      if (!isStaff(interaction.member)) return interaction.reply({ content: 'Only staff can edit the panel.', ephemeral: true });
+      return interaction.reply({ content: 'Run /setticket again to update title, description, or color.', ephemeral: true });
+    }
 
-  if (interaction.isButton() && (interaction.customId === 'close_ticket' || interaction.customId === 'claim_ticket')) {
-    // Add your close/claim logic here (same as previous versions)
+    if (interaction.customId === 'close_ticket') {
+      const isOwner = interaction.user.id === interaction.channel.topic;
+      if (!isOwner && !isStaff(interaction.member)) return interaction.reply({ content: 'Only owner or staff can close.', ephemeral: true });
+      await interaction.reply({ embeds: [new EmbedBuilder().setColor('#ff0000').setDescription('Ticket closing in 5 seconds.')] });
+      setTimeout(() => interaction.channel.delete().catch(() => {}), 5000);
+    }
+
+    if (interaction.customId === 'claim_ticket') {
+      if (!isStaff(interaction.member)) return interaction.reply({ content: 'Only staff can claim.', ephemeral: true });
+      await interaction.reply({ embeds: [new EmbedBuilder().setColor('#00ff00').setDescription(`${interaction.user} claimed this ticket.`)] });
+    }
   }
 });
 
