@@ -93,7 +93,7 @@ client.on('interactionCreate', async interaction => {
       await interaction.deferReply({ ephemeral: true });
       const o = interaction.options;
 
-      // HARDCODED CATEGORIES (No Emojis)
+      // BUILT-IN CATEGORIES - NO EMOJIS
       const ticketOptions = [
         { label: "Apply for Content Creator", categoryId: "1510798983344160889", prefix: "content-creator" },
         { label: "Report a Exploiter",       categoryId: "1510798973517172859", prefix: "report-exploiter" },
@@ -123,14 +123,11 @@ client.on('interactionCreate', async interaction => {
           value: i.toString()
         })));
 
-      const row1 = new ActionRowBuilder().addComponents(menu);
-      const row2 = new ActionRowBuilder().addComponents(
-        new ButtonBuilder().setCustomId('edit_panel').setLabel('Edit Panel').setStyle(ButtonStyle.Secondary)
-      );
+      const row = new ActionRowBuilder().addComponents(menu);
 
       panelStore[menuId] = { ticketOptions, ticketColor: '#2b2d31' };
 
-      await interaction.channel.send({ embeds: [embed], components: [row1, row2] });
+      await interaction.channel.send({ embeds: [embed], components: [row] });
       await interaction.editReply({ content: '✅ Ticket panel created successfully!' });
 
     } catch (err) {
@@ -187,11 +184,6 @@ client.on('interactionCreate', async interaction => {
 
   // BUTTONS
   if (interaction.isButton()) {
-    if (interaction.customId === 'edit_panel') {
-      if (!isStaff(interaction.member)) return interaction.reply({ content: 'Only staff can edit the panel.', ephemeral: true });
-      return interaction.reply({ content: 'Run /setticket again to update title or description.', ephemeral: true });
-    }
-
     if (interaction.customId === 'close_ticket') {
       const isOwner = interaction.user.id === interaction.channel.topic;
       if (!isOwner && !isStaff(interaction.member)) return interaction.reply({ content: 'Only owner or staff can close.', ephemeral: true });
