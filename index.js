@@ -30,7 +30,10 @@ const TOKEN = process.env.TOKEN;
 const CLIENT_ID = process.env.CLIENT_ID;
 const GUILD_ID = process.env.GUILD_ID;
 
-// STAFF ROLES
+// SPECIAL ROLE THAT CAN USE /SENDMESSAGE
+const SEND_ROLE = '1510682894388039800';
+
+// STAFF ROLES (for ticket management)
 const STAFF_ROLES = [
   '1505376743001821334',
   '1505379855137509538'
@@ -56,8 +59,15 @@ const setticket = new SlashCommandBuilder()
   .addStringOption(o => o.setName('panel_description').setDescription('Panel Description').setRequired(true))
   .addStringOption(o => o.setName('panel_image').setDescription('Banner Image URL (optional)').setRequired(false));
 
+const sendmessage = new SlashCommandBuilder()
+  .setName('sendmessage')
+  .setDescription('Send a message as the bot')
+  .setDefaultMemberPermissions(PermissionFlagsBits.ManageChannels)
+  .addStringOption(o => o.setName('message').setDescription('The message to send').setRequired(true));
+
 const commands = [
   setticket.toJSON(),
+  sendmessage.toJSON(),
   new SlashCommandBuilder().setName('close').setDescription('Close ticket').toJSON(),
   new SlashCommandBuilder().setName('claim').setDescription('Claim ticket').toJSON(),
   new SlashCommandBuilder().setName('add').setDescription('Add user').addUserOption(o => o.setName('user').setDescription('User to add').setRequired(true)).toJSON(),
@@ -83,20 +93,21 @@ function isStaff(member) {
   return STAFF_ROLES.some(role => member.roles.cache.has(role));
 }
 
+function canSendMessage(member) {
+  return member.roles.cache.has(SEND_ROLE);
+}
+
 // ======================================================
 // INTERACTIONS
 // ======================================================
 client.on('interactionCreate', async interaction => {
 
+  // /SETTICKET
   if (interaction.isChatInputCommand() && interaction.commandName === 'setticket') {
     try {
       await interaction.deferReply({ ephemeral: true });
       const o = interaction.options;
 
-      const panelTitle = o.getString('panel_title');
-      const panelDesc = o.getString('panel_description') || "Select a category below to create a ticket.";
-
-      // BUILT-IN CATEGORIES
       const ticketOptions = [
         { label: "Apply for Content Creator", categoryId: "1510798983344160889", prefix: "content-creator" },
         { label: "Report a Exploiter",       categoryId: "1510798973517172859", prefix: "report-exploiter" },
@@ -109,8 +120,8 @@ client.on('interactionCreate', async interaction => {
 
       const embed = new EmbedBuilder()
         .setColor('#c2ecff')
-        .setTitle(panelTitle)
-        .setDescription(panelDesc + `\n\n**Available Categories:**\n${categoryList}`)
+        .setTitle(o.getString('panel_title'))
+        .setDescription(o.getString('panel_description') + `\n\n**Available Categories:**\n${categoryList}`)
         .setFooter({ text: 'Select a category below to open a ticket' })
         .setTimestamp();
 
@@ -121,10 +132,7 @@ client.on('interactionCreate', async interaction => {
       const menu = new StringSelectMenuBuilder()
         .setCustomId(menuId)
         .setPlaceholder('Create a Ticket')
-        .addOptions(ticketOptions.map((opt, i) => ({
-          label: opt.label,
-          value: i.toString()
-        })));
+        .addOptions(ticketOptions.map((opt, i) => ({ label: opt.label, value: i.toString() })));
 
       const row = new ActionRowBuilder().addComponents(menu);
 
@@ -132,14 +140,30 @@ client.on('interactionCreate', async interaction => {
 
       await interaction.channel.send({ embeds: [embed], components: [row] });
       await interaction.editReply({ content: '✅ Ticket panel created successfully!' });
-
     } catch (err) {
       console.error(err);
       interaction.editReply({ content: '❌ Error creating panel.' }).catch(() => {});
     }
   }
 
-  // CREATE TICKET
+  // /SENDMESSAGE - Only specific role can use
+  if (interaction.isChatInputCommand() && interaction.commandName === 'sendmessage') {
+    if (!canSendMessage(interaction.member)) {
+      return interaction.reply({ content: 'You do not have permission to use this command.', ephemeral: true });
+    }
+
+    const messageContent = interaction.options.getString('message');
+
+    try {
+      await interaction.channel.send(messageContent);
+      await interaction.reply({ content: '✅ Message sent successfully!', ephemeral: true });
+    } catch (err) {
+      console.error(err);
+      await interaction.reply({ content: '❌ Failed to send message.', ephemeral: true });
+    }
+  }
+
+  // TICKET CREATION
   if (interaction.isStringSelectMenu() && interaction.customId.startsWith('ticket_menu_')) {
     try {
       await interaction.deferReply({ ephemeral: true });
