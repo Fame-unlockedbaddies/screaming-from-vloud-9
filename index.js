@@ -93,7 +93,7 @@ client.on('interactionCreate', async interaction => {
       await interaction.deferReply({ ephemeral: true });
       const o = interaction.options;
 
-      // BUILT-IN CATEGORIES - NO EMOJIS
+      // BUILT-IN CATEGORIES
       const ticketOptions = [
         { label: "Apply for Content Creator", categoryId: "1510798983344160889", prefix: "content-creator" },
         { label: "Report a Exploiter",       categoryId: "1510798973517172859", prefix: "report-exploiter" },
