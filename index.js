@@ -14,6 +14,7 @@ const {
 } = require('discord.js');
 
 const express = require('express');
+const fs = require('fs');
 require('dotenv').config();
 
 // ======================================================
@@ -38,6 +39,20 @@ const SEND_ROLE = '1510682894388039800';
 const panelStore = {};
 const ticketCounts = {};
 
+// PERSISTENT PANEL
+const PANEL_FILE = './ticket_panel.json';
+
+function savePanel(data) {
+  try { fs.writeFileSync(PANEL_FILE, JSON.stringify(data, null, 2)); } catch (e) {}
+}
+
+function loadPanel() {
+  try {
+    if (fs.existsSync(PANEL_FILE)) return JSON.parse(fs.readFileSync(PANEL_FILE, 'utf8'));
+  } catch (e) {}
+  return null;
+}
+
 // CLIENT
 const client = new Client({
   intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMessages, GatewayIntentBits.GuildMembers, GatewayIntentBits.MessageContent]
@@ -48,7 +63,7 @@ const client = new Client({
 // ======================================================
 const setticket = new SlashCommandBuilder()
   .setName('setticket')
-  .setDescription('Send the ticket panel')
+  .setDescription('Send/Update the ticket panel')
   .setDefaultMemberPermissions(PermissionFlagsBits.ManageChannels)
   .addStringOption(o => o.setName('panel_title').setDescription('Panel Title').setRequired(true))
   .addStringOption(o => o.setName('panel_description').setDescription('Panel Description').setRequired(true))
@@ -81,29 +96,55 @@ const rest = new REST({ version: '10' }).setToken(TOKEN);
   }
 })();
 
-// READY
-client.once('ready', () => console.log(`${client.user.tag} is online`));
+// READY + LOAD PANEL
+client.once('ready', () => {
+  console.log(`${client.user.tag} is online`);
 
-function isStaff(member) {
-  return STAFF_ROLES.some(role => member.roles.cache.has(role));
-}
+  const saved = loadPanel();
+  if (saved) {
+    panelStore[saved.menuId] = saved.data;
+    console.log('✅ Persistent ticket panel loaded');
+  }
+});
 
-function canSendMessage(member) {
-  return member.roles.cache.has(SEND_ROLE);
-}
+// ======================================================
+// INVITE BLOCKER
+// ======================================================
+client.on('messageCreate', async message => {
+  if (message.author.bot || !message.guild) return;
+
+  const content = message.content.toLowerCase();
+
+  if (content.includes('discord.gg/') || content.includes('discord.com/invite/') || content.includes('discordapp.com/invite/')) {
+    try {
+      await message.delete();
+
+      await message.member.timeout(5 * 60 * 1000, 'Posted invite link').catch(() => {});
+
+      const warnMsg = await message.channel.send({
+        embeds: [new EmbedBuilder()
+          .setColor('#ff0000')
+          .setDescription(`${message.author} Invite links are not allowed.`)]
+      });
+
+      setTimeout(() => warnMsg.delete().catch(() => {}), 5000);
+    } catch (err) {
+      console.error(err);
+    }
+  }
+});
 
 // ======================================================
 // INTERACTIONS
 // ======================================================
 client.on('interactionCreate', async interaction => {
 
-  // ====================== /SETTICKET ======================
+  // /SETTICKET
   if (interaction.isChatInputCommand() && interaction.commandName === 'setticket') {
     try {
       await interaction.deferReply({ ephemeral: true });
       const o = interaction.options;
 
-      // ALL CATEGORIES (Updated with new ones)
       const ticketOptions = [
         { label: "Apply for Content Creator", categoryId: "1510798983344160889", prefix: "content-creator" },
         { label: "Report a Exploiter",       categoryId: "1510798973517172859", prefix: "report-exploiter" },
@@ -130,16 +171,17 @@ client.on('interactionCreate', async interaction => {
       const menu = new StringSelectMenuBuilder()
         .setCustomId(menuId)
         .setPlaceholder('Create a Ticket')
-        .addOptions(ticketOptions.map((opt, i) => ({
-          label: opt.label,
-          value: i.toString()
-        })));
+        .addOptions(ticketOptions.map((opt, i) => ({ label: opt.label, value: i.toString() })));
 
       const row = new ActionRowBuilder().addComponents(menu);
 
-      panelStore[menuId] = { ticketOptions, ticketColor: '#c2ecff' };
+      const panelData = { ticketOptions, ticketColor: '#c2ecff' };
+      panelStore[menuId] = panelData;
 
-      await interaction.channel.send({ embeds: [embed], components: [row] });
+      const msg = await interaction.channel.send({ embeds: [embed], components: [row] });
+
+      savePanel({ menuId, data: panelData });
+
       await interaction.editReply({ content: '✅ Ticket panel created successfully!' });
 
     } catch (err) {
@@ -148,23 +190,21 @@ client.on('interactionCreate', async interaction => {
     }
   }
 
-  // ====================== /SENDMESSAGE ======================
+  // /SENDMESSAGE
   if (interaction.isChatInputCommand() && interaction.commandName === 'sendmessage') {
-    if (!canSendMessage(interaction.member)) {
+    if (!interaction.member.roles.cache.has(SEND_ROLE)) {
       return interaction.reply({ content: 'You do not have permission to use this command.', ephemeral: true });
     }
 
-    const messageContent = interaction.options.getString('message');
-
     try {
-      await interaction.channel.send(messageContent);
-      await interaction.reply({ content: '✅ Message sent successfully!', ephemeral: true });
+      await interaction.channel.send(interaction.options.getString('message'));
+      await interaction.reply({ content: '✅ Message sent!', ephemeral: true });
     } catch (err) {
-      await interaction.reply({ content: '❌ Failed to send the message.', ephemeral: true });
+      await interaction.reply({ content: '❌ Failed to send message.', ephemeral: true });
     }
   }
 
-  // ====================== TICKET CREATION ======================
+  // TICKET CREATION
   if (interaction.isStringSelectMenu() && interaction.customId.startsWith('ticket_menu_')) {
     try {
       await interaction.deferReply({ ephemeral: true });
