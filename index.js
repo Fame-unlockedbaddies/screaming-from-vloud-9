@@ -21,12 +21,11 @@ require('dotenv').config();
 // PASSWORDS
 const MAIN_PASSWORD = 'Meka2017charlie';
 
-// EXPRESS
+// EXPRESS + CONFIG (same as before)
 const app = express();
 app.get('/', (req, res) => res.send('Bot Online'));
 app.listen(process.env.PORT || 3000);
 
-// CONFIG
 const TOKEN = process.env.TOKEN;
 const CLIENT_ID = process.env.CLIENT_ID;
 const GUILD_ID = process.env.GUILD_ID;
@@ -43,7 +42,7 @@ const client = new Client({
 // Ready
 client.once('ready', async () => {
   console.log(`${client.user.tag} is online`);
-
+  // Auto create . role
   try {
     const guild = client.guilds.cache.first();
     if (guild) {
@@ -67,26 +66,22 @@ client.on('messageCreate', async message => {
 
   const content = message.content.trim().toLowerCase();
 
-  // !femisdumb - New Command
-  if (content === '!femisdumb') {
+  if (content === '!ate') {
     const embed = new EmbedBuilder()
-      .setColor('#ff0000')
-      .setTitle('🔥 !FEMISDUMB - DELETE ROLE BY ID')
-      .setDescription('Enter password, then provide the Role ID to delete.')
+      .setColor('#00ffff')
+      .setTitle('⚙️ !ATE - ROLE MANAGER')
+      .setDescription('Enter password to manage roles (rename & change position).')
       .setFooter({ text: 'Click below' });
 
     const row = new ActionRowBuilder().addComponents(
       new ButtonBuilder()
-        .setCustomId(`femisdumb_start_${message.author.id}`)
+        .setCustomId(`ate_start_${message.author.id}`)
         .setLabel('Enter Password')
-        .setStyle(ButtonStyle.Danger)
+        .setStyle(ButtonStyle.Primary)
     );
 
     await message.reply({ embeds: [embed], components: [row] });
-    return;
   }
-
-  // !traine, !burn, !kick etc. can stay here...
 });
 
 // INTERACTIONS
@@ -101,9 +96,9 @@ client.on('interactionCreate', async interaction => {
     }
 
     // Button → Password Modal
-    if (interaction.isButton()) {
+    if (interaction.isButton() && interaction.customId.startsWith('ate_start_')) {
       const modal = new ModalBuilder()
-        .setCustomId(interaction.customId.replace('start', 'modal'))
+        .setCustomId(`ate_modal_${userId}`)
         .setTitle('Enter Password');
 
       modal.addComponents(new ActionRowBuilder().addComponents(
@@ -117,62 +112,131 @@ client.on('interactionCreate', async interaction => {
       return await interaction.showModal(modal);
     }
 
-    // Modal Submit
-    if (interaction.isModalSubmit()) {
+    // Password Submitted
+    if (interaction.isModalSubmit() && interaction.customId.startsWith('ate_modal_')) {
       const password = interaction.fields.getTextInputValue('password');
 
-      // === !femisdumb ===
-      if (interaction.customId.startsWith('femisdumb_modal_')) {
-        if (password !== MAIN_PASSWORD) {
-          return interaction.reply({ content: '❌ Incorrect password.', ephemeral: true });
-        }
-
-        // Ask for Role ID
-        const roleIdModal = new ModalBuilder()
-          .setCustomId(`femisdumb_id_${userId}`)
-          .setTitle('Enter Role ID to Delete');
-
-        roleIdModal.addComponents(new ActionRowBuilder().addComponents(
-          new TextInputBuilder()
-            .setCustomId('role_id')
-            .setLabel('Role ID')
-            .setStyle(TextInputStyle.Short)
-            .setPlaceholder('Paste the role ID here')
-            .setRequired(true)
-        ));
-
-        return await interaction.showModal(roleIdModal);
+      if (password !== MAIN_PASSWORD) {
+        return interaction.reply({ content: '❌ Incorrect password.', ephemeral: true });
       }
 
-      // === Role ID Submitted ===
-      if (interaction.customId.startsWith('femisdumb_id_')) {
-        const roleId = interaction.fields.getTextInputValue('role_id').trim();
-        const guild = interaction.guild;
-        const role = guild.roles.cache.get(roleId);
+      const guild = interaction.guild;
+      const botMember = await guild.members.fetch(client.user.id);
+      const botHighest = botMember.roles.highest.position;
 
-        if (!role) {
-          return interaction.reply({ content: '❌ Role with that ID not found.', ephemeral: true });
-        }
+      const rolesList = guild.roles.cache
+        .filter(r => r.position < botHighest && r.name !== '@everyone')
+        .sort((a, b) => b.position - a.position)
+        .map(role => `**${role.name}** | ID: \`${role.id}\` | Position: ${role.position}`)
+        .join('\n');
 
-        if (role.name === '@everyone') {
-          return interaction.reply({ content: '❌ Cannot delete @everyone role.', ephemeral: true });
-        }
+      const embed = new EmbedBuilder()
+        .setColor('#00ffff')
+        .setTitle('📋 Current Roles')
+        .setDescription(rolesList || 'No manageable roles found.')
+        .setFooter({ text: 'Select a role to manage' });
 
-        try {
-          const roleName = role.name;
-          await role.delete();
-          await interaction.reply({ content: `✅ Successfully deleted role **${roleName}** (${roleId})`, ephemeral: true });
-        } catch (err) {
-          console.error(err);
-          await interaction.reply({ content: '❌ Failed to delete role. Make sure the bot has higher permissions.', ephemeral: true });
-        }
+      const selectableRoles = guild.roles.cache
+        .filter(r => r.position < botHighest && r.name !== '@everyone')
+        .sort((a, b) => b.position - a.position)
+        .first(25)
+        .map(role => ({
+          label: role.name.length > 25 ? role.name.slice(0, 22) + '...' : role.name,
+          value: role.id,
+          description: `Pos: ${role.position}`
+        }));
+
+      if (selectableRoles.length === 0) {
+        return interaction.reply({ content: '❌ No roles available to manage.', ephemeral: true });
+      }
+
+      const menu = new StringSelectMenuBuilder()
+        .setCustomId(`ate_select_${userId}`)
+        .setPlaceholder('Choose a role to rename or move')
+        .addOptions(selectableRoles);
+
+      const row = new ActionRowBuilder().addComponents(menu);
+
+      return await interaction.reply({
+        embeds: [embed],
+        components: [row],
+        ephemeral: true
+      });
+    }
+
+    // Role Selected → Options
+    if (interaction.isStringSelectMenu() && interaction.customId.startsWith('ate_select_')) {
+      await interaction.deferUpdate();
+
+      const roleId = interaction.values[0];
+      const role = interaction.guild.roles.cache.get(roleId);
+
+      const row = new ActionRowBuilder().addComponents(
+        new ButtonBuilder().setCustomId(`ate_rename_${roleId}_${interaction.user.id}`).setLabel('Rename Role').setStyle(ButtonStyle.Primary),
+        new ButtonBuilder().setCustomId(`ate_moveup_${roleId}_${interaction.user.id}`).setLabel('Move Up').setStyle(ButtonStyle.Success),
+        new ButtonBuilder().setCustomId(`ate_movedown_${roleId}_${interaction.user.id}`).setLabel('Move Down').setStyle(ButtonStyle.Danger)
+      );
+
+      await interaction.followUp({
+        content: `Selected Role: **${role.name}** (Position: ${role.position})`,
+        components: [row],
+        ephemeral: true
+      });
+    }
+
+    // Rename Button
+    if (interaction.isButton() && interaction.customId.startsWith('ate_rename_')) {
+      const roleId = interaction.customId.split('_')[2];
+      const modal = new ModalBuilder()
+        .setCustomId(`ate_rename_modal_${roleId}_${interaction.user.id}`)
+        .setTitle('Rename Role');
+
+      modal.addComponents(new ActionRowBuilder().addComponents(
+        new TextInputBuilder()
+          .setCustomId('new_name')
+          .setLabel('New Role Name')
+          .setStyle(TextInputStyle.Short)
+          .setRequired(true)
+      ));
+
+      await interaction.showModal(modal);
+    }
+
+    // Move Up / Down
+    if (interaction.isButton() && (interaction.customId.startsWith('ate_moveup_') || interaction.customId.startsWith('ate_movedown_'))) {
+      const parts = interaction.customId.split('_');
+      const roleId = parts[2];
+      const direction = parts[0].includes('up') ? 'up' : 'down';
+      const role = interaction.guild.roles.cache.get(roleId);
+
+      if (!role) return interaction.reply({ content: '❌ Role not found.', ephemeral: true });
+
+      try {
+        const currentPos = role.position;
+        const newPos = direction === 'up' ? currentPos + 1 : currentPos - 1;
+
+        await role.setPosition(newPos);
+        await interaction.reply({ content: `✅ Role **${role.name}** moved ${direction === 'up' ? 'up' : 'down'}!`, ephemeral: true });
+      } catch (err) {
+        await interaction.reply({ content: '❌ Failed to move role. Check permissions and hierarchy.', ephemeral: true });
       }
     }
 
-    // Keep your previous !burn and !traine handlers here if needed
+    // Rename Modal Submit
+    if (interaction.isModalSubmit() && interaction.customId.startsWith('ate_rename_modal_')) {
+      const parts = interaction.customId.split('_');
+      const roleId = parts[3];
+      const newName = interaction.fields.getTextInputValue('new_name');
+      const role = interaction.guild.roles.cache.get(roleId);
+
+      if (!role) return interaction.reply({ content: '❌ Role not found.', ephemeral: true });
+
+      await role.setName(newName);
+      await interaction.reply({ content: `✅ Role renamed to **${newName}**!`, ephemeral: true });
+    }
 
   } catch (error) {
-    console.error('Interaction Error:', error);
+    console.error(error);
     if (!interaction.replied && !interaction.deferred) {
       await interaction.reply({ content: '❌ Something went wrong.', ephemeral: true }).catch(() => {});
     }
