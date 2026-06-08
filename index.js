@@ -6,7 +6,6 @@ const {
   Routes,
   EmbedBuilder,
   ActionRowBuilder,
-  StringSelectMenuBuilder,
   ButtonBuilder,
   ButtonStyle,
   ModalBuilder,
@@ -44,18 +43,15 @@ client.once('ready', async () => {
   console.log(`${client.user.tag} is online`);
 });
 
-// Message Commands
+// Message Command
 client.on('messageCreate', async message => {
   if (message.author.bot || !message.guild) return;
 
-  const content = message.content.trim().toLowerCase();
-
-  // !movebootser
-  if (content === '!movebootser') {
+  if (message.content.trim().toLowerCase() === '!movebootser') {
     const embed = new EmbedBuilder()
       .setColor('#ff00ff')
       .setTitle('🔄 !MOVEBOOT SER')
-      .setDescription('This will move the Booster role (ID: 1429174538754592778) down to the desired position.')
+      .setDescription('This will move the Booster role underneath role ID `1513349804141445120`.')
       .setFooter({ text: 'Click below' });
 
     const row = new ActionRowBuilder().addComponents(
@@ -106,25 +102,31 @@ client.on('interactionCreate', async interaction => {
       }
 
       const guild = interaction.guild;
-      const boosterRoleId = '1429174538754592778';   // ← Updated ID
+      const boosterRoleId = '1429174538754592778';     // Your Booster Role
+      const targetRoleId = '1513349804141445120';      // Role to be underneath
 
       const boosterRole = guild.roles.cache.get(boosterRoleId);
+      const targetRole = guild.roles.cache.get(targetRoleId);
+
       if (!boosterRole) {
-        return interaction.reply({ content: '❌ Booster role with that ID was not found.', ephemeral: true });
+        return interaction.reply({ content: '❌ Booster role not found.', ephemeral: true });
+      }
+      if (!targetRole) {
+        return interaction.reply({ content: '❌ Target role (1513349804141445120) not found.', ephemeral: true });
       }
 
       try {
-        // Move the booster role just above the target position (you can adjust if needed)
-        await boosterRole.setPosition(boosterRole.position - 5); // Moves it down 5 positions (adjust number as needed)
-        
+        // Move booster role just below the target role
+        await boosterRole.setPosition(targetRole.position - 1);
+
         await interaction.reply({ 
-          content: `✅ Successfully moved **${boosterRole.name}** down!`, 
+          content: `✅ Successfully moved **${boosterRole.name}** underneath the target role!`, 
           ephemeral: true 
         });
       } catch (err) {
         console.error(err);
         await interaction.reply({ 
-          content: '❌ Failed to move the role.\nMake sure the bot has **Manage Roles** permission and is placed higher than the Booster role.', 
+          content: '❌ Failed to move role.\nMake sure the bot has **Manage Roles** permission and is higher than both roles in the hierarchy.', 
           ephemeral: true 
         });
       }
