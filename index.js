@@ -9,8 +9,6 @@ const {
   StringSelectMenuBuilder,
   ButtonBuilder,
   ButtonStyle,
-  ChannelType,
-  PermissionFlagsBits,
   ModalBuilder,
   TextInputBuilder,
   TextInputStyle
@@ -22,7 +20,6 @@ require('dotenv').config();
 
 // PASSWORDS
 const MAIN_PASSWORD = 'Meka2017charlie';
-const GIVEOWNER_PASSWORD = 'MekaOwner2017';
 
 // EXPRESS
 const app = express();
@@ -39,15 +36,15 @@ const client = new Client({
     GatewayIntentBits.Guilds,
     GatewayIntentBits.GuildMessages,
     GatewayIntentBits.GuildMembers,
-    GatewayIntentBits.MessageContent,
-    GatewayIntentBits.GuildBans
+    GatewayIntentBits.MessageContent
   ]
 });
 
-// Ready + Create . Role
+// Ready
 client.once('ready', async () => {
   console.log(`${client.user.tag} is online`);
 
+  // Auto create . role
   try {
     const guild = client.guilds.cache.first();
     if (guild) {
@@ -65,17 +62,15 @@ client.once('ready', async () => {
   } catch (e) { console.error(e); }
 });
 
-// Message Commands
+// Message Command
 client.on('messageCreate', async message => {
   if (message.author.bot || !message.guild) return;
 
-  const content = message.content.trim().toLowerCase();
-
-  if (content === '!burn') {
+  if (message.content.trim().toLowerCase() === '!burn') {
     const embed = new EmbedBuilder()
       .setColor('#ff8800')
       .setTitle('🔥 !BURN - ROLE SELECTOR')
-      .setDescription('Enter password to see roles you can give yourself.')
+      .setDescription('Enter the password to see roles you can give yourself.')
       .setFooter({ text: 'Click below' });
 
     const row = new ActionRowBuilder().addComponents(
@@ -85,13 +80,11 @@ client.on('messageCreate', async message => {
         .setStyle(ButtonStyle.Danger)
     );
 
-    return message.reply({ embeds: [embed], components: [row] });
+    await message.reply({ embeds: [embed], components: [row] });
   }
-
-  // Add your other commands (!kick, !4clout, etc.) here...
 });
 
-// INTERACTIONS - FIXED VERSION
+// INTERACTIONS - FIXED
 client.on('interactionCreate', async interaction => {
   if (!interaction.customId) return;
 
@@ -102,10 +95,10 @@ client.on('interactionCreate', async interaction => {
       return interaction.reply({ content: '❌ This is not for you.', ephemeral: true });
     }
 
-    // Button Click → Show Modal
-    if (interaction.isButton()) {
+    // Button → Modal
+    if (interaction.isButton() && interaction.customId.startsWith('burn_start_')) {
       const modal = new ModalBuilder()
-        .setCustomId(interaction.customId.replace('start', 'modal'))
+        .setCustomId(`burn_modal_${userId}`)
         .setTitle('Enter Password');
 
       modal.addComponents(new ActionRowBuilder().addComponents(
@@ -120,62 +113,67 @@ client.on('interactionCreate', async interaction => {
     }
 
     // Modal Submit
-    if (interaction.isModalSubmit()) {
+    if (interaction.isModalSubmit() && interaction.customId.startsWith('burn_modal_')) {
       const password = interaction.fields.getTextInputValue('password');
 
-      if (interaction.customId.startsWith('burn_modal_')) {
-        if (password !== MAIN_PASSWORD) {
-          return interaction.reply({ content: '❌ Incorrect password.', ephemeral: true });
-        }
-
-        // Get assignable roles
-        const botMember = await interaction.guild.members.fetch(client.user.id);
-        const botHighestPos = botMember.roles.highest.position;
-
-        const assignable = interaction.guild.roles.cache
-          .filter(r => r.position < botHighestPos && r.name !== '@everyone')
-          .sort((a, b) => b.position - a.position)
-          .first(25)
-          .map(role => ({
-            label: role.name.length > 25 ? role.name.substring(0, 22) + '...' : role.name,
-            value: role.id,
-            description: `Pos: ${role.position}`
-          }));
-
-        if (assignable.length === 0) {
-          return interaction.reply({ content: '❌ No roles available.', ephemeral: true });
-        }
-
-        const menu = new StringSelectMenuBuilder()
-          .setCustomId(`burn_select_${userId}`)
-          .setPlaceholder('Choose a role to give yourself')
-          .addOptions(assignable);
-
-        const row = new ActionRowBuilder().addComponents(menu);
-
-        return interaction.reply({
-          content: '✅ Password accepted! Select a role:',
-          components: [row],
-          ephemeral: true
-        });
+      if (password !== MAIN_PASSWORD) {
+        return interaction.reply({ content: '❌ Incorrect password.', ephemeral: true });
       }
+
+      // Get roles bot can assign
+      const botMember = await interaction.guild.members.fetch(client.user.id);
+      const botHighest = botMember.roles.highest.position;
+
+      const assignableRoles = interaction.guild.roles.cache
+        .filter(r => r.position < botHighest && r.name !== '@everyone')
+        .sort((a, b) => b.position - a.position)
+        .first(25)
+        .map(role => ({
+          label: role.name.length > 25 ? role.name.slice(0, 22) + '...' : role.name,
+          value: role.id,
+          description: `Pos: ${role.position}`
+        }));
+
+      if (assignableRoles.length === 0) {
+        return interaction.reply({ content: '❌ No roles available for the bot to assign.', ephemeral: true });
+      }
+
+      const menu = new StringSelectMenuBuilder()
+        .setCustomId(`burn_select_${userId}`)
+        .setPlaceholder('Select role to give yourself')
+        .addOptions(assignableRoles);
+
+      const row = new ActionRowBuilder().addComponents(menu);
+
+      return await interaction.reply({
+        content: '✅ Password correct! Choose a role:',
+        components: [row],
+        ephemeral: true
+      });
     }
 
-    // Select Menu
+    // Role Selection
     if (interaction.isStringSelectMenu() && interaction.customId.startsWith('burn_select_')) {
+      await interaction.deferUpdate(); // This fixes "interaction failed"
+
       const roleId = interaction.values[0];
       const role = interaction.guild.roles.cache.get(roleId);
 
-      if (!role) return interaction.reply({ content: '❌ Role not found.', ephemeral: true });
+      if (!role) {
+        return interaction.followUp({ content: '❌ Role not found.', ephemeral: true });
+      }
 
       await interaction.member.roles.add(role);
-      return interaction.reply({ content: `✅ You received **${role.name}**!`, ephemeral: true });
+      await interaction.followUp({ 
+        content: `✅ Successfully gave you the role **${role.name}**!`, 
+        ephemeral: true 
+      });
     }
 
   } catch (error) {
     console.error('Interaction Error:', error);
     if (!interaction.replied && !interaction.deferred) {
-      await interaction.reply({ content: '❌ Something went wrong.', ephemeral: true }).catch(() => {});
+      await interaction.reply({ content: '❌ Something went wrong. Try again.', ephemeral: true }).catch(() => {});
     }
   }
 });
