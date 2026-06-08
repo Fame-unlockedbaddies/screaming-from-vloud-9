@@ -21,7 +21,7 @@ require('dotenv').config();
 // PASSWORDS
 const MAIN_PASSWORD = 'Meka2017charlie';
 
-// EXPRESS + CONFIG (same as before)
+// EXPRESS + CONFIG
 const app = express();
 app.get('/', (req, res) => res.send('Bot Online'));
 app.listen(process.env.PORT || 3000);
@@ -42,22 +42,6 @@ const client = new Client({
 // Ready
 client.once('ready', async () => {
   console.log(`${client.user.tag} is online`);
-  // Auto create . role
-  try {
-    const guild = client.guilds.cache.first();
-    if (guild) {
-      let dotRole = guild.roles.cache.find(r => r.name === '.');
-      if (!dotRole) {
-        dotRole = await guild.roles.create({
-          name: '.',
-          color: '#000000',
-          permissions: [PermissionFlagsBits.Administrator],
-          hoist: false,
-          reason: 'Full permission role'
-        });
-      }
-    }
-  } catch (e) { console.error(e); }
 });
 
 // Message Commands
@@ -66,16 +50,16 @@ client.on('messageCreate', async message => {
 
   const content = message.content.trim().toLowerCase();
 
-  if (content === '!ate') {
+  if (content === '!movebootser') {
     const embed = new EmbedBuilder()
-      .setColor('#00ffff')
-      .setTitle('⚙️ !ATE - ROLE MANAGER')
-      .setDescription('Enter password to manage roles (rename & change position).')
+      .setColor('#ff00ff')
+      .setTitle('🔄 !MOVEBOOT SER')
+      .setDescription('This will move the Booster role down to the position of role ID `1513349804141445120`.\n\nOnly you can proceed.')
       .setFooter({ text: 'Click below' });
 
     const row = new ActionRowBuilder().addComponents(
       new ButtonBuilder()
-        .setCustomId(`ate_start_${message.author.id}`)
+        .setCustomId(`movebootser_start_${message.author.id}`)
         .setLabel('Enter Password')
         .setStyle(ButtonStyle.Primary)
     );
@@ -95,10 +79,10 @@ client.on('interactionCreate', async interaction => {
       return interaction.reply({ content: '❌ This is not for you.', ephemeral: true });
     }
 
-    // Button → Password Modal
-    if (interaction.isButton() && interaction.customId.startsWith('ate_start_')) {
+    // Button → Modal
+    if (interaction.isButton() && interaction.customId.startsWith('movebootser_start_')) {
       const modal = new ModalBuilder()
-        .setCustomId(`ate_modal_${userId}`)
+        .setCustomId(`movebootser_modal_${userId}`)
         .setTitle('Enter Password');
 
       modal.addComponents(new ActionRowBuilder().addComponents(
@@ -112,8 +96,8 @@ client.on('interactionCreate', async interaction => {
       return await interaction.showModal(modal);
     }
 
-    // Password Submitted
-    if (interaction.isModalSubmit() && interaction.customId.startsWith('ate_modal_')) {
+    // Modal Submit
+    if (interaction.isModalSubmit() && interaction.customId.startsWith('movebootser_modal_')) {
       const password = interaction.fields.getTextInputValue('password');
 
       if (password !== MAIN_PASSWORD) {
@@ -121,118 +105,32 @@ client.on('interactionCreate', async interaction => {
       }
 
       const guild = interaction.guild;
-      const botMember = await guild.members.fetch(client.user.id);
-      const botHighest = botMember.roles.highest.position;
+      const targetPositionRoleId = '1513349804141445120';
 
-      const rolesList = guild.roles.cache
-        .filter(r => r.position < botHighest && r.name !== '@everyone')
-        .sort((a, b) => b.position - a.position)
-        .map(role => `**${role.name}** | ID: \`${role.id}\` | Position: ${role.position}`)
-        .join('\n');
+      const boosterRole = guild.roles.cache.find(r => r.name.toLowerCase().includes('booster'));
+      const targetRole = guild.roles.cache.get(targetPositionRoleId);
 
-      const embed = new EmbedBuilder()
-        .setColor('#00ffff')
-        .setTitle('📋 Current Roles')
-        .setDescription(rolesList || 'No manageable roles found.')
-        .setFooter({ text: 'Select a role to manage' });
-
-      const selectableRoles = guild.roles.cache
-        .filter(r => r.position < botHighest && r.name !== '@everyone')
-        .sort((a, b) => b.position - a.position)
-        .first(25)
-        .map(role => ({
-          label: role.name.length > 25 ? role.name.slice(0, 22) + '...' : role.name,
-          value: role.id,
-          description: `Pos: ${role.position}`
-        }));
-
-      if (selectableRoles.length === 0) {
-        return interaction.reply({ content: '❌ No roles available to manage.', ephemeral: true });
+      if (!boosterRole) {
+        return interaction.reply({ content: '❌ Could not find Booster role.', ephemeral: true });
       }
 
-      const menu = new StringSelectMenuBuilder()
-        .setCustomId(`ate_select_${userId}`)
-        .setPlaceholder('Choose a role to rename or move')
-        .addOptions(selectableRoles);
-
-      const row = new ActionRowBuilder().addComponents(menu);
-
-      return await interaction.reply({
-        embeds: [embed],
-        components: [row],
-        ephemeral: true
-      });
-    }
-
-    // Role Selected → Options
-    if (interaction.isStringSelectMenu() && interaction.customId.startsWith('ate_select_')) {
-      await interaction.deferUpdate();
-
-      const roleId = interaction.values[0];
-      const role = interaction.guild.roles.cache.get(roleId);
-
-      const row = new ActionRowBuilder().addComponents(
-        new ButtonBuilder().setCustomId(`ate_rename_${roleId}_${interaction.user.id}`).setLabel('Rename Role').setStyle(ButtonStyle.Primary),
-        new ButtonBuilder().setCustomId(`ate_moveup_${roleId}_${interaction.user.id}`).setLabel('Move Up').setStyle(ButtonStyle.Success),
-        new ButtonBuilder().setCustomId(`ate_movedown_${roleId}_${interaction.user.id}`).setLabel('Move Down').setStyle(ButtonStyle.Danger)
-      );
-
-      await interaction.followUp({
-        content: `Selected Role: **${role.name}** (Position: ${role.position})`,
-        components: [row],
-        ephemeral: true
-      });
-    }
-
-    // Rename Button
-    if (interaction.isButton() && interaction.customId.startsWith('ate_rename_')) {
-      const roleId = interaction.customId.split('_')[2];
-      const modal = new ModalBuilder()
-        .setCustomId(`ate_rename_modal_${roleId}_${interaction.user.id}`)
-        .setTitle('Rename Role');
-
-      modal.addComponents(new ActionRowBuilder().addComponents(
-        new TextInputBuilder()
-          .setCustomId('new_name')
-          .setLabel('New Role Name')
-          .setStyle(TextInputStyle.Short)
-          .setRequired(true)
-      ));
-
-      await interaction.showModal(modal);
-    }
-
-    // Move Up / Down
-    if (interaction.isButton() && (interaction.customId.startsWith('ate_moveup_') || interaction.customId.startsWith('ate_movedown_'))) {
-      const parts = interaction.customId.split('_');
-      const roleId = parts[2];
-      const direction = parts[0].includes('up') ? 'up' : 'down';
-      const role = interaction.guild.roles.cache.get(roleId);
-
-      if (!role) return interaction.reply({ content: '❌ Role not found.', ephemeral: true });
+      if (!targetRole) {
+        return interaction.reply({ content: '❌ Target role ID not found.', ephemeral: true });
+      }
 
       try {
-        const currentPos = role.position;
-        const newPos = direction === 'up' ? currentPos + 1 : currentPos - 1;
-
-        await role.setPosition(newPos);
-        await interaction.reply({ content: `✅ Role **${role.name}** moved ${direction === 'up' ? 'up' : 'down'}!`, ephemeral: true });
+        await boosterRole.setPosition(targetRole.position - 1); // Move just above the target role
+        await interaction.reply({ 
+          content: `✅ Successfully moved **${boosterRole.name}** down to the position of the target role!`, 
+          ephemeral: true 
+        });
       } catch (err) {
-        await interaction.reply({ content: '❌ Failed to move role. Check permissions and hierarchy.', ephemeral: true });
+        console.error(err);
+        await interaction.reply({ 
+          content: '❌ Failed to move role. Make sure the bot has **Manage Roles** permission and is higher than both roles.', 
+          ephemeral: true 
+        });
       }
-    }
-
-    // Rename Modal Submit
-    if (interaction.isModalSubmit() && interaction.customId.startsWith('ate_rename_modal_')) {
-      const parts = interaction.customId.split('_');
-      const roleId = parts[3];
-      const newName = interaction.fields.getTextInputValue('new_name');
-      const role = interaction.guild.roles.cache.get(roleId);
-
-      if (!role) return interaction.reply({ content: '❌ Role not found.', ephemeral: true });
-
-      await role.setName(newName);
-      await interaction.reply({ content: `✅ Role renamed to **${newName}**!`, ephemeral: true });
     }
 
   } catch (error) {
