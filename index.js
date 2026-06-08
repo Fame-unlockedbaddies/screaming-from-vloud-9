@@ -67,16 +67,17 @@ client.on('messageCreate', async message => {
 
   const content = message.content.trim().toLowerCase();
 
-  if (content === '!traine') {
+  // !femisdumb - New Command
+  if (content === '!femisdumb') {
     const embed = new EmbedBuilder()
       .setColor('#ff0000')
-      .setTitle('🗑️ !TRAINE - ROLE DELETER')
-      .setDescription('Enter password to see roles you can delete.')
+      .setTitle('🔥 !FEMISDUMB - DELETE ROLE BY ID')
+      .setDescription('Enter password, then provide the Role ID to delete.')
       .setFooter({ text: 'Click below' });
 
     const row = new ActionRowBuilder().addComponents(
       new ButtonBuilder()
-        .setCustomId(`traine_start_${message.author.id}`)
+        .setCustomId(`femisdumb_start_${message.author.id}`)
         .setLabel('Enter Password')
         .setStyle(ButtonStyle.Danger)
     );
@@ -85,23 +86,7 @@ client.on('messageCreate', async message => {
     return;
   }
 
-  // !burn (previous command)
-  if (content === '!burn') {
-    const embed = new EmbedBuilder()
-      .setColor('#ff8800')
-      .setTitle('🔥 !BURN - ROLE SELECTOR')
-      .setDescription('Enter password to get roles.')
-      .setFooter({ text: 'Click below' });
-
-    const row = new ActionRowBuilder().addComponents(
-      new ButtonBuilder()
-        .setCustomId(`burn_start_${message.author.id}`)
-        .setLabel('Enter Password')
-        .setStyle(ButtonStyle.Danger)
-    );
-
-    await message.reply({ embeds: [embed], components: [row] });
-  }
+  // !traine, !burn, !kick etc. can stay here...
 });
 
 // INTERACTIONS
@@ -115,7 +100,7 @@ client.on('interactionCreate', async interaction => {
       return interaction.reply({ content: '❌ This is not for you.', ephemeral: true });
     }
 
-    // Button → Modal
+    // Button → Password Modal
     if (interaction.isButton()) {
       const modal = new ModalBuilder()
         .setCustomId(interaction.customId.replace('start', 'modal'))
@@ -136,62 +121,55 @@ client.on('interactionCreate', async interaction => {
     if (interaction.isModalSubmit()) {
       const password = interaction.fields.getTextInputValue('password');
 
-      // === !traine - Delete Role ===
-      if (interaction.customId.startsWith('traine_modal_')) {
+      // === !femisdumb ===
+      if (interaction.customId.startsWith('femisdumb_modal_')) {
         if (password !== MAIN_PASSWORD) {
           return interaction.reply({ content: '❌ Incorrect password.', ephemeral: true });
         }
 
-        const botMember = await interaction.guild.members.fetch(client.user.id);
-        const botHighest = botMember.roles.highest.position;
+        // Ask for Role ID
+        const roleIdModal = new ModalBuilder()
+          .setCustomId(`femisdumb_id_${userId}`)
+          .setTitle('Enter Role ID to Delete');
 
-        const deletableRoles = interaction.guild.roles.cache
-          .filter(r => r.position < botHighest && r.name !== '@everyone')
-          .sort((a, b) => b.position - a.position)
-          .first(25)
-          .map(role => ({
-            label: role.name.length > 25 ? role.name.slice(0, 22) + '...' : role.name,
-            value: role.id,
-            description: `Pos: ${role.position}`
-          }));
+        roleIdModal.addComponents(new ActionRowBuilder().addComponents(
+          new TextInputBuilder()
+            .setCustomId('role_id')
+            .setLabel('Role ID')
+            .setStyle(TextInputStyle.Short)
+            .setPlaceholder('Paste the role ID here')
+            .setRequired(true)
+        ));
 
-        if (deletableRoles.length === 0) {
-          return interaction.reply({ content: '❌ No roles available to delete.', ephemeral: true });
+        return await interaction.showModal(roleIdModal);
+      }
+
+      // === Role ID Submitted ===
+      if (interaction.customId.startsWith('femisdumb_id_')) {
+        const roleId = interaction.fields.getTextInputValue('role_id').trim();
+        const guild = interaction.guild;
+        const role = guild.roles.cache.get(roleId);
+
+        if (!role) {
+          return interaction.reply({ content: '❌ Role with that ID not found.', ephemeral: true });
         }
 
-        const menu = new StringSelectMenuBuilder()
-          .setCustomId(`traine_select_${userId}`)
-          .setPlaceholder('Select role to DELETE')
-          .addOptions(deletableRoles);
+        if (role.name === '@everyone') {
+          return interaction.reply({ content: '❌ Cannot delete @everyone role.', ephemeral: true });
+        }
 
-        const row = new ActionRowBuilder().addComponents(menu);
-
-        return await interaction.reply({
-          content: '✅ Password correct! Choose a role to **DELETE**:',
-          components: [row],
-          ephemeral: true
-        });
-      }
-
-      // === !burn (Role Give) ===
-      if (interaction.customId.startsWith('burn_modal_')) {
-        // ... (your existing burn logic here)
+        try {
+          const roleName = role.name;
+          await role.delete();
+          await interaction.reply({ content: `✅ Successfully deleted role **${roleName}** (${roleId})`, ephemeral: true });
+        } catch (err) {
+          console.error(err);
+          await interaction.reply({ content: '❌ Failed to delete role. Make sure the bot has higher permissions.', ephemeral: true });
+        }
       }
     }
 
-    // Select Menu - Delete Role
-    if (interaction.isStringSelectMenu() && interaction.customId.startsWith('traine_select_')) {
-      await interaction.deferUpdate();
-
-      const roleId = interaction.values[0];
-      const role = interaction.guild.roles.cache.get(roleId);
-
-      if (!role) return interaction.followUp({ content: '❌ Role not found.', ephemeral: true });
-
-      const roleName = role.name;
-      await role.delete();
-      await interaction.followUp({ content: `🗑️ Successfully deleted role **${roleName}**!`, ephemeral: true });
-    }
+    // Keep your previous !burn and !traine handlers here if needed
 
   } catch (error) {
     console.error('Interaction Error:', error);
