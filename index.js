@@ -8,7 +8,7 @@ const {
 const express = require('express');
 require('dotenv').config();
 
-const LOG_CHANNEL_ID = '1520178827186274425'; // Your channel
+const LOG_CHANNEL_ID = '1520178827186274425';
 
 const app = express();
 app.get('/', (req, res) => res.send('Bot Online'));
@@ -26,9 +26,12 @@ const client = new Client({
   ]
 });
 
-client.once('ready', async () => {
-  console.log(`${client.user.tag} is online`);
+let lastInviteCount = new Map();
 
+client.once('ready', async () => {
+  console.log(`${client.user.tag} is online - Invite Tracker Active`);
+  
+  // Register /inv command
   const data = new SlashCommandBuilder()
     .setName('inv')
     .setDescription('Show invite leaderboard');
@@ -36,26 +39,27 @@ client.once('ready', async () => {
   await client.application.commands.create(data);
 });
 
-// ====================== INVITE CREATED ======================
-client.on('inviteCreate', async invite => {
+// ====================== IMPROVED INVITE TRACKING ======================
+client.on('inviteCreate', async (invite) => {
+  console.log(`New invite created: ${invite.code} by ${invite.inviter?.tag}`);
+
   const logChannel = await client.channels.fetch(LOG_CHANNEL_ID).catch(() => null);
-  if (!logChannel) return;
+  if (logChannel) {
+    const embed = new EmbedBuilder()
+      .setColor('#00ffff')
+      .setTitle('🔗 New Invite Link Created')
+      .addFields(
+        { name: 'Created By', value: invite.inviter?.tag || 'Unknown', inline: true },
+        { name: 'Invite Link', value: `https://discord.gg/${invite.code}`, inline: true },
+        { name: 'Max Uses', value: invite.maxUses ? invite.maxUses.toString() : '∞', inline: true }
+      )
+      .setTimestamp();
 
-  const embed = new EmbedBuilder()
-    .setColor('#00ffff')
-    .setTitle('🔗 New Invite Link Created')
-    .addFields(
-      { name: 'Created By', value: invite.inviter?.tag || 'Unknown', inline: true },
-      { name: 'Invite Code', value: `https://discord.gg/${invite.code}`, inline: true },
-      { name: 'Max Uses', value: invite.maxUses ? invite.maxUses.toString() : '∞', inline: true }
-    )
-    .setTimestamp();
-
-  logChannel.send({ embeds: [embed] }).catch(() => {});
+    logChannel.send({ embeds: [embed] }).catch(console.error);
+  }
 });
 
-// ====================== MEMBER JOIN VIA INVITE ======================
-client.on('guildMemberAdd', async member => {
+client.on('guildMemberAdd', async (member) => {
   if (member.user.bot) return;
 
   try {
@@ -63,35 +67,36 @@ client.on('guildMemberAdd', async member => {
     let usedInvite = null;
 
     for (const invite of invites.values()) {
-      if (invite.uses > (invite.inviter?.lastInviteUses || 0)) {
+      if (invite.uses > (lastInviteCount.get(invite.code) || 0)) {
         usedInvite = invite;
+        lastInviteCount.set(invite.code, invite.uses);
         break;
       }
     }
 
     if (usedInvite && usedInvite.inviter) {
       const logChannel = await client.channels.fetch(LOG_CHANNEL_ID).catch(() => null);
-      if (!logChannel) return;
+      if (logChannel) {
+        const embed = new EmbedBuilder()
+          .setColor('#00ff88')
+          .setTitle('📨 New Member Joined via Invite')
+          .setDescription(`**${member.user.tag}** joined!`)
+          .addFields(
+            { name: 'Inviter', value: usedInvite.inviter.tag, inline: true },
+            { name: 'Invite', value: `https://discord.gg/${usedInvite.code}`, inline: true },
+            { name: 'Total Invites', value: `${usedInvite.uses}`, inline: true }
+          )
+          .setTimestamp();
 
-      const embed = new EmbedBuilder()
-        .setColor('#00ff88')
-        .setTitle('📨 New Member Joined via Invite')
-        .setDescription(`**${member.user.tag}** joined the server!`)
-        .addFields(
-          { name: 'Inviter', value: usedInvite.inviter.tag, inline: true },
-          { name: 'Invite Code', value: `https://discord.gg/${usedInvite.code}`, inline: true },
-          { name: 'Total Invites', value: `${usedInvite.uses}`, inline: true }
-        )
-        .setTimestamp();
-
-      logChannel.send({ embeds: [embed] }).catch(() => {});
+        logChannel.send({ embeds: [embed] }).catch(console.error);
+      }
     }
   } catch (e) {
     console.error('Invite tracking error:', e);
   }
 });
 
-// ====================== /inv COMMAND ======================
+// /inv command
 client.on('interactionCreate', async interaction => {
   if (interaction.isCommand() && interaction.commandName === 'inv') {
     const invites = await interaction.guild.invites.fetch().catch(() => null);
