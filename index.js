@@ -26,10 +26,8 @@ const client = new Client({
   ]
 });
 
-const inviteCache = new Map(); // code => uses
-
 client.once('ready', async () => {
-  console.log(`${client.user.tag} is online - Invite Tracker Active`);
+  console.log(`${client.user.tag} is online - Invite Tracker v2`);
 
   const data = new SlashCommandBuilder()
     .setName('inv')
@@ -38,59 +36,43 @@ client.once('ready', async () => {
   await client.application.commands.create(data);
 });
 
-// ====================== PERIODIC CHECK + EVENT TRACKING ======================
-async function checkInvites(guild) {
+// ====================== SIMPLE & STRONG TRACKING ======================
+client.on('guildMemberAdd', async (member) => {
+  if (member.user.bot) return;
+
+  console.log(`New member joined: ${member.user.tag}`);
+
   try {
-    const invites = await guild.invites.fetch();
-    const logChannel = await client.channels.fetch(LOG_CHANNEL_ID).catch(() => null);
+    const invites = await member.guild.invites.fetch({ cache: false });
+    let usedInvite = null;
 
     for (const invite of invites.values()) {
-      const oldUses = inviteCache.get(invite.code) || 0;
-
-      if (invite.uses > oldUses) {
-        inviteCache.set(invite.code, invite.uses);
-
-        if (logChannel) {
-          const embed = new EmbedBuilder()
-            .setColor('#00ff88')
-            .setTitle('📨 New Member Joined via Invite')
-            .setDescription(`**Someone** joined using an invite!`)
-            .addFields(
-              { name: 'Inviter', value: invite.inviter?.tag || 'Unknown', inline: true },
-              { name: 'Invite Code', value: `https://discord.gg/${invite.code}`, inline: true },
-              { name: 'Total Invites', value: `${invite.uses}`, inline: true }
-            )
-            .setTimestamp();
-
-          logChannel.send({ embeds: [embed] }).catch(() => {});
-        }
+      if (invite.uses > 0) {
+        usedInvite = invite;
+        break;
       }
     }
-  } catch (e) {}
-}
 
-// Run check every 5 seconds
-setInterval(() => {
-  client.guilds.cache.forEach(guild => checkInvites(guild));
-}, 5000);
+    if (usedInvite) {
+      const logChannel = await client.channels.fetch(LOG_CHANNEL_ID).catch(() => null);
+      if (logChannel) {
+        const embed = new EmbedBuilder()
+          .setColor('#00ff88')
+          .setTitle('📨 New Member Joined')
+          .setDescription(`**${member.user.tag}** joined the server!`)
+          .addFields(
+            { name: 'Inviter', value: usedInvite.inviter?.tag || 'Unknown', inline: true },
+            { name: 'Invite Link', value: `https://discord.gg/${usedInvite.code}`, inline: true },
+            { name: 'Total Invites', value: `${usedInvite.uses}`, inline: true }
+          )
+          .setTimestamp();
 
-// Also listen to events
-client.on('inviteCreate', async (invite) => {
-  console.log(`New invite created: ${invite.code}`);
-  inviteCache.set(invite.code, invite.uses || 0);
-
-  const logChannel = await client.channels.fetch(LOG_CHANNEL_ID).catch(() => null);
-  if (logChannel) {
-    const embed = new EmbedBuilder()
-      .setColor('#00ffff')
-      .setTitle('🔗 New Invite Link Created')
-      .addFields(
-        { name: 'Created By', value: invite.inviter?.tag || 'Unknown', inline: true },
-        { name: 'Invite', value: `https://discord.gg/${invite.code}`, inline: true }
-      )
-      .setTimestamp();
-
-    logChannel.send({ embeds: [embed] }).catch(() => {});
+        await logChannel.send({ embeds: [embed] });
+        console.log(`✅ Embed sent to log channel for ${member.user.tag}`);
+      }
+    }
+  } catch (e) {
+    console.error('Error in invite tracking:', e);
   }
 });
 
@@ -100,11 +82,11 @@ client.on('interactionCreate', async interaction => {
     const invites = await interaction.guild.invites.fetch().catch(() => null);
     if (!invites) return interaction.reply({ content: 'Could not fetch invites.', ephemeral: true });
 
-    const sorted = [...invites.values()].sort((a, b) => (b.uses || 0) - (a.uses || 0)).slice(0, 15);
+    const sorted = [...invites.values()].sort((a, b) => (b.uses || 0) - (a.uses || 0)).slice(0, 10);
 
     const embed = new EmbedBuilder()
       .setColor('#00ffff')
-      .setTitle(`📊 Invite Leaderboard - ${interaction.guild.name}`);
+      .setTitle(`Invite Leaderboard - ${interaction.guild.name}`);
 
     sorted.forEach(inv => {
       embed.addFields({
