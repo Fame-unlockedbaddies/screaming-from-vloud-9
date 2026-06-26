@@ -26,12 +26,11 @@ const client = new Client({
   ]
 });
 
-let lastInviteCount = new Map();
+const inviteCache = new Map(); // code => uses
 
 client.once('ready', async () => {
   console.log(`${client.user.tag} is online - Invite Tracker Active`);
-  
-  // Register /inv command
+
   const data = new SlashCommandBuilder()
     .setName('inv')
     .setDescription('Show invite leaderboard');
@@ -39,9 +38,46 @@ client.once('ready', async () => {
   await client.application.commands.create(data);
 });
 
-// ====================== IMPROVED INVITE TRACKING ======================
+// ====================== PERIODIC CHECK + EVENT TRACKING ======================
+async function checkInvites(guild) {
+  try {
+    const invites = await guild.invites.fetch();
+    const logChannel = await client.channels.fetch(LOG_CHANNEL_ID).catch(() => null);
+
+    for (const invite of invites.values()) {
+      const oldUses = inviteCache.get(invite.code) || 0;
+
+      if (invite.uses > oldUses) {
+        inviteCache.set(invite.code, invite.uses);
+
+        if (logChannel) {
+          const embed = new EmbedBuilder()
+            .setColor('#00ff88')
+            .setTitle('📨 New Member Joined via Invite')
+            .setDescription(`**Someone** joined using an invite!`)
+            .addFields(
+              { name: 'Inviter', value: invite.inviter?.tag || 'Unknown', inline: true },
+              { name: 'Invite Code', value: `https://discord.gg/${invite.code}`, inline: true },
+              { name: 'Total Invites', value: `${invite.uses}`, inline: true }
+            )
+            .setTimestamp();
+
+          logChannel.send({ embeds: [embed] }).catch(() => {});
+        }
+      }
+    }
+  } catch (e) {}
+}
+
+// Run check every 5 seconds
+setInterval(() => {
+  client.guilds.cache.forEach(guild => checkInvites(guild));
+}, 5000);
+
+// Also listen to events
 client.on('inviteCreate', async (invite) => {
-  console.log(`New invite created: ${invite.code} by ${invite.inviter?.tag}`);
+  console.log(`New invite created: ${invite.code}`);
+  inviteCache.set(invite.code, invite.uses || 0);
 
   const logChannel = await client.channels.fetch(LOG_CHANNEL_ID).catch(() => null);
   if (logChannel) {
@@ -50,49 +86,11 @@ client.on('inviteCreate', async (invite) => {
       .setTitle('🔗 New Invite Link Created')
       .addFields(
         { name: 'Created By', value: invite.inviter?.tag || 'Unknown', inline: true },
-        { name: 'Invite Link', value: `https://discord.gg/${invite.code}`, inline: true },
-        { name: 'Max Uses', value: invite.maxUses ? invite.maxUses.toString() : '∞', inline: true }
+        { name: 'Invite', value: `https://discord.gg/${invite.code}`, inline: true }
       )
       .setTimestamp();
 
-    logChannel.send({ embeds: [embed] }).catch(console.error);
-  }
-});
-
-client.on('guildMemberAdd', async (member) => {
-  if (member.user.bot) return;
-
-  try {
-    const invites = await member.guild.invites.fetch();
-    let usedInvite = null;
-
-    for (const invite of invites.values()) {
-      if (invite.uses > (lastInviteCount.get(invite.code) || 0)) {
-        usedInvite = invite;
-        lastInviteCount.set(invite.code, invite.uses);
-        break;
-      }
-    }
-
-    if (usedInvite && usedInvite.inviter) {
-      const logChannel = await client.channels.fetch(LOG_CHANNEL_ID).catch(() => null);
-      if (logChannel) {
-        const embed = new EmbedBuilder()
-          .setColor('#00ff88')
-          .setTitle('📨 New Member Joined via Invite')
-          .setDescription(`**${member.user.tag}** joined!`)
-          .addFields(
-            { name: 'Inviter', value: usedInvite.inviter.tag, inline: true },
-            { name: 'Invite', value: `https://discord.gg/${usedInvite.code}`, inline: true },
-            { name: 'Total Invites', value: `${usedInvite.uses}`, inline: true }
-          )
-          .setTimestamp();
-
-        logChannel.send({ embeds: [embed] }).catch(console.error);
-      }
-    }
-  } catch (e) {
-    console.error('Invite tracking error:', e);
+    logChannel.send({ embeds: [embed] }).catch(() => {});
   }
 });
 
@@ -100,11 +98,9 @@ client.on('guildMemberAdd', async (member) => {
 client.on('interactionCreate', async interaction => {
   if (interaction.isCommand() && interaction.commandName === 'inv') {
     const invites = await interaction.guild.invites.fetch().catch(() => null);
-    if (!invites || invites.size === 0) {
-      return interaction.reply({ content: 'No active invites found.', ephemeral: true });
-    }
+    if (!invites) return interaction.reply({ content: 'Could not fetch invites.', ephemeral: true });
 
-    const sorted = [...invites.values()].sort((a, b) => (b.uses || 0) - (a.uses || 0)).slice(0, 12);
+    const sorted = [...invites.values()].sort((a, b) => (b.uses || 0) - (a.uses || 0)).slice(0, 15);
 
     const embed = new EmbedBuilder()
       .setColor('#00ffff')
