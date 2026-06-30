@@ -28,7 +28,7 @@ const client = new Client({
 
 const OWNER_ID = '1497846804480524298';
 let restoreConfirmationMessageId = null;
-const REQUIRED_REACTIONS = 30;
+const REQUIRED_REACTIONS = 10;        // ← Changed to 10
 const RESTORE_PASSWORD = "2011";
 
 client.once('ready', async () => {
