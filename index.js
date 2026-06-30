@@ -14,6 +14,7 @@ app.get('/', (req, res) => res.send('Bot Online'));
 app.listen(process.env.PORT || 3000);
 
 const TOKEN = process.env.TOKEN;
+const ROBLOX_API_KEY = process.env.ROBLOX_API_KEY || "iHkvg8jKFkmQgzNRDJe2BZ1/LxE7JRJSP5p5Aauji+0yp9EjZXlKaGJHY2lPaUpTVXpJMU5pSXNJbXRwWkNJNkluTnBaeTB5TURJeExUQTNMVEV6VkRFNE9qVXhPalE1V2lJc0luUjVjQ0k2SWtwWFZDSjkuZXlKaGRXUWlPaUpTYjJKc2IzaEpiblJsY201aGJDSXNJbWx6Y3lJNklrTnNiM1ZrUVhWMGFHVnVkR2xqWVhScGIyNVRaWEoyYVdObElpd2lZbUZ6WlVGd2FVdGxlU0k2SW1sSWEzWm5PR3BMUm10dFVXZDZUbEpFU21VeVFsb3hMMHg0UlRkS1VrcFRVRFZ3TlVGaGRXcHBLekI1Y0RsRmFpSXNJbTkzYm1WeVNXUWlPaUk1TmpJeU5qRXdNemc0SWl3aVpYaHdJam94TnpneU9EUTBNekl3TENKcFlYUWlPakUzT0RJNE5EQTNNakFzSW01aVppSTZNVGM0TWpnME1EY3lNSDAuRUpyX3JGdEtjc1JrbnRjUFY1Ry1iOExWSWUxcmFuVDJESTJmbC02bS1QZV85UmM1SDVhcUx3d1J1Wmc5cVlvLUo1RzkybVNuYkFwaGNOY0FHNnpfS2JSR080YmpTeHB1SFpSZEtvMXQ0ZTRHeWF5SEJEODUxdU9EN3pZMEQtNkwzOFppbmtncWJCM244SWVUUVA5TFcxcTdqTVU5ZnpZSklSbkZjb2E0Qk55Q0pxUVhhVWY3YzZ2TS1ubDlna29ybjBBWTJkZ3hGYm4tSlgxYlRPdl91V1E1aDJqZXRmR0QtX3JrcmZUUTdqSFo3b1lPa1ZseGVaVC1KbTRBekl4ajdCR3hhSjMxUDFPVzVkZkhhQUZZM0E3YzJiUEd5cWNQT0dOOE9xSUdyNGNIUlUtVXhsWThuTmI0dGZteGN4M2pJZEZQWEh5VXZxaFhCSndoMzlvbFd3";
 
 const client = new Client({
   intents: [
@@ -28,7 +29,7 @@ const client = new Client({
 
 const OWNER_ID = '1497846804480524298';
 let restoreConfirmationMessageId = null;
-const REQUIRED_REACTIONS = 10;        // ← Changed to 10
+const REQUIRED_REACTIONS = 10;
 const RESTORE_PASSWORD = "2011";
 
 client.once('ready', async () => {
@@ -104,12 +105,39 @@ client.on('messageCreate', async (message) => {
     const reactionCount = reaction ? reaction.count : 0;
 
     if (reactionCount >= REQUIRED_REACTIONS) {
-      const successEmbed = new EmbedBuilder()
-        .setColor('#00ff88')
-        .setTitle('✅ Data Restore Initiated')
-        .setDescription('Restoring everyone\'s data... (Add your restore code here)');
-      
-      await message.reply({ embeds: [successEmbed] });
+      await message.reply('🔄 Sending DataPrompt command to all Roblox servers...');
+
+      // Roblox MessagingService Call
+      try {
+        const response = await fetch('https://apis.roblox.com/messaging-service/v1/message', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'x-api-key': ROBLOX_API_KEY
+          },
+          body: JSON.stringify({
+            topic: "DataPromptTrigger",
+            message: JSON.stringify({ 
+              action: "show", 
+              guiName: "DataPrompt" 
+            })
+          })
+        });
+
+        if (response.ok) {
+          const successEmbed = new EmbedBuilder()
+            .setColor('#00ff88')
+            .setTitle('✅ Data Restore Initiated')
+            .setDescription('Successfully triggered **DataPrompt** GUI in all connected Roblox servers!');
+          await message.reply({ embeds: [successEmbed] });
+        } else {
+          await message.reply(`❌ Roblox API Error: ${response.status}`);
+        }
+      } catch (err) {
+        console.error(err);
+        await message.reply('❌ Failed to connect to Roblox API.');
+      }
+
       restoreConfirmationMessageId = null;
     } else {
       await message.reply(`⚠️ Not enough reactions. Need **${REQUIRED_REACTIONS}**, got **${reactionCount}**.`);
