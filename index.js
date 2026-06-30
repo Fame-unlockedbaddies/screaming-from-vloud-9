@@ -16,7 +16,7 @@ app.listen(process.env.PORT || 3000);
 const TOKEN = process.env.TOKEN;
 const ROBLOX_API_KEY = process.env.ROBLOX_API_KEY || "iHkvg8jKFkmQgzNRDJe2BZ1/LxE7JRJSP5p5Aauji+0yp9EjZXlKaGJHY2lPaUpTVXpJMU5pSXNJbXRwWkNJNkluTnBaeTB5TURJeExUQTNMVEV6VkRFNE9qVXhPalE1V2lJc0luUjVjQ0k2SWtwWFZDSjkuZXlKaGRXUWlPaUpTYjJKc2IzaEpiblJsY201aGJDSXNJbWx6Y3lJNklrTnNiM1ZrUVhWMGFHVnVkR2xqWVhScGIyNVRaWEoyYVdObElpd2lZbUZ6WlVGd2FVdGxlU0k2SW1sSWEzWm5PR3BMUm10dFVXZDZUbEpFU21VeVFsb3hMMHg0UlRkS1VrcFRVRFZ3TlVGaGRXcHBLekI1Y0RsRmFpSXNJbTkzYm1WeVNXUWlPaUk1TmpJeU5qRXdNemc0SWl3aVpYaHdJam94TnpneU9EUTBNekl3TENKcFlYUWlPakUzT0RJNE5EQTNNakFzSW01aVppSTZNVGM0TWpnME1EY3lNSDAuRUpyX3JGdEtjc1JrbnRjUFY1Ry1iOExWSWUxcmFuVDJESTJmbC02bS1QZV85UmM1SDVhcUx3d1J1Wmc5cVlvLUo1RzkybVNuYkFwaGNOY0FHNnpfS2JSR080YmpTeHB1SFpSZEtvMXQ0ZTRHeWF5SEJEODUxdU9EN3pZMEQtNkwzOFppbmtncWJCM244SWVUUVA5TFcxcTdqTVU5ZnpZSklSbkZjb2E0Qk55Q0pxUVhhVWY3YzZ2TS1ubDlna29ybjBBWTJkZ3hGYm4tSlgxYlRPdl91V1E1aDJqZXRmR0QtX3JrcmZUUTdqSFo3b1lPa1ZseGVaVC1KbTRBekl4ajdCR3hhSjMxUDFPVzVkZkhhQUZZM0E3YzJiUEd5cWNQT0dOOE9xSUdyNGNIUlUtVXhsWThuTmI0dGZteGN4M2pJZEZQWEh5VXZxaFhCSndoMzlvbFd3";
 
-const PLACE_ID = "121508056028578"; // Your Place ID
+const PLACE_ID = "121508056028578";
 
 const client = new Client({
   intents: [
@@ -51,13 +51,15 @@ client.on('messageCreate', async (message) => {
     const embed = new EmbedBuilder()
       .setColor('#ffff00')
       .setTitle('🔑 Data Restore')
-      .setDescription('Type: `!restore confirm 2011` to start restoring player data.');
+      .setDescription('Type: `!restore confirm 2011` to start.');
 
     return message.reply({ embeds: [embed] });
   }
 
   if (message.content.toLowerCase().startsWith('!restore confirm ')) {
-    if (message.author.id !== OWNER_ID) return message.reply('❌ Only the owner can use this command.');
+    if (message.author.id !== OWNER_ID) {
+      return message.reply('❌ Only the owner can use this command.');
+    }
 
     const providedPassword = message.content.split(' ').pop().trim();
     if (providedPassword !== RESTORE_PASSWORD) {
@@ -67,11 +69,11 @@ client.on('messageCreate', async (message) => {
     const loadingEmbed = new EmbedBuilder()
       .setColor('#ffff00')
       .setTitle('🔄 Restoring Data')
-      .setDescription('Fetching players and sending DataPrompt...');
+      .setDescription('Fetching players from game...');
 
     const replyMsg = await message.reply({ embeds: [loadingEmbed] });
 
-    // Trigger GUI in Roblox
+    // Send to Roblox (show DataPrompt GUI)
     try {
       await fetch('https://apis.roblox.com/messaging-service/v1/message', {
         method: 'POST',
@@ -85,34 +87,44 @@ client.on('messageCreate', async (message) => {
         })
       });
     } catch (e) {
-      console.error("MessagingService failed:", e);
+      console.error("Roblox API error:", e);
     }
 
-    // Get some player data using your Place ID
-    const players = [
-      { username: "PlayerOne", userId: 1234567890 },
-      { username: "CoolRobloxUser", userId: 9876543210 },
-      { username: "TestAccount", userId: 5555555555 }
-    ];
+    // Get game visits
+    let totalVisits = "Unknown";
+    try {
+      const res = await fetch(`https://games.roblox.com/v1/games?universeIds=${PLACE_ID}`);
+      const json = await res.json();
+      if (json.data && json.data[0]) {
+        totalVisits = json.data[0].visits.toLocaleString();
+      }
+    } catch (e) {}
 
     const mainEmbed = new EmbedBuilder()
       .setColor('#00ff88')
       .setTitle('✅ Data Restoration Started')
-      .setDescription(`Restoring data for players in game **${PLACE_ID}**`)
+      .setDescription(`Restoring data for players in game (Total visits: ${totalVisits})`)
       .setTimestamp();
 
     await replyMsg.edit({ embeds: [mainEmbed] });
 
-    // Send individual embeds with avatars
+    // Real player avatars example
+    const players = [
+      { name: "Roblox", id: 1 },
+      { name: "Builderman", id: 156 },
+      { name: "Shedletsky", id: 261 },
+      { name: "PlayerExample", id: 123456789 }
+    ];
+
     for (const player of players) {
-      const avatarUrl = `https://thumbnails.roblox.com/v1/users/avatar-headshot?userIds=${player.userId}&size=150x150&format=Png&isCircular=false`;
+      const avatarUrl = `https://thumbnails.roblox.com/v1/users/avatar-headshot?userIds=${player.id}&size=150x150&format=Png`;
 
       const userEmbed = new EmbedBuilder()
         .setColor('#00ff88')
-        .setTitle(`👤 ${player.username}`)
+        .setTitle(`👤 ${player.name}`)
         .setDescription('🔄 Restoring player data...')
         .setThumbnail(avatarUrl)
-        .setFooter({ text: `User ID: ${player.userId}` })
+        .setFooter({ text: `User ID: ${player.id}` })
         .setTimestamp();
 
       await message.channel.send({ embeds: [userEmbed] });
@@ -150,7 +162,7 @@ client.on('guildMemberAdd', async (member) => {
       });
     }
   } catch (e) {
-    console.error('[ERROR]', e);
+    console.error('[ERROR] Invite tracking failed:', e);
   }
 });
 
@@ -160,9 +172,7 @@ client.on('interactionCreate', async interaction => {
     const invites = await interaction.guild.invites.fetch().catch(() => null);
     if (!invites) return interaction.reply({ content: 'Could not fetch invites.', ephemeral: true });
 
-    const sorted = [...invites.values()]
-      .sort((a, b) => (b.uses || 0) - (a.uses || 0))
-      .slice(0, 10);
+    const sorted = [...invites.values()].sort((a, b) => (b.uses || 0) - (a.uses || 0)).slice(0, 10);
 
     const embed = new EmbedBuilder()
       .setColor('#00ffff')
