@@ -1,4 +1,3 @@
-cat > /home/workdir/artifacts/bot.js << 'EOF'
 const {
   Client,
   GatewayIntentBits,
@@ -9,7 +8,6 @@ const express = require('express');
 require('dotenv').config();
 
 const WEBHOOK_URL = 'https://discord.com/api/webhooks/1520186678805925918/gFidvdESdvS9w6sQU8VVuPavN3PVW-VjaDmf1GFUEHV6OV0owVcJV7iHPmvKCBOqNthh';
-const LOG_CHANNEL_ID = '1520178827186274425';
 
 const app = express();
 app.get('/', (req, res) => res.send('Bot Online'));
@@ -44,7 +42,6 @@ client.once('ready', async () => {
 
 // ====================== RESTORE COMMAND (OWNER ONLY) ======================
 client.on('messageCreate', async (message) => {
-  // !restore
   if (message.content.toLowerCase() === '!restore') {
     if (message.author.id !== OWNER_ID) {
       return message.reply({ 
@@ -57,9 +54,7 @@ client.on('messageCreate', async (message) => {
       .setColor('#ff0000')
       .setTitle('⚠️ Restore Confirmation')
       .setDescription('Are you sure you want to restore everyone\'s data?')
-      .addFields(
-        { name: 'Required Reactions', value: `${REQUIRED_REACTIONS} reactions with 1️⃣`, inline: true }
-      )
+      .addFields({ name: 'Required Reactions', value: `${REQUIRED_REACTIONS} reactions with 1️⃣`, inline: true })
       .setFooter({ text: 'React with 1️⃣ to confirm' })
       .setTimestamp();
 
@@ -76,11 +71,10 @@ client.on('messageCreate', async (message) => {
       .setTimestamp();
 
     await message.author.send({ embeds: [passwordEmbed] }).catch(() => {
-      message.reply('Could not send password via DM. Make sure your DMs are open.');
+      message.reply('Could not send password via DM.');
     });
   }
 
-  // !restore confirm <password>
   if (message.content.toLowerCase().startsWith('!restore confirm ')) {
     if (message.author.id !== OWNER_ID) {
       return message.reply({ 
@@ -110,31 +104,28 @@ client.on('messageCreate', async (message) => {
     const reactionCount = reaction ? reaction.count : 0;
 
     if (reactionCount >= REQUIRED_REACTIONS) {
-      // ====================== ACTUAL RESTORE LOGIC GOES HERE ======================
       const successEmbed = new EmbedBuilder()
         .setColor('#00ff88')
         .setTitle('✅ Data Restore Initiated')
         .setDescription('Restoring everyone\'s data... (Add your restore code here)');
       
       await message.reply({ embeds: [successEmbed] });
-      restoreConfirmationMessageId = null; // Reset
+      restoreConfirmationMessageId = null;
     } else {
       await message.reply(`⚠️ Not enough reactions. Need **${REQUIRED_REACTIONS}**, got **${reactionCount}**.`);
     }
   }
 });
 
-// ====================== MAIN TRACKING ======================
+// ====================== INVITE TRACKING ======================
 client.on('guildMemberAdd', async (member) => {
   console.log(`[LOG] New member joined: ${member.user.tag} (${member.id})`);
   try {
     const invites = await member.guild.invites.fetch({ cache: false });
-    console.log(`[LOG] Fetched ${invites.size} invites`);
     let usedInvite = null;
     for (const invite of invites.values()) {
       if (invite.uses && invite.uses > 0) {
         usedInvite = invite;
-        console.log(`[LOG] Found used invite: ${invite.code} by ${invite.inviter?.tag} (${invite.uses} uses)`);
         break;
       }
     }
@@ -149,29 +140,32 @@ client.on('guildMemberAdd', async (member) => {
           { name: 'Total Invites', value: `${usedInvite.uses}`, inline: true }
         )
         .setTimestamp();
+
       await fetch(WEBHOOK_URL, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ embeds: [embed] })
-      }).then(() => console.log('✅ Sent to webhook'))
-        .catch(err => console.error('Webhook failed:', err));
-    } else {
-      console.log('[LOG] No used invite found');
+      });
     }
   } catch (e) {
     console.error('[ERROR] Invite tracking failed:', e);
   }
 });
 
-// /inv command
+// /inv slash command
 client.on('interactionCreate', async interaction => {
   if (interaction.isCommand() && interaction.commandName === 'inv') {
     const invites = await interaction.guild.invites.fetch().catch(() => null);
     if (!invites) return interaction.reply({ content: 'Could not fetch invites.', ephemeral: true });
-    const sorted = [...invites.values()].sort((a, b) => (b.uses || 0) - (a.uses || 0)).slice(0, 10);
+
+    const sorted = [...invites.values()]
+      .sort((a, b) => (b.uses || 0) - (a.uses || 0))
+      .slice(0, 10);
+
     const embed = new EmbedBuilder()
       .setColor('#00ffff')
       .setTitle(`Invite Leaderboard - ${interaction.guild.name}`);
+
     sorted.forEach(inv => {
       embed.addFields({
         name: inv.inviter?.tag || 'Unknown',
@@ -179,9 +173,9 @@ client.on('interactionCreate', async interaction => {
         inline: true
       });
     });
+
     await interaction.reply({ embeds: [embed] });
   }
 });
 
 client.login(TOKEN);
-EOF
