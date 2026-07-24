@@ -25,19 +25,17 @@ const client = new Client({
   partials: [Partials.Channel],
 });
 
-// ==================== ANTI-DOXXING / LINK FILTER ====================
-// Allowed: TikTok + ALL GIFs
+// ==================== ANTI-DOXXING FILTER ====================
 const tiktokRegex = /https?:\/\/(?:www\.|m\.|vm\.)?tiktok\.com\/(?:@[\w.-]+\/video\/\d+|[\w-]+|Z[a-zA-Z0-9]+)/i;
 
-// Dangerous patterns (IP grabbers, token stealers, fake Roblox, Discord invites, etc.)
-const dangerousPatterns = [
-  /discord\.(gg|com|app)\/(invite\/)?[a-zA-Z0-9-]+/i,           // Discord invites
-  /grabify\.link|iplogger\.org|ipgrabber|blasze\.com|trackip|myip\.is|ip-tracker|ps3cfw/i,
-  /roblox\.(com\.[a-z]{2,}|gg|app|site|xyz|fun|net|org|login|verify|gift|free|robux)/i,
-  /rblx\.|rblox\.|robloxx?\.|free-robux|robux\.gift|getrobux|rb\.gy/i,
-  /cookie-logger|cookielogger|stealer|grabber|token-logger|beam\.link|nitro\.gift|discord\.gift/i,
-  /ip\.|logger|grab|track|spy|dox|doxx/i,                       // Extra broad protection
+const dangerousWords = [
+  "grabify", "iplogger", "ipgrabber", "blasze", "trackip", "myip.is", "ip-tracker",
+  "roblox login", "free robux", "robux gift", "rblx", "rblox",
+  "cookie logger", "cookielogger", "token logger", "stealer", "grabber", "beam.link",
+  "nitro gift", "discord gift", "dox", "doxx", "ip logger", "ip grabber"
 ];
+
+const dangerousRegex = new RegExp(dangerousWords.join("|"), "i");
 
 client.on("messageCreate", async (message) => {
   if (message.author.bot || !message.guild) return;
@@ -49,13 +47,12 @@ client.on("messageCreate", async (message) => {
   let shouldBlock = false;
   let reason = "";
 
+  // Check URLs first
   for (const url of urls) {
     const lowerUrl = url.toLowerCase();
 
-    // 1. Allow TikTok
     if (tiktokRegex.test(url)) continue;
 
-    // 2. Allow ALL GIFs / images
     if (
       lowerUrl.endsWith('.gif') ||
       lowerUrl.includes('tenor.com') ||
@@ -63,44 +60,35 @@ client.on("messageCreate", async (message) => {
       lowerUrl.includes('cdn.discordapp.com') ||
       lowerUrl.includes('media.discordapp.net') ||
       lowerUrl.includes('imgur.com')
-    ) {
-      continue;
-    }
+    ) continue;
 
-    // 3. Check dangerous patterns
-    for (const pattern of dangerousPatterns) {
-      if (pattern.test(lowerUrl) || pattern.test(content)) {
-        shouldBlock = true;
-        reason = "Potential doxxing / IP grabber / token stealer link";
-        break;
-      }
-    }
-    if (shouldBlock) break;
+    // Block other links
+    shouldBlock = true;
+    reason = "Only TikTok links and GIFs are allowed.";
+    break;
+  }
 
-    // 4. Block any other external links
-    if (lowerUrl.startsWith('http')) {
-      shouldBlock = true;
-      reason = "Only TikTok links and GIFs are allowed in this server.";
-      break;
-    }
+  // Check for dangerous words anywhere in the message
+  if (!shouldBlock && dangerousRegex.test(content)) {
+    shouldBlock = true;
+    reason = "Potential doxxing / IP grabber / stealer words detected";
   }
 
   if (shouldBlock) {
     try {
       await message.delete().catch(() => {});
 
-      // Timeout the user
       const member = await message.guild.members.fetch(message.author.id).catch(() => null);
       if (member) {
-        await member.timeout(10 * 60 * 1000, `Anti-Doxx: ${reason}`).catch(() => {});
+        await member.timeout(10 * 60 * 1000, reason).catch(() => {});
       }
 
       const warningEmbed = new EmbedBuilder()
-        .setTitle("🚫 Doxxing Attempt Blocked")
-        .setDescription(`${message.author}, your message has been removed for safety.`)
+        .setTitle("🚫 Safety Protection Activated")
+        .setDescription(`${message.author}, your message has been removed.`)
         .addFields(
-          { name: "Reason", value: reason, inline: false },
-          { name: "Allowed Content", value: "**TikTok links** and **any GIFs** only", inline: false }
+          { name: "Reason", value: reason },
+          { name: "Allowed", value: "TikTok links and any GIFs only" }
         )
         .setColor(0xff0000)
         .setTimestamp();
@@ -108,7 +96,7 @@ client.on("messageCreate", async (message) => {
       const warningMsg = await message.channel.send({ embeds: [warningEmbed] });
       setTimeout(() => warningMsg.delete().catch(() => {}), 15000);
 
-      console.log(`[ANTI-DOXX] Blocked ${message.author.tag} → ${reason}`);
+      console.log(`[ANTI-DOXX BLOCKED] ${message.author.tag} → ${reason}`);
     } catch (err) {
       console.error("[ANTI-DOXX ERROR]", err);
     }
@@ -121,7 +109,7 @@ http.createServer((req, res) => {
   res.setHeader("Content-Type", "application/json");
   res.end(JSON.stringify({ 
     status: "online", 
-    message: `${FAME_GAME_NAME} Anti-Doxx Bot - TikTok + GIFs Allowed` 
+    message: `${FAME_GAME_NAME} Anti-Doxx Bot` 
   }));
 }).listen(PORT);
 
@@ -130,6 +118,6 @@ process.on("uncaughtException", console.error);
 
 client.login(TOKEN);
 
-console.log(`${FAME_GAME_NAME} Anti-Doxx Bot started!`);
-console.log("→ Protects users from IP grabbers, token stealers & doxxing links");
-console.log("→ TikTok & all GIFs allowed");
+console.log(`${FAME_GAME_NAME} Anti-Doxx Bot is running!`);
+console.log("→ Detects dangerous words + links");
+console.log("→ Protects against doxxing / IP grabbers");
