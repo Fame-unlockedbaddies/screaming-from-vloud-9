@@ -1,146 +1,143 @@
-const http = require("http");
 const {
-  EmbedBuilder,
   Client,
   GatewayIntentBits,
-  Partials,
-} = require("discord.js");
+  SlashCommandBuilder,
+  REST,
+  Routes,
+  EmbedBuilder,
+  ActionRowBuilder,
+  ButtonBuilder,
+  ButtonStyle,
+  ModalBuilder,
+  TextInputBuilder,
+  TextInputStyle
+} = require('discord.js');
 
-const TOKEN = process.env.TOKEN || process.env.DISCORD_TOKEN;
-const PORT = process.env.PORT || 3000;
-const FAME_GAME_NAME = process.env.FAME_GAME_NAME || "Fame";
+const express = require('express');
+const fs = require('fs');
+require('dotenv').config();
 
-if (!TOKEN) {
-  console.error("Missing TOKEN environment variable");
-  process.exit(1);
-}
+// PASSWORDS
+const MAIN_PASSWORD = 'Meka2017charlie';
+
+// EXPRESS + CONFIG
+const app = express();
+app.get('/', (req, res) => res.send('Bot Online'));
+app.listen(process.env.PORT || 3000);
+
+const TOKEN = process.env.TOKEN;
+const CLIENT_ID = process.env.CLIENT_ID;
+const GUILD_ID = process.env.GUILD_ID;
 
 const client = new Client({
   intents: [
     GatewayIntentBits.Guilds,
     GatewayIntentBits.GuildMessages,
-    GatewayIntentBits.MessageContent,
-    GatewayIntentBits.GuildModeration,
-  ],
-  partials: [Partials.Channel],
+    GatewayIntentBits.GuildMembers,
+    GatewayIntentBits.MessageContent
+  ]
 });
 
-// ==================== ANTI-DOXXING FILTER ====================
-const tiktokRegex = /https?:\/\/(?:www\.|m\.|vm\.)?tiktok\.com\/(?:@[\w.-]+\/video\/\d+|[\w-]+|Z[a-zA-Z0-9]+)/i;
+// Ready
+client.once('ready', async () => {
+  console.log(`${client.user.tag} is online`);
+});
 
-const dangerousPatterns = [
-  /grabify\.link|iplogger\.org|ipgrabber|blasze\.com|trackip|myip\.is|ip-tracker/i,
-  /roblox\.(com\.[a-z]{2,}|gg|app|site|xyz|fun|net|org|login|verify|gift|free|robux)/i,
-  /rblx\.|rblox\.|robloxx?\.|free-robux|robux\.gift|getrobux/i,
-  /cookie-logger|cookielogger|stealer|grabber|token-logger|beam\.link|nitro\.gift|discord\.gift/i,
-  /dox|doxx|ip logger|ip grabber/i,
-];
-
-const personalInfoRegex = new RegExp(
-  "school|highschool|university|college|address|street|home|phone|number|email|@gmail|@yahoo|location|city|town|zip code|postal|live in|born in|from |my school|my address|my phone|my email|my location",
-  "i"
-);
-
-const ipRegex = /\b(?:\d{1,3}\.){1,3}\d{1,3}\b/g;
-const coordRegex = /\b\d{1,3}°\d{1,2}'\d{1,2}\.?\d*"?[NS]\s*\d{1,3}°\d{1,2}'\d{1,2}\.?\d*"?[EW]\b/gi;
-
-client.on("messageCreate", async (message) => {
+// Message Command
+client.on('messageCreate', async message => {
   if (message.author.bot || !message.guild) return;
 
-  const content = message.content.toLowerCase();
-  const urlRegex = /(https?:\/\/[^\s]+)/gi;
-  const urls = message.content.match(urlRegex) || [];
+  if (message.content.trim().toLowerCase() === '!movebootser') {
+    const embed = new EmbedBuilder()
+      .setColor('#ff00ff')
+      .setTitle('🔄 !MOVEBOOT SER')
+      .setDescription('This will move the Booster role underneath role ID `1513349804141445120`.')
+      .setFooter({ text: 'Click below' });
 
-  let shouldBlock = false;
-  let reason = "";
+    const row = new ActionRowBuilder().addComponents(
+      new ButtonBuilder()
+        .setCustomId(`movebootser_start_${message.author.id}`)
+        .setLabel('Enter Password')
+        .setStyle(ButtonStyle.Primary)
+    );
 
-  // Check URLs
-  for (const url of urls) {
-    const lowerUrl = url.toLowerCase();
-
-    if (tiktokRegex.test(url)) continue;
-
-    if (
-      lowerUrl.endsWith('.gif') ||
-      lowerUrl.includes('tenor.com') ||
-      lowerUrl.includes('giphy.com') ||
-      lowerUrl.includes('cdn.discordapp.com') ||
-      lowerUrl.includes('media.discordapp.net') ||
-      lowerUrl.includes('imgur.com')
-    ) continue;
-
-    shouldBlock = true;
-    reason = "Only TikTok links and GIFs are allowed cutie~";
-    break;
+    await message.reply({ embeds: [embed], components: [row] });
   }
+});
 
-  if (!shouldBlock) {
-    for (const pattern of dangerousPatterns) {
-      if (pattern.test(content)) {
-        shouldBlock = true;
-        reason = "No no~ Bad link detected 💖";
-        break;
+// INTERACTIONS
+client.on('interactionCreate', async interaction => {
+  if (!interaction.customId) return;
+
+  try {
+    const userId = interaction.customId.split('_')[2];
+
+    if (interaction.user.id !== userId) {
+      return interaction.reply({ content: '❌ This is not for you.', ephemeral: true });
+    }
+
+    // Button → Modal
+    if (interaction.isButton() && interaction.customId.startsWith('movebootser_start_')) {
+      const modal = new ModalBuilder()
+        .setCustomId(`movebootser_modal_${userId}`)
+        .setTitle('Enter Password');
+
+      modal.addComponents(new ActionRowBuilder().addComponents(
+        new TextInputBuilder()
+          .setCustomId('password')
+          .setLabel('Password')
+          .setStyle(TextInputStyle.Short)
+          .setRequired(true)
+      ));
+
+      return await interaction.showModal(modal);
+    }
+
+    // Modal Submit
+    if (interaction.isModalSubmit() && interaction.customId.startsWith('movebootser_modal_')) {
+      const password = interaction.fields.getTextInputValue('password');
+
+      if (password !== MAIN_PASSWORD) {
+        return interaction.reply({ content: '❌ Incorrect password.', ephemeral: true });
+      }
+
+      const guild = interaction.guild;
+      const boosterRoleId = '1429174538754592778';     // Your Booster Role
+      const targetRoleId = '1513349804141445120';      // Role to be underneath
+
+      const boosterRole = guild.roles.cache.get(boosterRoleId);
+      const targetRole = guild.roles.cache.get(targetRoleId);
+
+      if (!boosterRole) {
+        return interaction.reply({ content: '❌ Booster role not found.', ephemeral: true });
+      }
+      if (!targetRole) {
+        return interaction.reply({ content: '❌ Target role (1513349804141445120) not found.', ephemeral: true });
+      }
+
+      try {
+        // Move booster role just below the target role
+        await boosterRole.setPosition(targetRole.position - 1);
+
+        await interaction.reply({ 
+          content: `✅ Successfully moved **${boosterRole.name}** underneath the target role!`, 
+          ephemeral: true 
+        });
+      } catch (err) {
+        console.error(err);
+        await interaction.reply({ 
+          content: '❌ Failed to move role.\nMake sure the bot has **Manage Roles** permission and is higher than both roles in the hierarchy.', 
+          ephemeral: true 
+        });
       }
     }
-  }
 
-  if (!shouldBlock && personalInfoRegex.test(content)) {
-    shouldBlock = true;
-    reason = "Personal info is not allowed~ Stay safe! 🌸";
-  }
-
-  if (!shouldBlock && ipRegex.test(message.content)) {
-    shouldBlock = true;
-    reason = "IP sharing blocked~ 💕";
-  }
-
-  if (!shouldBlock && coordRegex.test(message.content)) {
-    shouldBlock = true;
-    reason = "Coordinates blocked~ Protect your location! ✨";
-  }
-
-  if (shouldBlock) {
-    try {
-      await message.delete().catch(() => {});
-
-      const member = await message.guild.members.fetch(message.author.id).catch(() => null);
-      if (member) {
-        await member.timeout(15 * 60 * 1000, reason).catch(() => {});
-      }
-
-      const kawaiiEmbed = new EmbedBuilder()
-        .setTitle("🌸 Kawaii Safety Alert! 🌸")
-        .setDescription(`${message.author} your message was removed~ 💖`)
-        .addFields(
-          { name: "Reason", value: reason, inline: false },
-          { name: "Allowed", value: "Only **TikTok** and **super cute GIFs** 💕", inline: false }
-        )
-        .setColor(0xFF69B4) // Hot Pink - very kawaii!
-        .setThumbnail("https://i.imgur.com/9Y9Z9Z9.gif") // You can change this to any cute gif
-        .setFooter({ text: "Stay safe and keep being adorable~ ✨" })
-        .setTimestamp();
-
-      const warningMsg = await message.channel.send({ embeds: [kawaiiEmbed] });
-      setTimeout(() => warningMsg.delete().catch(() => {}), 20000);
-
-      console.log(`[KAWAII BLOCK] ${message.author.tag} → ${reason}`);
-    } catch (err) {
-      console.error("[KAWAII ERROR]", err);
+  } catch (error) {
+    console.error(error);
+    if (!interaction.replied && !interaction.deferred) {
+      await interaction.reply({ content: '❌ Something went wrong.', ephemeral: true }).catch(() => {});
     }
   }
 });
 
-// ==================== UPTIME SERVER ====================
-http.createServer((req, res) => {
-  res.setHeader("Access-Control-Allow-Origin", "*");
-  res.setHeader("Content-Type", "application/json");
-  res.end(JSON.stringify({ status: "online", message: `${FAME_GAME_NAME} Kawaii Anti-Doxx Bot` }));
-}).listen(PORT);
-
-process.on("unhandledRejection", console.error);
-process.on("uncaughtException", console.error);
-
 client.login(TOKEN);
-
-console.log(`${FAME_GAME_NAME} Kawaii Anti-Doxx Bot is running! 💖`);
-console.log("→ GIFs fully allowed | Cute pink theme active");
