@@ -26,10 +26,8 @@ const client = new Client({
 });
 
 // ==================== ANTI-DOXXING FILTER ====================
-// Allowed: TikTok + ALL GIFs (fixed)
 const tiktokRegex = /https?:\/\/(?:www\.|m\.|vm\.)?tiktok\.com\/(?:@[\w.-]+\/video\/\d+|[\w-]+|Z[a-zA-Z0-9]+)/i;
 
-// Dangerous patterns
 const dangerousPatterns = [
   /grabify\.link|iplogger\.org|ipgrabber|blasze\.com|trackip|myip\.is|ip-tracker/i,
   /roblox\.(com\.[a-z]{2,}|gg|app|site|xyz|fun|net|org|login|verify|gift|free|robux)/i,
@@ -38,16 +36,12 @@ const dangerousPatterns = [
   /dox|doxx|ip logger|ip grabber/i,
 ];
 
-// Personal info keywords
 const personalInfoRegex = new RegExp(
   "school|highschool|university|college|address|street|home|phone|number|email|@gmail|@yahoo|location|city|town|zip code|postal|live in|born in|from |my school|my address|my phone|my email|my location",
   "i"
 );
 
-// IP addresses (full + partial like 67.838.828)
 const ipRegex = /\b(?:\d{1,3}\.){1,3}\d{1,3}\b/g;
-
-// Coordinates
 const coordRegex = /\b\d{1,3}°\d{1,2}'\d{1,2}\.?\d*"?[NS]\s*\d{1,3}°\d{1,2}'\d{1,2}\.?\d*"?[EW]\b/gi;
 
 client.on("messageCreate", async (message) => {
@@ -64,10 +58,8 @@ client.on("messageCreate", async (message) => {
   for (const url of urls) {
     const lowerUrl = url.toLowerCase();
 
-    // Allow TikTok
     if (tiktokRegex.test(url)) continue;
 
-    // Allow ALL GIFs and Discord images
     if (
       lowerUrl.endsWith('.gif') ||
       lowerUrl.includes('tenor.com') ||
@@ -75,43 +67,36 @@ client.on("messageCreate", async (message) => {
       lowerUrl.includes('cdn.discordapp.com') ||
       lowerUrl.includes('media.discordapp.net') ||
       lowerUrl.includes('imgur.com')
-    ) {
-      continue; // Do nothing - allow it
-    }
+    ) continue;
 
-    // Block any other link
     shouldBlock = true;
-    reason = "Only TikTok links and GIFs are allowed.";
+    reason = "Only TikTok links and GIFs are allowed cutie~";
     break;
   }
 
-  // Check dangerous patterns
   if (!shouldBlock) {
     for (const pattern of dangerousPatterns) {
       if (pattern.test(content)) {
         shouldBlock = true;
-        reason = "Potential doxxing / grabber detected";
+        reason = "No no~ Bad link detected 💖";
         break;
       }
     }
   }
 
-  // Check personal info
   if (!shouldBlock && personalInfoRegex.test(content)) {
     shouldBlock = true;
-    reason = "Personal information / school / location sharing blocked";
+    reason = "Personal info is not allowed~ Stay safe! 🌸";
   }
 
-  // Check IPs
   if (!shouldBlock && ipRegex.test(message.content)) {
     shouldBlock = true;
-    reason = "IP address sharing blocked";
+    reason = "IP sharing blocked~ 💕";
   }
 
-  // Check coordinates
   if (!shouldBlock && coordRegex.test(message.content)) {
     shouldBlock = true;
-    reason = "Coordinates sharing blocked";
+    reason = "Coordinates blocked~ Protect your location! ✨";
   }
 
   if (shouldBlock) {
@@ -123,31 +108,33 @@ client.on("messageCreate", async (message) => {
         await member.timeout(15 * 60 * 1000, reason).catch(() => {});
       }
 
-      const warningEmbed = new EmbedBuilder()
-        .setTitle("🚫 Safety Protection")
-        .setDescription(`${message.author}, your message has been removed for your safety.`)
+      const kawaiiEmbed = new EmbedBuilder()
+        .setTitle("🌸 Kawaii Safety Alert! 🌸")
+        .setDescription(`${message.author} your message was removed~ 💖`)
         .addFields(
-          { name: "Reason", value: reason },
-          { name: "Allowed", value: "TikTok links and any GIFs only" }
+          { name: "Reason", value: reason, inline: false },
+          { name: "Allowed", value: "Only **TikTok** and **super cute GIFs** 💕", inline: false }
         )
-        .setColor(0xff0000)
+        .setColor(0xFF69B4) // Hot Pink - very kawaii!
+        .setThumbnail("https://i.imgur.com/9Y9Z9Z9.gif") // You can change this to any cute gif
+        .setFooter({ text: "Stay safe and keep being adorable~ ✨" })
         .setTimestamp();
 
-      const warningMsg = await message.channel.send({ embeds: [warningEmbed] });
-      setTimeout(() => warningMsg.delete().catch(() => {}), 15000);
+      const warningMsg = await message.channel.send({ embeds: [kawaiiEmbed] });
+      setTimeout(() => warningMsg.delete().catch(() => {}), 20000);
 
-      console.log(`[ANTI-DOXX BLOCKED] ${message.author.tag} → ${reason}`);
+      console.log(`[KAWAII BLOCK] ${message.author.tag} → ${reason}`);
     } catch (err) {
-      console.error("[ANTI-DOXX ERROR]", err);
+      console.error("[KAWAII ERROR]", err);
     }
   }
 });
 
-// ==================== UPTIME ====================
+// ==================== UPTIME SERVER ====================
 http.createServer((req, res) => {
   res.setHeader("Access-Control-Allow-Origin", "*");
   res.setHeader("Content-Type", "application/json");
-  res.end(JSON.stringify({ status: "online", message: `${FAME_GAME_NAME} Anti-Doxx Bot` }));
+  res.end(JSON.stringify({ status: "online", message: `${FAME_GAME_NAME} Kawaii Anti-Doxx Bot` }));
 }).listen(PORT);
 
 process.on("unhandledRejection", console.error);
@@ -155,6 +142,5 @@ process.on("uncaughtException", console.error);
 
 client.login(TOKEN);
 
-console.log(`${FAME_GAME_NAME} Anti-Doxx Bot is running!`);
-console.log("→ GIFs are now fully allowed");
-console.log("→ Blocks IPs, Coordinates, Personal Info, etc.");
+console.log(`${FAME_GAME_NAME} Kawaii Anti-Doxx Bot is running! 💖`);
+console.log("→ GIFs fully allowed | Cute pink theme active");
