@@ -31,20 +31,22 @@ const tiktokRegex = /https?:\/\/(?:www\.|m\.|vm\.)?tiktok\.com\/(?:@[\w.-]+\/vid
 
 // Dangerous patterns
 const dangerousPatterns = [
-  // IP Grabbers & Stealers
   /grabify\.link|iplogger\.org|ipgrabber|blasze\.com|trackip|myip\.is|ip-tracker/i,
-  // Roblox scams
   /roblox\.(com\.[a-z]{2,}|gg|app|site|xyz|fun|net|org|login|verify|gift|free|robux)/i,
   /rblx\.|rblox\.|robloxx?\.|free-robux|robux\.gift|getrobux/i,
-  // Token / Cookie stealers
   /cookie-logger|cookielogger|stealer|grabber|token-logger|beam\.link|nitro\.gift|discord\.gift/i,
-  // General suspicious words
   /dox|doxx|ip logger|ip grabber/i,
 ];
 
-// New: Block IP addresses and Coordinates
-const ipRegex = /\b(?:\d{1,3}\.){3}\d{1,3}\b/g;                    // 192.168.1.1 style IPs
-const coordRegex = /\b\d{1,3}°\d{1,2}'\d{1,2}\.?\d*"?[NS]\s*\d{1,3}°\d{1,2}'\d{1,2}\.?\d*"?[EW]\b/gi; // Coordinates like 38°53'51.7"N 77°02'11.4"W
+// Personal info & location keywords
+const personalInfoRegex = new RegExp(
+  "school|highschool|university|college|address|street|home|phone|number|email|@gmail|@yahoo|location|city|town|zip code|postal|live in|born in|from |my school|my address|my phone|my email|my location",
+  "i"
+);
+
+// IP & Coordinates
+const ipRegex = /\b(?:\d{1,3}\.){3}\d{1,3}\b/g;
+const coordRegex = /\b\d{1,3}°\d{1,2}'\d{1,2}\.?\d*"?[NS]\s*\d{1,3}°\d{1,2}'\d{1,2}\.?\d*"?[EW]\b/gi;
 
 client.on("messageCreate", async (message) => {
   if (message.author.bot || !message.guild) return;
@@ -81,19 +83,25 @@ client.on("messageCreate", async (message) => {
     for (const pattern of dangerousPatterns) {
       if (pattern.test(content)) {
         shouldBlock = true;
-        reason = "Potential doxxing / grabber words detected";
+        reason = "Potential doxxing / grabber detected";
         break;
       }
     }
   }
 
-  // Check for raw IP addresses
+  // Check personal info / school / location keywords
+  if (!shouldBlock && personalInfoRegex.test(content)) {
+    shouldBlock = true;
+    reason = "Personal information / school / location sharing blocked";
+  }
+
+  // Check raw IP addresses
   if (!shouldBlock && ipRegex.test(message.content)) {
     shouldBlock = true;
     reason = "IP address sharing blocked (anti-doxx)";
   }
 
-  // Check for coordinates (like your example)
+  // Check coordinates
   if (!shouldBlock && coordRegex.test(message.content)) {
     shouldBlock = true;
     reason = "Coordinates sharing blocked (anti-doxx)";
@@ -105,12 +113,12 @@ client.on("messageCreate", async (message) => {
 
       const member = await message.guild.members.fetch(message.author.id).catch(() => null);
       if (member) {
-        await member.timeout(10 * 60 * 1000, reason).catch(() => {});
+        await member.timeout(15 * 60 * 1000, reason).catch(() => {}); // 15 min timeout
       }
 
       const warningEmbed = new EmbedBuilder()
-        .setTitle("🚫 Safety Protection")
-        .setDescription(`${message.author}, your message has been removed.`)
+        .setTitle("🚫 Personal Information Blocked")
+        .setDescription(`${message.author}, your message has been removed for your safety.`)
         .addFields(
           { name: "Reason", value: reason },
           { name: "Allowed", value: "TikTok links and any GIFs only" }
@@ -141,4 +149,4 @@ process.on("uncaughtException", console.error);
 client.login(TOKEN);
 
 console.log(`${FAME_GAME_NAME} Anti-Doxx Bot is running!`);
-console.log("→ Now blocks IPs and Coordinates too");
+console.log("→ Now blocks IPs, Coordinates, Schools, Addresses, Phone/Email hints");
