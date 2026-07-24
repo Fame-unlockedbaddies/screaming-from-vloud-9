@@ -38,14 +38,16 @@ const dangerousPatterns = [
   /dox|doxx|ip logger|ip grabber/i,
 ];
 
-// Personal info & location keywords
+// Personal info keywords
 const personalInfoRegex = new RegExp(
   "school|highschool|university|college|address|street|home|phone|number|email|@gmail|@yahoo|location|city|town|zip code|postal|live in|born in|from |my school|my address|my phone|my email|my location",
   "i"
 );
 
-// IP & Coordinates
-const ipRegex = /\b(?:\d{1,3}\.){3}\d{1,3}\b/g;
+// Improved IP detection (full + partial like 67.838.828)
+const ipRegex = /\b(?:\d{1,3}\.){1,3}\d{1,3}\b/g;
+
+// Coordinates
 const coordRegex = /\b\d{1,3}°\d{1,2}'\d{1,2}\.?\d*"?[NS]\s*\d{1,3}°\d{1,2}'\d{1,2}\.?\d*"?[EW]\b/gi;
 
 client.on("messageCreate", async (message) => {
@@ -89,13 +91,13 @@ client.on("messageCreate", async (message) => {
     }
   }
 
-  // Check personal info / school / location keywords
+  // Check personal info
   if (!shouldBlock && personalInfoRegex.test(content)) {
     shouldBlock = true;
     reason = "Personal information / school / location sharing blocked";
   }
 
-  // Check raw IP addresses
+  // Check IPs (including partial like 67.838.828)
   if (!shouldBlock && ipRegex.test(message.content)) {
     shouldBlock = true;
     reason = "IP address sharing blocked (anti-doxx)";
@@ -113,7 +115,7 @@ client.on("messageCreate", async (message) => {
 
       const member = await message.guild.members.fetch(message.author.id).catch(() => null);
       if (member) {
-        await member.timeout(15 * 60 * 1000, reason).catch(() => {}); // 15 min timeout
+        await member.timeout(15 * 60 * 1000, reason).catch(() => {});
       }
 
       const warningEmbed = new EmbedBuilder()
@@ -136,7 +138,7 @@ client.on("messageCreate", async (message) => {
   }
 });
 
-// ==================== UPTIME ====================
+// ==================== UPTIME SERVER ====================
 http.createServer((req, res) => {
   res.setHeader("Access-Control-Allow-Origin", "*");
   res.setHeader("Content-Type", "application/json");
@@ -149,4 +151,4 @@ process.on("uncaughtException", console.error);
 client.login(TOKEN);
 
 console.log(`${FAME_GAME_NAME} Anti-Doxx Bot is running!`);
-console.log("→ Now blocks IPs, Coordinates, Schools, Addresses, Phone/Email hints");
+console.log("→ Blocks IPs (including partial), Coordinates, Schools, Addresses, etc.");
