@@ -26,16 +26,25 @@ const client = new Client({
 });
 
 // ==================== ANTI-DOXXING FILTER ====================
+// Allowed: TikTok + ALL GIFs
 const tiktokRegex = /https?:\/\/(?:www\.|m\.|vm\.)?tiktok\.com\/(?:@[\w.-]+\/video\/\d+|[\w-]+|Z[a-zA-Z0-9]+)/i;
 
-const dangerousWords = [
-  "grabify", "iplogger", "ipgrabber", "blasze", "trackip", "myip.is", "ip-tracker",
-  "roblox login", "free robux", "robux gift", "rblx", "rblox",
-  "cookie logger", "cookielogger", "token logger", "stealer", "grabber", "beam.link",
-  "nitro gift", "discord gift", "dox", "doxx", "ip logger", "ip grabber"
+// Dangerous patterns
+const dangerousPatterns = [
+  // IP Grabbers & Stealers
+  /grabify\.link|iplogger\.org|ipgrabber|blasze\.com|trackip|myip\.is|ip-tracker/i,
+  // Roblox scams
+  /roblox\.(com\.[a-z]{2,}|gg|app|site|xyz|fun|net|org|login|verify|gift|free|robux)/i,
+  /rblx\.|rblox\.|robloxx?\.|free-robux|robux\.gift|getrobux/i,
+  // Token / Cookie stealers
+  /cookie-logger|cookielogger|stealer|grabber|token-logger|beam\.link|nitro\.gift|discord\.gift/i,
+  // General suspicious words
+  /dox|doxx|ip logger|ip grabber/i,
 ];
 
-const dangerousRegex = new RegExp(dangerousWords.join("|"), "i");
+// New: Block IP addresses and Coordinates
+const ipRegex = /\b(?:\d{1,3}\.){3}\d{1,3}\b/g;                    // 192.168.1.1 style IPs
+const coordRegex = /\b\d{1,3}°\d{1,2}'\d{1,2}\.?\d*"?[NS]\s*\d{1,3}°\d{1,2}'\d{1,2}\.?\d*"?[EW]\b/gi; // Coordinates like 38°53'51.7"N 77°02'11.4"W
 
 client.on("messageCreate", async (message) => {
   if (message.author.bot || !message.guild) return;
@@ -47,7 +56,7 @@ client.on("messageCreate", async (message) => {
   let shouldBlock = false;
   let reason = "";
 
-  // Check URLs first
+  // Check URLs
   for (const url of urls) {
     const lowerUrl = url.toLowerCase();
 
@@ -62,16 +71,32 @@ client.on("messageCreate", async (message) => {
       lowerUrl.includes('imgur.com')
     ) continue;
 
-    // Block other links
     shouldBlock = true;
     reason = "Only TikTok links and GIFs are allowed.";
     break;
   }
 
-  // Check for dangerous words anywhere in the message
-  if (!shouldBlock && dangerousRegex.test(content)) {
+  // Check dangerous patterns
+  if (!shouldBlock) {
+    for (const pattern of dangerousPatterns) {
+      if (pattern.test(content)) {
+        shouldBlock = true;
+        reason = "Potential doxxing / grabber words detected";
+        break;
+      }
+    }
+  }
+
+  // Check for raw IP addresses
+  if (!shouldBlock && ipRegex.test(message.content)) {
     shouldBlock = true;
-    reason = "Potential doxxing / IP grabber / stealer words detected";
+    reason = "IP address sharing blocked (anti-doxx)";
+  }
+
+  // Check for coordinates (like your example)
+  if (!shouldBlock && coordRegex.test(message.content)) {
+    shouldBlock = true;
+    reason = "Coordinates sharing blocked (anti-doxx)";
   }
 
   if (shouldBlock) {
@@ -84,7 +109,7 @@ client.on("messageCreate", async (message) => {
       }
 
       const warningEmbed = new EmbedBuilder()
-        .setTitle("🚫 Safety Protection Activated")
+        .setTitle("🚫 Safety Protection")
         .setDescription(`${message.author}, your message has been removed.`)
         .addFields(
           { name: "Reason", value: reason },
@@ -103,14 +128,11 @@ client.on("messageCreate", async (message) => {
   }
 });
 
-// ==================== UPTIME SERVER ====================
+// ==================== UPTIME ====================
 http.createServer((req, res) => {
   res.setHeader("Access-Control-Allow-Origin", "*");
   res.setHeader("Content-Type", "application/json");
-  res.end(JSON.stringify({ 
-    status: "online", 
-    message: `${FAME_GAME_NAME} Anti-Doxx Bot` 
-  }));
+  res.end(JSON.stringify({ status: "online", message: `${FAME_GAME_NAME} Anti-Doxx Bot` }));
 }).listen(PORT);
 
 process.on("unhandledRejection", console.error);
@@ -119,5 +141,4 @@ process.on("uncaughtException", console.error);
 client.login(TOKEN);
 
 console.log(`${FAME_GAME_NAME} Anti-Doxx Bot is running!`);
-console.log("→ Detects dangerous words + links");
-console.log("→ Protects against doxxing / IP grabbers");
+console.log("→ Now blocks IPs and Coordinates too");
