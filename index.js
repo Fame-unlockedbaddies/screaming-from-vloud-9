@@ -26,7 +26,7 @@ const client = new Client({
 });
 
 // ==================== ANTI-DOXXING FILTER ====================
-// Allowed: TikTok + ALL GIFs
+// Allowed: TikTok + ALL GIFs (fixed)
 const tiktokRegex = /https?:\/\/(?:www\.|m\.|vm\.)?tiktok\.com\/(?:@[\w.-]+\/video\/\d+|[\w-]+|Z[a-zA-Z0-9]+)/i;
 
 // Dangerous patterns
@@ -44,7 +44,7 @@ const personalInfoRegex = new RegExp(
   "i"
 );
 
-// Improved IP detection (full + partial like 67.838.828)
+// IP addresses (full + partial like 67.838.828)
 const ipRegex = /\b(?:\d{1,3}\.){1,3}\d{1,3}\b/g;
 
 // Coordinates
@@ -64,8 +64,10 @@ client.on("messageCreate", async (message) => {
   for (const url of urls) {
     const lowerUrl = url.toLowerCase();
 
+    // Allow TikTok
     if (tiktokRegex.test(url)) continue;
 
+    // Allow ALL GIFs and Discord images
     if (
       lowerUrl.endsWith('.gif') ||
       lowerUrl.includes('tenor.com') ||
@@ -73,8 +75,11 @@ client.on("messageCreate", async (message) => {
       lowerUrl.includes('cdn.discordapp.com') ||
       lowerUrl.includes('media.discordapp.net') ||
       lowerUrl.includes('imgur.com')
-    ) continue;
+    ) {
+      continue; // Do nothing - allow it
+    }
 
+    // Block any other link
     shouldBlock = true;
     reason = "Only TikTok links and GIFs are allowed.";
     break;
@@ -97,16 +102,16 @@ client.on("messageCreate", async (message) => {
     reason = "Personal information / school / location sharing blocked";
   }
 
-  // Check IPs (including partial like 67.838.828)
+  // Check IPs
   if (!shouldBlock && ipRegex.test(message.content)) {
     shouldBlock = true;
-    reason = "IP address sharing blocked (anti-doxx)";
+    reason = "IP address sharing blocked";
   }
 
   // Check coordinates
   if (!shouldBlock && coordRegex.test(message.content)) {
     shouldBlock = true;
-    reason = "Coordinates sharing blocked (anti-doxx)";
+    reason = "Coordinates sharing blocked";
   }
 
   if (shouldBlock) {
@@ -119,7 +124,7 @@ client.on("messageCreate", async (message) => {
       }
 
       const warningEmbed = new EmbedBuilder()
-        .setTitle("🚫 Personal Information Blocked")
+        .setTitle("🚫 Safety Protection")
         .setDescription(`${message.author}, your message has been removed for your safety.`)
         .addFields(
           { name: "Reason", value: reason },
@@ -138,7 +143,7 @@ client.on("messageCreate", async (message) => {
   }
 });
 
-// ==================== UPTIME SERVER ====================
+// ==================== UPTIME ====================
 http.createServer((req, res) => {
   res.setHeader("Access-Control-Allow-Origin", "*");
   res.setHeader("Content-Type", "application/json");
@@ -151,4 +156,5 @@ process.on("uncaughtException", console.error);
 client.login(TOKEN);
 
 console.log(`${FAME_GAME_NAME} Anti-Doxx Bot is running!`);
-console.log("→ Blocks IPs (including partial), Coordinates, Schools, Addresses, etc.");
+console.log("→ GIFs are now fully allowed");
+console.log("→ Blocks IPs, Coordinates, Personal Info, etc.");
