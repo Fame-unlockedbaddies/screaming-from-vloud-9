@@ -1,7 +1,6 @@
 const {
   Client,
   GatewayIntentBits,
-  EmbedBuilder,
   Events,
   REST,
   Routes,
@@ -104,7 +103,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
       return interaction.reply(`Prefix has been changed to \`${newPrefix}\``);
     }
 
-    // No subcommand = show current prefix
+    // Show current prefix
     const current = getPrefix(interaction.guild.id);
     return interaction.reply(`Current prefix is \`${current}\`\nUse \`/prefix set <newprefix>\` to change it.`);
   }
@@ -121,7 +120,6 @@ client.on(Events.MessageCreate, async (message) => {
   const args = message.content.slice(prefix.length).trim().split(/ +/);
   const command = args.shift().toLowerCase();
 
-  // Example commands
   if (command === 'ping') {
     return message.reply('Pong!');
   }
