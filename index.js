@@ -6,7 +6,8 @@ const {
   REST,
   Routes,
   PermissionFlagsBits,
-  ApplicationCommandOptionType
+  ApplicationCommandOptionType,
+  ActivityType
 } = require('discord.js');
 const express = require('express');
 const fs = require('fs');
@@ -71,6 +72,15 @@ const commands = [
 
 client.once(Events.ClientReady, async () => {
   console.log(`Logged in as ${client.user.tag}`);
+
+  // Set status to Do Not Disturb + custom text
+  client.user.setPresence({
+    status: 'dnd',
+    activities: [{
+      name: 'discord.gg/fameunlocked',
+      type: ActivityType.Custom
+    }]
+  });
 
   const rest = new REST({ version: '10' }).setToken(process.env.TOKEN);
   try {
@@ -140,10 +150,8 @@ client.on(Events.InteractionCreate, async (interaction) => {
       });
     }
 
-    // Reply privately so no one sees who used the command
     await interaction.reply({ content: 'Message sent.', ephemeral: true });
 
-    // Bot sends the actual message
     await interaction.channel.send({
       content: text || undefined,
       files: image ? [image.url] : undefined
