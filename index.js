@@ -3,7 +3,10 @@ const {
   GatewayIntentBits,
   EmbedBuilder,
   Events,
-  PermissionFlagsBits
+  REST,
+  Routes,
+  PermissionFlagsBits,
+  ApplicationCommandOptionType
 } = require('discord.js');
 const express = require('express');
 const fs = require('fs');
@@ -44,8 +47,38 @@ function getPrefix(guildId) {
   return data.prefixes[guildId] || ',';
 }
 
-client.once(Events.ClientReady, () => {
+// Slash command registration
+const commands = [
+  {
+    name: 'send',
+    description: 'Make the bot send a message or image',
+    options: [
+      {
+        name: 'message',
+        description: 'The text to send',
+        type: ApplicationCommandOptionType.String,
+        required: false
+      },
+      {
+        name: 'image',
+        description: 'An image to send',
+        type: ApplicationCommandOptionType.Attachment,
+        required: false
+      }
+    ]
+  }
+];
+
+client.once(Events.ClientReady, async () => {
   console.log(`Logged in as ${client.user.tag}`);
+
+  const rest = new REST({ version: '10' }).setToken(process.env.TOKEN);
+  try {
+    await rest.put(Routes.applicationCommands(client.user.id), { body: commands });
+    console.log('Slash commands registered');
+  } catch (err) {
+    console.error(err);
+  }
 });
 
 // Welcome event
@@ -85,7 +118,40 @@ client.on(Events.GuildMemberAdd, async (member) => {
   channel.send({ content: `${member}`, embeds: [welcomeEmbed] }).catch(() => {});
 });
 
-// Message commands
+// Slash command handler
+client.on(Events.InteractionCreate, async (interaction) => {
+  if (!interaction.isChatInputCommand()) return;
+
+  if (interaction.commandName === 'send') {
+    if (!interaction.member.permissions.has(PermissionFlagsBits.ManageMessages)) {
+      return interaction.reply({
+        content: 'You need Manage Messages permission to use this command.',
+        ephemeral: true
+      });
+    }
+
+    const text = interaction.options.getString('message');
+    const image = interaction.options.getAttachment('image');
+
+    if (!text && !image) {
+      return interaction.reply({
+        content: 'You must provide a message or an image.',
+        ephemeral: true
+      });
+    }
+
+    // Reply privately so no one sees who used the command
+    await interaction.reply({ content: 'Message sent.', ephemeral: true });
+
+    // Bot sends the actual message
+    await interaction.channel.send({
+      content: text || undefined,
+      files: image ? [image.url] : undefined
+    });
+  }
+});
+
+// Prefix commands
 client.on(Events.MessageCreate, async (message) => {
   if (message.author.bot || !message.guild) return;
 
@@ -130,7 +196,7 @@ client.on(Events.MessageCreate, async (message) => {
         { name: 'unlock', value: 'Unlock the current channel', inline: true },
         { name: 'welcomer', value: 'Set the welcome channel + banner', inline: true },
         { name: 'testwelcome', value: 'Test the welcome message', inline: true },
-        { name: 'send', value: 'Make the bot send a message/image', inline: true }
+        { name: '/send', value: 'Make the bot send a message or image', inline: true }
       )
       .setFooter({ text: `Requested by ${message.author.tag}` })
       .setTimestamp();
@@ -291,49 +357,6 @@ client.on(Events.MessageCreate, async (message) => {
     }
 
     return message.reply({ content: `${member}`, embeds: [welcomeEmbed] });
-  }
-
-  // send
-  if (command === 'send') {
-    if (!message.member.permissions.has(PermissionFlagsBits.ManageMessages)) {
-      return message.reply('You need Manage Messages permission to use this command.');
-    }
-
-    // Delete the command message so it doesn't show who used it
-    await message.delete().catch(() => {});
-
-    const askMsg = await message.channel.send('Please send the message you want me to post (you can also attach an image). You have 60 seconds.');
-
-    const filter = (m) => m.author.id === message.author.id;
-    const collected = await message.channel.awaitMessages({
-      filter,
-      max: 1,
-      time: 60000,
-      errors: ['time']
-    }).catch(() => null);
-
-    await askMsg.delete().catch(() => {});
-
-    if (!collected) {
-      return message.channel.send('Timed out.').then(m => setTimeout(() => m.delete().catch(() => {}), 5000));
-    }
-
-    const response = collected.first();
-    const content = response.content || null;
-    const files = response.attachments.map(a => a.url);
-
-    // Delete the user's response so it stays clean
-    await response.delete().catch(() => {});
-
-    if (!content && files.length === 0) {
-      return message.channel.send('No message or image provided.');
-    }
-
-    // Bot sends the message
-    await message.channel.send({
-      content: content || undefined,
-      files: files.length > 0 ? files : undefined
-    });
   }
 });
 
