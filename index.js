@@ -1,10 +1,12 @@
 const {
   Client,
   GatewayIntentBits,
+  EmbedBuilder,
   Events,
   REST,
   Routes,
-  PermissionFlagsBits
+  PermissionFlagsBits,
+  ChannelType
 } = require('discord.js');
 const express = require('express');
 const fs = require('fs');
@@ -103,13 +105,12 @@ client.on(Events.InteractionCreate, async (interaction) => {
       return interaction.reply(`Prefix has been changed to \`${newPrefix}\``);
     }
 
-    // Show current prefix
     const current = getPrefix(interaction.guild.id);
     return interaction.reply(`Current prefix is \`${current}\`\nUse \`/prefix set <newprefix>\` to change it.`);
   }
 });
 
-// Handle message commands with custom prefix
+// Handle message commands
 client.on(Events.MessageCreate, async (message) => {
   if (message.author.bot || !message.guild) return;
 
@@ -120,16 +121,105 @@ client.on(Events.MessageCreate, async (message) => {
   const args = message.content.slice(prefix.length).trim().split(/ +/);
   const command = args.shift().toLowerCase();
 
+  // ===== PING =====
   if (command === 'ping') {
     return message.reply('Pong!');
   }
 
+  // ===== PREFIX =====
   if (command === 'prefix') {
     return message.reply(`Current prefix is \`${prefix}\``);
   }
 
+  // ===== HELP =====
   if (command === 'help') {
-    return message.reply(`Current prefix: \`${prefix}\`\nCommands: ping, prefix, help`);
+    const helpEmbed = new EmbedBuilder()
+      .setColor('#FFE0E9')
+      .setTitle('Petal Help')
+      .setDescription('List of available commands')
+      .addFields(
+        { name: 'ping', value: 'Check if the bot is online', inline: true },
+        { name: 'prefix', value: 'Show the current prefix', inline: true },
+        { name: 'lock', value: 'Lock the current channel', inline: true },
+        { name: 'unlock', value: 'Unlock the current channel', inline: true },
+        { name: 'help', value: 'Show this message', inline: true }
+      )
+      .setFooter({ text: `Requested by ${message.author.tag}` })
+      .setTimestamp();
+
+    return message.reply({ embeds: [helpEmbed] });
+  }
+
+  // ===== LOCK =====
+  if (command === 'lock') {
+    if (!message.member.permissions.has(PermissionFlagsBits.ManageChannels)) {
+      const noPermEmbed = new EmbedBuilder()
+        .setColor('#FFE0E9')
+        .setTitle('Missing Permissions')
+        .setDescription('You need the **Manage Channels** permission to use this command.')
+        .setFooter({ text: `Requested by ${message.author.tag}` })
+        .setTimestamp();
+
+      return message.reply({ embeds: [noPermEmbed] });
+    }
+
+    try {
+      await message.channel.permissionOverwrites.edit(message.guild.roles.everyone, {
+        SendMessages: false
+      });
+
+      const lockEmbed = new EmbedBuilder()
+        .setColor('#FFE0E9')
+        .setTitle('Channel Locked')
+        .setDescription(`This channel has been locked by **${message.author.tag}**.\n\nMembers can no longer send messages.`)
+        .addFields(
+          { name: 'Channel', value: `${message.channel}`, inline: true },
+          { name: 'Moderator', value: `${message.author}`, inline: true }
+        )
+        .setFooter({ text: 'Petal' })
+        .setTimestamp();
+
+      return message.reply({ embeds: [lockEmbed] });
+    } catch (err) {
+      console.error(err);
+      return message.reply('Failed to lock the channel. Make sure I have Manage Channels permission.');
+    }
+  }
+
+  // ===== UNLOCK =====
+  if (command === 'unlock') {
+    if (!message.member.permissions.has(PermissionFlagsBits.ManageChannels)) {
+      const noPermEmbed = new EmbedBuilder()
+        .setColor('#FFE0E9')
+        .setTitle('Missing Permissions')
+        .setDescription('You need the **Manage Channels** permission to use this command.')
+        .setFooter({ text: `Requested by ${message.author.tag}` })
+        .setTimestamp();
+
+      return message.reply({ embeds: [noPermEmbed] });
+    }
+
+    try {
+      await message.channel.permissionOverwrites.edit(message.guild.roles.everyone, {
+        SendMessages: null
+      });
+
+      const unlockEmbed = new EmbedBuilder()
+        .setColor('#FFE0E9')
+        .setTitle('Channel Unlocked')
+        .setDescription(`This channel has been unlocked by **${message.author.tag}**.\n\nMembers can now send messages again.`)
+        .addFields(
+          { name: 'Channel', value: `${message.channel}`, inline: true },
+          { name: 'Moderator', value: `${message.author}`, inline: true }
+        )
+        .setFooter({ text: 'Petal' })
+        .setTimestamp();
+
+      return message.reply({ embeds: [unlockEmbed] });
+    } catch (err) {
+      console.error(err);
+      return message.reply('Failed to unlock the channel. Make sure I have Manage Channels permission.');
+    }
   }
 });
 
