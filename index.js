@@ -3,10 +3,7 @@ const {
   GatewayIntentBits,
   EmbedBuilder,
   Events,
-  REST,
-  Routes,
-  PermissionFlagsBits,
-  ChannelType
+  PermissionFlagsBits
 } = require('discord.js');
 const express = require('express');
 const fs = require('fs');
@@ -31,7 +28,8 @@ const client = new Client({
 // Data storage
 const dataPath = './data.json';
 let data = {
-  prefixes: {}
+  prefixes: {},
+  welcome: {}
 };
 
 if (fs.existsSync(dataPath)) {
@@ -43,95 +41,84 @@ function saveData() {
 }
 
 function getPrefix(guildId) {
-  return data.prefixes[guildId] || '!';
+  return data.prefixes[guildId] || ',';
 }
 
-// Slash commands
-const commands = [
-  {
-    name: 'prefix',
-    description: 'View or change the bot prefix',
-    options: [
-      {
-        name: 'set',
-        description: 'Set a new prefix',
-        type: 1,
-        options: [
-          {
-            name: 'newprefix',
-            description: 'The new prefix',
-            type: 3,
-            required: true
-          }
-        ]
-      }
-    ]
-  }
-];
-
-client.once(Events.ClientReady, async () => {
+client.once(Events.ClientReady, () => {
   console.log(`Logged in as ${client.user.tag}`);
+});
 
-  const rest = new REST({ version: '10' }).setToken(process.env.TOKEN);
+// Welcome event
+client.on(Events.GuildMemberAdd, async (member) => {
+  const welcomeConfig = data.welcome[member.guild.id];
+  if (!welcomeConfig || !welcomeConfig.channelId) return;
+
+  const channel = member.guild.channels.cache.get(welcomeConfig.channelId);
+  if (!channel) return;
+
+  // Give the role
   try {
-    await rest.put(Routes.applicationCommands(client.user.id), { body: commands });
-    console.log('Slash commands registered');
+    await member.roles.add('1531850889357299892');
   } catch (err) {
-    console.error(err);
+    console.error('Failed to give role:', err);
   }
+
+  const joinDate = `<t:${Math.floor(member.user.createdTimestamp / 1000)}:D>`;
+  const banner = welcomeConfig.banner || null;
+
+  const welcomeEmbed = new EmbedBuilder()
+    .setColor('#FFE0E9')
+    .setTitle('Welcome')
+    .setDescription(`Welcome ${member} to **${member.guild.name}**`)
+    .setThumbnail(member.user.displayAvatarURL({ dynamic: true, size: 512 }))
+    .addFields(
+      { name: 'User', value: `${member.user.tag}`, inline: true },
+      { name: 'Account Created', value: joinDate, inline: true },
+      { name: 'Member Count', value: `${member.guild.memberCount}`, inline: true }
+    )
+    .setFooter({ text: 'Petal' })
+    .setTimestamp();
+
+  if (banner) {
+    welcomeEmbed.setImage(banner);
+  }
+
+  channel.send({ content: `${member}`, embeds: [welcomeEmbed] }).catch(() => {});
 });
 
-// Handle slash commands
-client.on(Events.InteractionCreate, async (interaction) => {
-  if (!interaction.isChatInputCommand()) return;
-
-  if (interaction.commandName === 'prefix') {
-    const sub = interaction.options.getSubcommand(false);
-
-    if (sub === 'set') {
-      if (!interaction.member.permissions.has(PermissionFlagsBits.ManageGuild)) {
-        return interaction.reply({ content: 'You need Manage Server permission to change the prefix.', ephemeral: true });
-      }
-
-      const newPrefix = interaction.options.getString('newprefix');
-
-      if (newPrefix.length > 5) {
-        return interaction.reply({ content: 'Prefix cannot be longer than 5 characters.', ephemeral: true });
-      }
-
-      data.prefixes[interaction.guild.id] = newPrefix;
-      saveData();
-
-      return interaction.reply(`Prefix has been changed to \`${newPrefix}\``);
-    }
-
-    const current = getPrefix(interaction.guild.id);
-    return interaction.reply(`Current prefix is \`${current}\`\nUse \`/prefix set <newprefix>\` to change it.`);
-  }
-});
-
-// Handle message commands
+// Message commands
 client.on(Events.MessageCreate, async (message) => {
   if (message.author.bot || !message.guild) return;
 
   const prefix = getPrefix(message.guild.id);
-
   if (!message.content.startsWith(prefix)) return;
 
   const args = message.content.slice(prefix.length).trim().split(/ +/);
   const command = args.shift().toLowerCase();
 
-  // ===== PING =====
+  // ping
   if (command === 'ping') {
     return message.reply('Pong!');
   }
 
-  // ===== PREFIX =====
+  // prefix
   if (command === 'prefix') {
+    if (args[0] === 'set') {
+      if (!message.member.permissions.has(PermissionFlagsBits.ManageGuild)) {
+        return message.reply('You need Manage Server permission to change the prefix.');
+      }
+      const newPrefix = args[1];
+      if (!newPrefix || newPrefix.length > 5) {
+        return message.reply('Please provide a valid prefix (max 5 characters).');
+      }
+      data.prefixes[message.guild.id] = newPrefix;
+      saveData();
+      return message.reply(`Prefix has been changed to \`${newPrefix}\``);
+    }
     return message.reply(`Current prefix is \`${prefix}\``);
   }
 
-  // ===== HELP =====
+  // help
   if (command === 'help') {
     const helpEmbed = new EmbedBuilder()
       .setColor('#FFE0E9')
@@ -139,10 +126,11 @@ client.on(Events.MessageCreate, async (message) => {
       .setDescription('List of available commands')
       .addFields(
         { name: 'ping', value: 'Check if the bot is online', inline: true },
-        { name: 'prefix', value: 'Show the current prefix', inline: true },
+        { name: 'prefix', value: 'Show or change the prefix', inline: true },
         { name: 'lock', value: 'Lock the current channel', inline: true },
         { name: 'unlock', value: 'Unlock the current channel', inline: true },
-        { name: 'help', value: 'Show this message', inline: true }
+        { name: 'welcomer', value: 'Set the welcome channel + banner', inline: true },
+        { name: 'testwelcome', value: 'Test the welcome message', inline: true }
       )
       .setFooter({ text: `Requested by ${message.author.tag}` })
       .setTimestamp();
@@ -150,7 +138,7 @@ client.on(Events.MessageCreate, async (message) => {
     return message.reply({ embeds: [helpEmbed] });
   }
 
-  // ===== LOCK =====
+  // lock
   if (command === 'lock') {
     if (!message.member.permissions.has(PermissionFlagsBits.ManageChannels)) {
       const noPermEmbed = new EmbedBuilder()
@@ -159,7 +147,6 @@ client.on(Events.MessageCreate, async (message) => {
         .setDescription('You need the **Manage Channels** permission to use this command.')
         .setFooter({ text: `Requested by ${message.author.tag}` })
         .setTimestamp();
-
       return message.reply({ embeds: [noPermEmbed] });
     }
 
@@ -181,12 +168,11 @@ client.on(Events.MessageCreate, async (message) => {
 
       return message.reply({ embeds: [lockEmbed] });
     } catch (err) {
-      console.error(err);
-      return message.reply('Failed to lock the channel. Make sure I have Manage Channels permission.');
+      return message.reply('Failed to lock the channel.');
     }
   }
 
-  // ===== UNLOCK =====
+  // unlock
   if (command === 'unlock') {
     if (!message.member.permissions.has(PermissionFlagsBits.ManageChannels)) {
       const noPermEmbed = new EmbedBuilder()
@@ -195,7 +181,6 @@ client.on(Events.MessageCreate, async (message) => {
         .setDescription('You need the **Manage Channels** permission to use this command.')
         .setFooter({ text: `Requested by ${message.author.tag}` })
         .setTimestamp();
-
       return message.reply({ embeds: [noPermEmbed] });
     }
 
@@ -217,9 +202,96 @@ client.on(Events.MessageCreate, async (message) => {
 
       return message.reply({ embeds: [unlockEmbed] });
     } catch (err) {
-      console.error(err);
-      return message.reply('Failed to unlock the channel. Make sure I have Manage Channels permission.');
+      return message.reply('Failed to unlock the channel.');
     }
+  }
+
+  // welcomer
+  if (command === 'welcomer') {
+    if (!message.member.permissions.has(PermissionFlagsBits.Administrator)) {
+      return message.reply('You need Administrator permission to use this command.');
+    }
+
+    const channel = message.mentions.channels.first();
+    if (!channel) {
+      return message.reply(`Usage: \`${prefix}welcomer #channel\``);
+    }
+
+    // Ask for banner image
+    const askEmbed = new EmbedBuilder()
+      .setColor('#FFE0E9')
+      .setTitle('Welcome Setup')
+      .setDescription(`Welcome channel set to ${channel}.\n\nPlease upload a **banner image** in the next message (you have 60 seconds).`)
+      .setFooter({ text: 'Petal' })
+      .setTimestamp();
+
+    await message.reply({ embeds: [askEmbed] });
+
+    const filter = (m) => m.author.id === message.author.id && m.attachments.size > 0;
+    const collected = await message.channel.awaitMessages({
+      filter,
+      max: 1,
+      time: 60000,
+      errors: ['time']
+    }).catch(() => null);
+
+    if (!collected) {
+      return message.channel.send('Timed out. Please run the command again and upload an image.');
+    }
+
+    const imageMessage = collected.first();
+    const bannerUrl = imageMessage.attachments.first().url;
+
+    data.welcome[message.guild.id] = {
+      channelId: channel.id,
+      banner: bannerUrl
+    };
+    saveData();
+
+    const successEmbed = new EmbedBuilder()
+      .setColor('#FFE0E9')
+      .setTitle('Welcome System Ready')
+      .setDescription(`Welcome messages will be sent in ${channel}`)
+      .setImage(bannerUrl)
+      .setFooter({ text: 'Petal' })
+      .setTimestamp();
+
+    return message.channel.send({ embeds: [successEmbed] });
+  }
+
+  // testwelcome
+  if (command === 'testwelcome') {
+    if (!message.member.permissions.has(PermissionFlagsBits.Administrator)) {
+      return message.reply('You need Administrator permission to use this command.');
+    }
+
+    const welcomeConfig = data.welcome[message.guild.id];
+    if (!welcomeConfig) {
+      return message.reply('Welcome system is not set up yet. Use `,welcomer #channel` first.');
+    }
+
+    const member = message.member;
+    const joinDate = `<t:${Math.floor(member.user.createdTimestamp / 1000)}:D>`;
+    const banner = welcomeConfig.banner || null;
+
+    const welcomeEmbed = new EmbedBuilder()
+      .setColor('#FFE0E9')
+      .setTitle('Welcome')
+      .setDescription(`Welcome ${member} to **${member.guild.name}**`)
+      .setThumbnail(member.user.displayAvatarURL({ dynamic: true, size: 512 }))
+      .addFields(
+        { name: 'User', value: `${member.user.tag}`, inline: true },
+        { name: 'Account Created', value: joinDate, inline: true },
+        { name: 'Member Count', value: `${member.guild.memberCount}`, inline: true }
+      )
+      .setFooter({ text: 'Petal' })
+      .setTimestamp();
+
+    if (banner) {
+      welcomeEmbed.setImage(banner);
+    }
+
+    return message.reply({ content: `${member}`, embeds: [welcomeEmbed] });
   }
 });
 
