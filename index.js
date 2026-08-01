@@ -56,7 +56,6 @@ client.on(Events.GuildMemberAdd, async (member) => {
   const channel = member.guild.channels.cache.get(welcomeConfig.channelId);
   if (!channel) return;
 
-  // Give the role
   try {
     await member.roles.add('1531850889357299892');
   } catch (err) {
@@ -130,7 +129,8 @@ client.on(Events.MessageCreate, async (message) => {
         { name: 'lock', value: 'Lock the current channel', inline: true },
         { name: 'unlock', value: 'Unlock the current channel', inline: true },
         { name: 'welcomer', value: 'Set the welcome channel + banner', inline: true },
-        { name: 'testwelcome', value: 'Test the welcome message', inline: true }
+        { name: 'testwelcome', value: 'Test the welcome message', inline: true },
+        { name: 'send', value: 'Make the bot send a message/image', inline: true }
       )
       .setFooter({ text: `Requested by ${message.author.tag}` })
       .setTimestamp();
@@ -217,7 +217,6 @@ client.on(Events.MessageCreate, async (message) => {
       return message.reply(`Usage: \`${prefix}welcomer #channel\``);
     }
 
-    // Ask for banner image
     const askEmbed = new EmbedBuilder()
       .setColor('#FFE0E9')
       .setTitle('Welcome Setup')
@@ -292,6 +291,49 @@ client.on(Events.MessageCreate, async (message) => {
     }
 
     return message.reply({ content: `${member}`, embeds: [welcomeEmbed] });
+  }
+
+  // send
+  if (command === 'send') {
+    if (!message.member.permissions.has(PermissionFlagsBits.ManageMessages)) {
+      return message.reply('You need Manage Messages permission to use this command.');
+    }
+
+    // Delete the command message so it doesn't show who used it
+    await message.delete().catch(() => {});
+
+    const askMsg = await message.channel.send('Please send the message you want me to post (you can also attach an image). You have 60 seconds.');
+
+    const filter = (m) => m.author.id === message.author.id;
+    const collected = await message.channel.awaitMessages({
+      filter,
+      max: 1,
+      time: 60000,
+      errors: ['time']
+    }).catch(() => null);
+
+    await askMsg.delete().catch(() => {});
+
+    if (!collected) {
+      return message.channel.send('Timed out.').then(m => setTimeout(() => m.delete().catch(() => {}), 5000));
+    }
+
+    const response = collected.first();
+    const content = response.content || null;
+    const files = response.attachments.map(a => a.url);
+
+    // Delete the user's response so it stays clean
+    await response.delete().catch(() => {});
+
+    if (!content && files.length === 0) {
+      return message.channel.send('No message or image provided.');
+    }
+
+    // Bot sends the message
+    await message.channel.send({
+      content: content || undefined,
+      files: files.length > 0 ? files : undefined
+    });
   }
 });
 
