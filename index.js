@@ -490,15 +490,15 @@ client.on(Events.InteractionCreate, async (interaction) => {
         new StringSelectMenuOptionBuilder().setLabel(',lock').setDescription('Locks the current channel').setValue('lock'),
         new StringSelectMenuOptionBuilder().setLabel(',unlock').setDescription('Unlocks the current channel').setValue('unlock'),
         new StringSelectMenuOptionBuilder().setLabel(',set automod').setDescription('Enables automod word filter').setValue('set_automod'),
-        new StringSelectMenuOptionBuilder().setLabel(',hardban').setDescription('Hardban (needs @user)').setValue('hardban'),
-        new StringSelectMenuOptionBuilder().setLabel(',dm').setDescription('DM a user (needs args)').setValue('dm'),
-        new StringSelectMenuOptionBuilder().setLabel(',welcomer').setDescription('Setup welcomer (needs #channel)').setValue('welcomer'),
+        new StringSelectMenuOptionBuilder().setLabel(',hardban').setDescription('Hardban a user').setValue('hardban'),
+        new StringSelectMenuOptionBuilder().setLabel(',dm').setDescription('DM a user').setValue('dm'),
+        new StringSelectMenuOptionBuilder().setLabel(',welcomer').setDescription('Setup welcomer').setValue('welcomer'),
         new StringSelectMenuOptionBuilder().setLabel(',testwelcome').setDescription('Sends a test welcome').setValue('testwelcome'),
-        new StringSelectMenuOptionBuilder().setLabel(',leaver').setDescription('Setup leave channel (needs #channel)').setValue('leaver'),
+        new StringSelectMenuOptionBuilder().setLabel(',leaver').setDescription('Setup leave channel').setValue('leaver'),
         new StringSelectMenuOptionBuilder().setLabel(',antinuke').setDescription('Enables anti-nuke').setValue('antinuke_on'),
         new StringSelectMenuOptionBuilder().setLabel(',antinuke off').setDescription('Disables anti-nuke').setValue('antinuke_off'),
         new StringSelectMenuOptionBuilder().setLabel(',set ticket system').setDescription('Starts ticket system setup').setValue('set_ticket'),
-        new StringSelectMenuOptionBuilder().setLabel(',play').setDescription('Play a song (needs query)').setValue('play'),
+        new StringSelectMenuOptionBuilder().setLabel(',play').setDescription('Play a song').setValue('play'),
         new StringSelectMenuOptionBuilder().setLabel(',skip').setDescription('Skips the current song').setValue('skip'),
         new StringSelectMenuOptionBuilder().setLabel(',stop').setDescription('Stops the music').setValue('stop'),
         new StringSelectMenuOptionBuilder().setLabel(',pause').setDescription('Pauses the music').setValue('pause'),
@@ -506,15 +506,15 @@ client.on(Events.InteractionCreate, async (interaction) => {
         new StringSelectMenuOptionBuilder().setLabel(',queue').setDescription('Shows the music queue').setValue('queue'),
         new StringSelectMenuOptionBuilder().setLabel(',np').setDescription('Shows now playing').setValue('np'),
         new StringSelectMenuOptionBuilder().setLabel(',leave').setDescription('Leaves the voice channel').setValue('leave'),
-        new StringSelectMenuOptionBuilder().setLabel(',hug').setDescription('Hug someone (needs @user)').setValue('hug'),
-        new StringSelectMenuOptionBuilder().setLabel(',slap').setDescription('Slap someone (needs @user)').setValue('slap'),
-        new StringSelectMenuOptionBuilder().setLabel(',punch').setDescription('Punch someone (needs @user)').setValue('punch')
+        new StringSelectMenuOptionBuilder().setLabel(',hug').setDescription('Hug someone').setValue('hug'),
+        new StringSelectMenuOptionBuilder().setLabel(',slap').setDescription('Slap someone').setValue('slap'),
+        new StringSelectMenuOptionBuilder().setLabel(',punch').setDescription('Punch someone').setValue('punch')
       );
     const row = new ActionRowBuilder().addComponents(select);
     const embed = new EmbedBuilder()
       .setColor('#FFE0E9')
       .setTitle('Bot Command Executor')
-      .setDescription('Select a command below.\n**The bot itself** will execute it.\n\nCommands that need a user will ask you to mention them.')
+      .setDescription('Select a command below.\n**The bot itself** will execute it.\n\nCommands that need a user will ask you interactively.')
       .setFooter({ text: 'Petal • Special Access' })
       .setTimestamp();
     await interaction.reply({
@@ -535,8 +535,10 @@ client.on(Events.InteractionCreate, async (interaction) => {
     const channel = interaction.channel;
     const guild = interaction.guild;
     const prefix = getPrefix(guild.id);
+    const author = interaction.user;
 
     try {
+      // ===== SIMPLE COMMANDS =====
       if (choice === 'ping') {
         await channel.send('Pong!');
       }
@@ -580,29 +582,17 @@ client.on(Events.InteractionCreate, async (interaction) => {
         });
         setTimeout(() => msg.delete().catch(() => {}), 8000);
       }
-      if (choice === 'hardban') {
-        await channel.send(`Please mention the user you want to hardban.\nExample: \`${prefix}hardban @user\``);
-      }
-      if (choice === 'dm') {
-        await channel.send(`Please mention the user and write the message.\nExample: \`${prefix}dm @user Hello!\``);
-      }
-      if (choice === 'welcomer') {
-        await channel.send(`Please mention the channel.\nExample: \`${prefix}welcomer #welcome\``);
-      }
       if (choice === 'testwelcome') {
         const config = data.welcome[guild.id];
         const embed = new EmbedBuilder()
           .setColor('#FFE0E9')
           .setTitle('Welcome')
-          .setDescription(`Welcome ${interaction.user} to **${guild.name}**`)
-          .setThumbnail(interaction.user.displayAvatarURL({ dynamic: true }))
+          .setDescription(`Welcome ${author} to **${guild.name}**`)
+          .setThumbnail(author.displayAvatarURL({ dynamic: true }))
           .setFooter({ text: 'Petal' })
           .setTimestamp();
         if (config?.banner) embed.setImage(config.banner);
-        await channel.send({ content: `${interaction.user}`, embeds: [embed] });
-      }
-      if (choice === 'leaver') {
-        await channel.send(`Please mention the channel.\nExample: \`${prefix}leaver #goodbye\``);
+        await channel.send({ content: `${author}`, embeds: [embed] });
       }
       if (choice === 'antinuke_on') {
         data.antinuke[guild.id] = { enabled: true };
@@ -617,9 +607,6 @@ client.on(Events.InteractionCreate, async (interaction) => {
       }
       if (choice === 'set_ticket') {
         await channel.send(`Run \`${prefix}set ticket system\` to start the interactive setup.`);
-      }
-      if (choice === 'play') {
-        await channel.send(`Please type the song name or URL.\nExample: \`${prefix}play never gonna give you up\``);
       }
       if (choice === 'skip') {
         const queue = getQueue(guild.id);
@@ -692,9 +679,156 @@ client.on(Events.InteractionCreate, async (interaction) => {
           await channel.send('Left the voice channel.');
         }
       }
-      if (['hug', 'slap', 'punch'].includes(choice)) {
-        await channel.send(`Please mention the user you want to ${choice}.\nExample: \`${prefix}${choice} @user\``);
+
+      // ===== INTERACTIVE COMMANDS THAT NEED A USER =====
+
+      // DM
+      if (choice === 'dm') {
+        await channel.send(`${author}, **mention the user** you want to DM (or type their ID):`);
+        const userFilter = m => m.author.id === author.id;
+        const userCollected = await channel.awaitMessages({ filter: userFilter, max: 1, time: 60000 }).catch(() => null);
+        if (!userCollected || !userCollected.first()) {
+          return channel.send('Timed out.');
+        }
+        const userMsg = userCollected.first();
+        let target = userMsg.mentions.users.first();
+        if (!target) {
+          target = await client.users.fetch(userMsg.content.trim()).catch(() => null);
+        }
+        if (!target) {
+          return channel.send('Could not find that user.');
+        }
+
+        await channel.send(`${author}, now **type the message** you want to send to **${target.tag}**:`);
+        const msgCollected = await channel.awaitMessages({ filter: userFilter, max: 1, time: 90000 }).catch(() => null);
+        if (!msgCollected || !msgCollected.first()) {
+          return channel.send('Timed out.');
+        }
+        const text = msgCollected.first().content;
+        if (!text) return channel.send('No message provided.');
+
+        try {
+          await target.send(text);
+          await channel.send(`Successfully DMed **${target.tag}**.`);
+        } catch {
+          await channel.send('Could not DM that user (they may have DMs closed).');
+        }
       }
+
+      // Hardban
+      if (choice === 'hardban') {
+        await channel.send(`${author}, **mention the user** you want to hardban (or type their ID):`);
+        const userFilter = m => m.author.id === author.id;
+        const userCollected = await channel.awaitMessages({ filter: userFilter, max: 1, time: 60000 }).catch(() => null);
+        if (!userCollected || !userCollected.first()) {
+          return channel.send('Timed out.');
+        }
+        const userMsg = userCollected.first();
+        let target = userMsg.mentions.members.first() || guild.members.cache.get(userMsg.content.trim());
+        if (!target) {
+          try {
+            target = await guild.members.fetch(userMsg.content.trim());
+          } catch {
+            target = null;
+          }
+        }
+        if (!target) {
+          return channel.send('Could not find that member.');
+        }
+        if (!target.bannable) {
+          return channel.send('I cannot ban that user.');
+        }
+        await target.ban({ deleteMessageSeconds: 604800, reason: `Hardbanned via /bot by ${author.tag}` });
+        await channel.send({ embeds: [new EmbedBuilder().setColor('#FFE0E9').setTitle('Hardbanned').setDescription(`**${target.user.tag}** has been hardbanned.`)] });
+      }
+
+      // Hug / Slap / Punch
+      if (['hug', 'slap', 'punch'].includes(choice)) {
+        await channel.send(`${author}, **mention the user** you want to ${choice}:`);
+        const userFilter = m => m.author.id === author.id;
+        const userCollected = await channel.awaitMessages({ filter: userFilter, max: 1, time: 60000 }).catch(() => null);
+        if (!userCollected || !userCollected.first()) {
+          return channel.send('Timed out.');
+        }
+        const userMsg = userCollected.first();
+        const target = userMsg.mentions.users.first();
+        if (!target) {
+          return channel.send('Please mention a user.');
+        }
+        const gif = await getAnimeGif(choice === 'punch' ? 'slap' : choice);
+        if (!gif) return channel.send('Failed to get gif.');
+        await channel.send({
+          embeds: [new EmbedBuilder().setColor('#FFE0E9').setDescription(`**${author}** ${choice}ed **${target}**!`).setImage(gif)]
+        });
+      }
+
+      // Play (asks for song)
+      if (choice === 'play') {
+        await channel.send(`${author}, **type the song name or URL** you want to play:`);
+        const songFilter = m => m.author.id === author.id;
+        const songCollected = await channel.awaitMessages({ filter: songFilter, max: 1, time: 60000 }).catch(() => null);
+        if (!songCollected || !songCollected.first()) {
+          return channel.send('Timed out.');
+        }
+        const query = songCollected.first().content.trim();
+        if (!query) return channel.send('No song provided.');
+
+        // We need a voice channel – check if the original user is in one
+        const member = await guild.members.fetch(author.id).catch(() => null);
+        if (!member?.voice?.channel) {
+          return channel.send('You need to be in a voice channel for me to play music.');
+        }
+
+        const msg = await channel.send('Searching...');
+        const result = await findSong(query);
+        if (!result.success) return msg.edit(result.error);
+
+        const song = {
+          title: result.title,
+          url: result.url,
+          duration: result.duration,
+          thumbnail: result.thumbnail,
+          requestedBy: author
+        };
+
+        let queue = getQueue(guild.id);
+        if (!queue) {
+          const connection = joinVoiceChannel({
+            channelId: member.voice.channel.id,
+            guildId: guild.id,
+            adapterCreator: guild.voiceAdapterCreator,
+            selfDeaf: true
+          });
+          const player = createAudioPlayer();
+          connection.subscribe(player);
+          queue = { connection, player, songs: [], textChannel: channel, loop: false };
+          queues.set(guild.id, queue);
+          player.on(AudioPlayerStatus.Idle, () => {
+            if (queue.loop && queue.songs.length) playSong(guild.id);
+            else { queue.songs.shift(); playSong(guild.id); }
+          });
+          player.on('error', () => { queue.songs.shift(); playSong(guild.id); });
+        }
+        queue.songs.push(song);
+        if (queue.songs.length === 1) {
+          await msg.delete().catch(() => {});
+          playSong(guild.id);
+        } else {
+          await msg.edit({
+            content: null,
+            embeds: [new EmbedBuilder().setColor('#FFE0E9').setAuthor({ name: `#${queue.songs.length} Queued` }).setDescription(`**${song.title}**`).setThumbnail(song.thumbnail)]
+          });
+        }
+      }
+
+      // Welcomer / Leaver just tell them to use the prefix version
+      if (choice === 'welcomer') {
+        await channel.send(`Please use the prefix command:\n\`${prefix}welcomer #channel\``);
+      }
+      if (choice === 'leaver') {
+        await channel.send(`Please use the prefix command:\n\`${prefix}leaver #channel\``);
+      }
+
     } catch (err) {
       await channel.send(`Failed to execute: ${err.message}`);
     }
@@ -1089,7 +1223,7 @@ client.on(Events.MessageCreate, async (message) => {
     return message.reply({ embeds: [embed] });
   }
 
-  // ===== SET AUTOMOD (only shows for you - auto deletes) =====
+  // ===== SET AUTOMOD =====
   if (command === 'set' && args[0]?.toLowerCase() === 'automod') {
     if (!message.member.permissions.has(PermissionFlagsBits.Administrator)) {
       return message.reply('Admin only.');
@@ -1125,7 +1259,6 @@ client.on(Events.MessageCreate, async (message) => {
 
     const filter = m => m.author.id === message.author.id;
 
-    // 1. Banner
     let banner = null;
     try {
       const bannerCol = await message.channel.awaitMessages({ filter, max: 1, time: 60000 });
@@ -1141,7 +1274,6 @@ client.on(Events.MessageCreate, async (message) => {
       return message.channel.send('Setup timed out.');
     }
 
-    // 2. Title
     await message.channel.send({
       embeds: [new EmbedBuilder()
         .setColor('#FFE0E9')
@@ -1156,7 +1288,6 @@ client.on(Events.MessageCreate, async (message) => {
       return message.channel.send('Setup timed out.');
     }
 
-    // 3. Bio
     await message.channel.send({
       embeds: [new EmbedBuilder()
         .setColor('#FFE0E9')
@@ -1171,7 +1302,6 @@ client.on(Events.MessageCreate, async (message) => {
       return message.channel.send('Setup timed out.');
     }
 
-    // 4. Button name
     await message.channel.send({
       embeds: [new EmbedBuilder()
         .setColor('#FFE0E9')
@@ -1186,7 +1316,6 @@ client.on(Events.MessageCreate, async (message) => {
       return message.channel.send('Setup timed out.');
     }
 
-    // 5. Button emoji
     await message.channel.send({
       embeds: [new EmbedBuilder()
         .setColor('#FFE0E9')
@@ -1204,7 +1333,6 @@ client.on(Events.MessageCreate, async (message) => {
       return message.channel.send('Setup timed out.');
     }
 
-    // Optional category
     await message.channel.send({
       embeds: [new EmbedBuilder()
         .setColor('#FFE0E9')
@@ -1263,7 +1391,7 @@ client.on(Events.MessageCreate, async (message) => {
     });
   }
 
-  // Fun commands - ask for user if missing
+  // Fun
   if (['hug', 'slap', 'punch', 'kick'].includes(command)) {
     const target = message.mentions.users.first();
     if (!target) {
