@@ -12,8 +12,7 @@ const {
   ChannelType,
   ActionRowBuilder,
   ButtonBuilder,
-  ButtonStyle,
-  ComponentType
+  ButtonStyle
 } = require('discord.js');
 const {
   joinVoiceChannel,
@@ -117,7 +116,7 @@ async function playSong(guildId) {
   const song = queue.songs[0];
 
   try {
-    const stream = await play.stream(song.url);
+    const stream = await play.stream(song.url, { discordPlayerCompatibility: true });
     const resource = createAudioResource(stream.stream, {
       inputType: stream.type
     });
@@ -126,7 +125,7 @@ async function playSong(guildId) {
 
     const embed = new EmbedBuilder()
       .setColor('#FFE0E9')
-      .setAuthor({ name: 'Now Playing', iconURL: 'https://cdn.discordapp.com/emojis/1234567890.png' })
+      .setAuthor({ name: 'Now Playing' })
       .setTitle(song.title)
       .setURL(song.url)
       .addFields(
@@ -147,8 +146,71 @@ async function playSong(guildId) {
     queue.nowPlayingMessage = msg;
   } catch (err) {
     console.error('Error playing song:', err);
+    queue.textChannel.send(`Failed to play **${song.title}**. Skipping...`).catch(() => {});
     queue.songs.shift();
     playSong(guildId);
+  }
+}
+
+// ==================== IMPROVED SONG FINDER ====================
+async function findSong(query) {
+  // Clean the query
+  query = query.trim();
+
+  // Extract YouTube video ID if possible
+  const ytRegex = /(?:youtube\.com\/(?:[^\/]+\/.+\/|(?:v|e(?:mbed)?)\/|.*[?&]v=)|youtu\.be\/)([^"&?\/\s]{11})/;
+  const match = query.match(ytRegex);
+
+  try {
+    // Method 1: Direct video link
+    if (match) {
+      const videoId = match[1];
+      const url = `https://www.youtube.com/watch?v=${videoId}`;
+
+      try {
+        const info = await play.video_info(url);
+        return {
+          title: info.video_details.title,
+          url: info.video_details.url,
+          duration: info.video_details.durationRaw,
+          thumbnail: info.video_details.thumbnails?.[0]?.url || null,
+          success: true
+        };
+      } catch (e) {
+        console.log('Direct video_info failed, trying search...');
+      }
+    }
+
+    // Method 2: Try play-dl validate + info
+    const validate = play.yt_validate(query);
+    if (validate === 'video') {
+      const info = await play.video_info(query);
+      return {
+        title: info.video_details.title,
+        url: info.video_details.url,
+        duration: info.video_details.durationRaw,
+        thumbnail: info.video_details.thumbnails?.[0]?.url || null,
+        success: true
+      };
+    }
+
+    // Method 3: Search
+    const results = await play.search(query, { limit: 1, source: { youtube: 'video' } });
+    if (results && results.length > 0) {
+      const video = results[0];
+      return {
+        title: video.title,
+        url: video.url,
+        duration: video.durationRaw || video.duration || 'Unknown',
+        thumbnail: video.thumbnails?.[0]?.url || null,
+        success: true
+      };
+    }
+
+    return { success: false, error: 'No results found.' };
+  } catch (err) {
+    console.error('findSong error:', err);
+    return { success: false, error: 'Failed to find the song. Please try another link or search term.' };
   }
 }
 
@@ -574,7 +636,6 @@ client.on(Events.GuildMemberRemove, async (member) => {
 
 // ==================== BUTTON HANDLER ====================
 client.on(Events.InteractionCreate, async (interaction) => {
-  // Slash command
   if (interaction.isChatInputCommand()) {
     if (interaction.commandName === 'send') {
       if (!interaction.member.permissions.has(PermissionFlagsBits.ManageMessages)) {
@@ -603,7 +664,6 @@ client.on(Events.InteractionCreate, async (interaction) => {
     return;
   }
 
-  // Button interactions
   if (!interaction.isButton()) return;
 
   const queue = getQueue(interaction.guildId);
@@ -611,7 +671,6 @@ client.on(Events.InteractionCreate, async (interaction) => {
     return interaction.reply({ content: 'No active music session.', ephemeral: true });
   }
 
-  // Only allow people in the same voice channel
   if (!interaction.member.voice.channel || interaction.member.voice.channelId !== queue.connection.joinConfig.channelId) {
     return interaction.reply({ content: 'You must be in the same voice channel.', ephemeral: true });
   }
@@ -622,19 +681,19 @@ client.on(Events.InteractionCreate, async (interaction) => {
       await interaction.update({
         components: createMusicButtons(false, queue.loop || false)
       });
-      await interaction.followUp({ content: `${interaction.user} resumed the playback!`, ephemeral: false });
+      await interaction.followUp({ content: `${interaction.user} resumed the playback!` });
     } else {
       queue.player.pause();
       await interaction.update({
         components: createMusicButtons(true, queue.loop || false)
       });
-      await interaction.followUp({ content: `${interaction.user} has just paused the playback!`, ephemeral: false });
+      await interaction.followUp({ content: `${interaction.user} has just paused the playback!` });
     }
   }
 
   if (interaction.customId === 'music_skip') {
     queue.player.stop();
-    await interaction.reply({ content: `${interaction.user} skipped the song.`, ephemeral: false });
+    await interaction.reply({ content: `${interaction.user} skipped the song.` });
   }
 
   if (interaction.customId === 'music_loop') {
@@ -666,16 +725,14 @@ client.on(Events.InteractionCreate, async (interaction) => {
 client.on(Events.MessageCreate, async (message) => {
   if (message.author.bot || !message.guild) return;
 
-  // ==================== INVITE LINK BLOCKER ====================
+  // Invite blocker
   const inviteRegex = /(https?:\/\/)?(www\.)?(discord\.(gg|io|me|li)|discordapp\.com\/invite|discord\.com\/invite)\/[a-zA-Z0-9]+/gi;
 
   if (inviteRegex.test(message.content)) {
     if (
-      message.member.permissions.has(PermissionFlagsBits.Administrator) ||
-      message.member.permissions.has(PermissionFlagsBits.ManageMessages)
+      !message.member.permissions.has(PermissionFlagsBits.Administrator) &&
+      !message.member.permissions.has(PermissionFlagsBits.ManageMessages)
     ) {
-      // allowed
-    } else {
       try {
         await message.delete();
 
@@ -690,10 +747,7 @@ client.on(Events.MessageCreate, async (message) => {
           .setTimestamp();
 
         const warning = await message.channel.send({ embeds: [embed] });
-        
-        setTimeout(() => {
-          warning.delete().catch(() => {});
-        }, 8000);
+        setTimeout(() => warning.delete().catch(() => {}), 8000);
       } catch (err) {
         console.error('Failed to delete invite message:', err.message);
       }
@@ -701,7 +755,6 @@ client.on(Events.MessageCreate, async (message) => {
     }
   }
 
-  // ==================== PREFIX COMMANDS ====================
   const prefix = getPrefix(message.guild.id);
   if (!message.content.startsWith(prefix)) return;
 
@@ -730,7 +783,7 @@ client.on(Events.MessageCreate, async (message) => {
     return message.reply(`Current prefix is \`${prefix}\``);
   }
 
-  // ==================== HELP COMMAND ====================
+  // help
   if (command === 'help') {
     const helpEmbed = new EmbedBuilder()
       .setColor('#FFE0E9')
@@ -796,8 +849,7 @@ client.on(Events.MessageCreate, async (message) => {
     return message.reply({ embeds: [helpEmbed] });
   }
 
-  // ==================== FUN INTERACTION COMMANDS ====================
-
+  // Fun commands
   if (command === 'hug') {
     const target = message.mentions.users.first();
     if (!target) return message.reply(`Usage: \`${prefix}hug @user\``);
@@ -867,8 +919,7 @@ client.on(Events.MessageCreate, async (message) => {
     return message.reply({ embeds: [embed] });
   }
 
-  // ==================== MUSIC COMMANDS ====================
-
+  // ==================== PLAY COMMAND (FIXED) ====================
   if (command === 'play') {
     const query = args.join(' ');
     if (!query) {
@@ -884,35 +935,22 @@ client.on(Events.MessageCreate, async (message) => {
       return message.reply('I cannot join or speak in that voice channel.');
     }
 
-    let songInfo;
-    try {
-      if (play.yt_validate(query) === 'video') {
-        const info = await play.video_info(query);
-        songInfo = {
-          title: info.video_details.title,
-          url: info.video_details.url,
-          duration: info.video_details.durationRaw,
-          thumbnail: info.video_details.thumbnails[0]?.url,
-          requestedBy: message.author
-        };
-      } else {
-        const results = await play.search(query, { limit: 1 });
-        if (!results || results.length === 0) {
-          return message.reply('No results found.');
-        }
-        const video = results[0];
-        songInfo = {
-          title: video.title,
-          url: video.url,
-          duration: video.durationRaw,
-          thumbnail: video.thumbnails[0]?.url,
-          requestedBy: message.author
-        };
-      }
-    } catch (err) {
-      console.error(err);
-      return message.reply('Failed to find that song.');
+    // Show searching message
+    const searchingMsg = await message.reply('Searching for the song...');
+
+    const result = await findSong(query);
+
+    if (!result.success) {
+      return searchingMsg.edit(result.error || 'Failed to find that song.');
     }
+
+    const songInfo = {
+      title: result.title,
+      url: result.url,
+      duration: result.duration,
+      thumbnail: result.thumbnail,
+      requestedBy: message.author
+    };
 
     let queue = getQueue(message.guild.id);
 
@@ -925,7 +963,6 @@ client.on(Events.MessageCreate, async (message) => {
       });
 
       const player = createAudioPlayer();
-
       connection.subscribe(player);
 
       queue = {
@@ -940,7 +977,6 @@ client.on(Events.MessageCreate, async (message) => {
 
       player.on(AudioPlayerStatus.Idle, () => {
         if (queue.loop && queue.songs.length > 0) {
-          // Keep the song if looping
           playSong(message.guild.id);
         } else {
           queue.songs.shift();
@@ -970,10 +1006,9 @@ client.on(Events.MessageCreate, async (message) => {
     queue.songs.push(songInfo);
 
     if (queue.songs.length === 1) {
-      // First song - start playing
+      await searchingMsg.delete().catch(() => {});
       playSong(message.guild.id);
     } else {
-      // Added to queue
       const embed = new EmbedBuilder()
         .setColor('#FFE0E9')
         .setAuthor({ name: `#${queue.songs.length} Track Queued` })
@@ -982,7 +1017,7 @@ client.on(Events.MessageCreate, async (message) => {
         .setFooter({ text: `Duration: ${songInfo.duration || 'Unknown'}` })
         .setTimestamp();
 
-      return message.reply({ embeds: [embed] });
+      await searchingMsg.edit({ content: null, embeds: [embed] });
     }
   }
 
@@ -1084,13 +1119,7 @@ client.on(Events.MessageCreate, async (message) => {
   // lock
   if (command === 'lock') {
     if (!message.member.permissions.has(PermissionFlagsBits.ManageChannels)) {
-      const noPermEmbed = new EmbedBuilder()
-        .setColor('#FFE0E9')
-        .setTitle('Missing Permissions')
-        .setDescription('You need the **Manage Channels** permission to use this command.')
-        .setFooter({ text: `Requested by ${message.author.tag}` })
-        .setTimestamp();
-      return message.reply({ embeds: [noPermEmbed] });
+      return message.reply('You need the **Manage Channels** permission to use this command.');
     }
 
     try {
@@ -1101,11 +1130,7 @@ client.on(Events.MessageCreate, async (message) => {
       const lockEmbed = new EmbedBuilder()
         .setColor('#FFE0E9')
         .setTitle('Channel Locked')
-        .setDescription(`This channel has been locked by **${message.author.tag}**.\n\nMembers can no longer send messages.`)
-        .addFields(
-          { name: 'Channel', value: `${message.channel}`, inline: true },
-          { name: 'Moderator', value: `${message.author}`, inline: true }
-        )
+        .setDescription(`This channel has been locked by **${message.author.tag}**.`)
         .setFooter({ text: 'Petal' })
         .setTimestamp();
       return message.reply({ embeds: [lockEmbed] });
@@ -1117,13 +1142,7 @@ client.on(Events.MessageCreate, async (message) => {
   // unlock
   if (command === 'unlock') {
     if (!message.member.permissions.has(PermissionFlagsBits.ManageChannels)) {
-      const noPermEmbed = new EmbedBuilder()
-        .setColor('#FFE0E9')
-        .setTitle('Missing Permissions')
-        .setDescription('You need the **Manage Channels** permission to use this command.')
-        .setFooter({ text: `Requested by ${message.author.tag}` })
-        .setTimestamp();
-      return message.reply({ embeds: [noPermEmbed] });
+      return message.reply('You need the **Manage Channels** permission to use this command.');
     }
 
     try {
@@ -1134,11 +1153,7 @@ client.on(Events.MessageCreate, async (message) => {
       const unlockEmbed = new EmbedBuilder()
         .setColor('#FFE0E9')
         .setTitle('Channel Unlocked')
-        .setDescription(`This channel has been unlocked by **${message.author.tag}**.\n\nMembers can now send messages again.`)
-        .addFields(
-          { name: 'Channel', value: `${message.channel}`, inline: true },
-          { name: 'Moderator', value: `${message.author}`, inline: true }
-        )
+        .setDescription(`This channel has been unlocked by **${message.author.tag}**.`)
         .setFooter({ text: 'Petal' })
         .setTimestamp();
       return message.reply({ embeds: [unlockEmbed] });
@@ -1269,14 +1284,11 @@ client.on(Events.MessageCreate, async (message) => {
       (args[0] ? await client.users.fetch(args[0]).catch(() => null) : null);
 
     if (!target) {
-      return message.reply(`Usage: \`${prefix}dm @user your message here\`\nOr: \`${prefix}dm UserID your message here\``);
+      return message.reply(`Usage: \`${prefix}dm @user your message here\``);
     }
 
     const dmMessage = args.slice(message.mentions.users.first() ? 1 : 1).join(' ');
-
-    if (!dmMessage) {
-      return message.reply('Please provide a message to send.');
-    }
+    if (!dmMessage) return message.reply('Please provide a message to send.');
 
     try {
       await target.send(dmMessage);
@@ -1286,15 +1298,14 @@ client.on(Events.MessageCreate, async (message) => {
         .setTitle('Direct Message Sent')
         .setDescription(`Successfully sent a DM to **${target.tag}**.`)
         .addFields(
-          { name: 'User', value: `${target.tag} (${target.id})`, inline: true },
-          { name: 'Sent by', value: `${message.author.tag}`, inline: true },
-          { name: 'Message', value: dmMessage.length > 1024 ? dmMessage.slice(0, 1021) + '...' : dmMessage }
+          { name: 'User', value: `${target.tag}`, inline: true },
+          { name: 'Sent by', value: `${message.author.tag}`, inline: true }
         )
         .setFooter({ text: 'Petal' })
         .setTimestamp();
 
       return message.reply({ embeds: [embed] });
-    } catch (err) {
+    } catch {
       return message.reply(`Failed to DM **${target.tag}**. They may have DMs disabled.`);
     }
   }
@@ -1310,17 +1321,9 @@ client.on(Events.MessageCreate, async (message) => {
       return message.reply(`Usage: \`${prefix}hardban @user [reason]\``);
     }
 
-    if (target.id === message.author.id) {
-      return message.reply('You cannot hardban yourself.');
-    }
-
-    if (target.id === client.user.id) {
-      return message.reply('You cannot hardban me.');
-    }
-
-    if (target.id === message.guild.ownerId) {
-      return message.reply('You cannot hardban the server owner.');
-    }
+    if (target.id === message.author.id) return message.reply('You cannot hardban yourself.');
+    if (target.id === client.user.id) return message.reply('You cannot hardban me.');
+    if (target.id === message.guild.ownerId) return message.reply('You cannot hardban the server owner.');
 
     if (
       message.member.roles.highest.position <= target.roles.highest.position &&
@@ -1329,9 +1332,7 @@ client.on(Events.MessageCreate, async (message) => {
       return message.reply('You cannot hardban someone with an equal or higher role than you.');
     }
 
-    if (!target.bannable) {
-      return message.reply('I cannot ban this user (check my role hierarchy).');
-    }
+    if (!target.bannable) return message.reply('I cannot ban this user.');
 
     const reason = args.slice(1).join(' ') || 'No reason provided';
 
@@ -1346,17 +1347,15 @@ client.on(Events.MessageCreate, async (message) => {
         .setTitle('User Hardbanned')
         .setDescription(`**${target.user.tag}** has been hardbanned.`)
         .addFields(
-          { name: 'User', value: `${target.user.tag} (${target.id})`, inline: true },
+          { name: 'User', value: `${target.user.tag}`, inline: true },
           { name: 'Moderator', value: `${message.author.tag}`, inline: true },
-          { name: 'Reason', value: reason, inline: false },
-          { name: 'Messages Deleted', value: 'All messages from the last 7 days', inline: false }
+          { name: 'Reason', value: reason }
         )
         .setFooter({ text: 'Petal' })
         .setTimestamp();
 
       return message.reply({ embeds: [embed] });
-    } catch (err) {
-      console.error('Hardban failed:', err);
+    } catch {
       return message.reply('Failed to hardban the user.');
     }
   }
@@ -1398,8 +1397,7 @@ client.on(Events.MessageCreate, async (message) => {
         '**Protected against:**\n' +
         '• Mass channel deletion\n' +
         '• Mass role deletion\n\n' +
-        'If anyone deletes **3 or more** channels/roles within **10 seconds**, they will be banned, the items will be restored, and they will receive the message: `kicked by petal`\n\n' +
-        'Only members with the special role can disable it.'
+        'If anyone deletes **3 or more** channels/roles within **10 seconds**, they will be banned and the items will be restored.'
       )
       .setFooter({ text: 'Petal' })
       .setTimestamp();
