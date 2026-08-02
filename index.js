@@ -119,6 +119,63 @@ function createMusicButtons(isPaused = false, isLooping = false) {
   return [row1, row2];
 }
 
+async function findSong(query) {
+  query = query.trim();
+
+  const ytRegex = /(?:youtube\.com\/(?:[^\/]+\/.+\/|(?:v|e(?:mbed)?)\/|.*[?&]v=)|youtu\.be\/)([^"&?\/\s]{11})/i;
+  const match = query.match(ytRegex);
+
+  try {
+    let url = null;
+
+    if (match) {
+      const videoId = match[1];
+      url = `https://www.youtube.com/watch?v=${videoId}`;
+    }
+
+    // Try direct video info
+    if (url) {
+      try {
+        const info = await play.video_info(url);
+        return {
+          title: info.video_details.title,
+          url: `https://www.youtube.com/watch?v=${info.video_details.id}`,
+          duration: info.video_details.durationRaw,
+          thumbnail: info.video_details.thumbnails?.[0]?.url || null,
+          success: true
+        };
+      } catch (e) {
+        console.log('Direct video_info failed:', e.message);
+      }
+    }
+
+    // Fallback to search
+    const results = await play.search(query, { limit: 1 });
+    if (results && results.length > 0) {
+      const video = results[0];
+      const cleanUrl = video.id 
+        ? `https://www.youtube.com/watch?v=${video.id}` 
+        : video.url;
+
+      return {
+        title: video.title,
+        url: cleanUrl,
+        duration: video.durationRaw || 'Unknown',
+        thumbnail: video.thumbnails?.[0]?.url || null,
+        success: true
+      };
+    }
+
+    return { success: false, error: 'No results found.' };
+  } catch (err) {
+    console.error('findSong error:', err.message);
+    return { 
+      success: false, 
+      error: 'Failed to find the song. YouTube may be blocking the request.' 
+    };
+  }
+}
+
 async function playSong(guildId) {
   const queue = getQueue(guildId);
   if (!queue || queue.songs.length === 0) {
@@ -132,7 +189,20 @@ async function playSong(guildId) {
   const song = queue.songs[0];
 
   try {
-    const stream = await play.stream(song.url, { discordPlayerCompatibility: true });
+    console.log('Trying to play:', song.url);
+
+    // Force clean YouTube URL
+    let streamUrl = song.url;
+    const idMatch = song.url.match(/(?:v=|youtu\.be\/)([^"&?\/\s]{11})/);
+    if (idMatch) {
+      streamUrl = `https://www.youtube.com/watch?v=${idMatch[1]}`;
+    }
+
+    const stream = await play.stream(streamUrl, { 
+      discordPlayerCompatibility: true,
+      quality: 2
+    });
+
     const resource = createAudioResource(stream.stream, {
       inputType: stream.type
     });
@@ -143,7 +213,7 @@ async function playSong(guildId) {
       .setColor('#FFE0E9')
       .setAuthor({ name: 'Now Playing' })
       .setTitle(song.title)
-      .setURL(song.url)
+      .setURL(streamUrl)
       .addFields(
         { name: 'Duration', value: `\`${song.duration || 'Unknown'}\``, inline: true },
         { name: 'Requested by', value: `${song.requestedBy}`, inline: true }
@@ -160,76 +230,12 @@ async function playSong(guildId) {
     }).catch(() => null);
 
     queue.nowPlayingMessage = msg;
+
   } catch (err) {
     console.error('Error playing song:', err.message);
-    queue.textChannel.send(`Failed to play **${song.title}**. Skipping...`).catch(() => {});
+    queue.textChannel.send(`Failed to play **${song.title}**\nReason: \`${err.message}\``).catch(() => {});
     queue.songs.shift();
     playSong(guildId);
-  }
-}
-
-// ==================== IMPROVED SONG FINDER ====================
-async function findSong(query) {
-  query = query.trim();
-
-  const ytRegex = /(?:youtube\.com\/(?:[^\/]+\/.+\/|(?:v|e(?:mbed)?)\/|.*[?&]v=)|youtu\.be\/)([^"&?\/\s]{11})/i;
-  const match = query.match(ytRegex);
-
-  try {
-    // Method 1: Direct link
-    if (match) {
-      const videoId = match[1];
-      const url = `https://www.youtube.com/watch?v=${videoId}`;
-
-      try {
-        const info = await play.video_info(url);
-        return {
-          title: info.video_details.title,
-          url: info.video_details.url,
-          duration: info.video_details.durationRaw,
-          thumbnail: info.video_details.thumbnails?.[0]?.url || null,
-          success: true
-        };
-      } catch (e) {
-        console.log('Direct video_info failed, trying search...');
-      }
-    }
-
-    // Method 2: Validate + info
-    try {
-      const validate = play.yt_validate(query);
-      if (validate === 'video') {
-        const info = await play.video_info(query);
-        return {
-          title: info.video_details.title,
-          url: info.video_details.url,
-          duration: info.video_details.durationRaw,
-          thumbnail: info.video_details.thumbnails?.[0]?.url || null,
-          success: true
-        };
-      }
-    } catch (e) {}
-
-    // Method 3: Search
-    const results = await play.search(query, { limit: 1 });
-    if (results && results.length > 0) {
-      const video = results[0];
-      return {
-        title: video.title,
-        url: video.url,
-        duration: video.durationRaw || 'Unknown',
-        thumbnail: video.thumbnails?.[0]?.url || null,
-        success: true
-      };
-    }
-
-    return { success: false, error: 'No results found.' };
-  } catch (err) {
-    console.error('findSong error:', err.message);
-    return { 
-      success: false, 
-      error: 'YouTube is blocking the request. Make sure your YT_COOKIES are correct and you redeployed.' 
-    };
   }
 }
 
@@ -727,7 +733,7 @@ client.on(Events.MessageCreate, async (message) => {
     if (!target) return message.reply(`Usage: \`${prefix}${command} @user\``);
 
     let category = command;
-    if (command === 'punch') category = 'slap'; // fallback
+    if (command === 'punch') category = 'slap';
 
     const gif = await getAnimeGif(category);
     if (!gif) return message.reply(`Failed to get a ${command} gif.`);
