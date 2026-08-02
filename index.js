@@ -60,7 +60,7 @@ const recentRoleDeletes = new Map();
 
 const ANTINUKE_THRESHOLD = 3;
 const ANTINUKE_WINDOW = 10_000;
-const ANTINUKE_OFF_ROLE = '1531850051771568128'; // Only this role can turn it off
+const ANTINUKE_OFF_ROLE = '1531850051771568128';
 
 function serializeChannel(channel) {
   return {
@@ -511,7 +511,8 @@ client.on(Events.MessageCreate, async (message) => {
         { name: 'unlock', value: 'Unlock the current channel', inline: true },
         { name: 'welcomer', value: 'Set the welcome channel + banner', inline: true },
         { name: 'testwelcome', value: 'Test the welcome message', inline: true },
-        { name: 'antinuke', value: 'Enable anti-nuke (only specific role can disable)', inline: true },
+        { name: 'antinuke', value: 'Enable anti-nuke (only special role can disable)', inline: true },
+        { name: 'hardban', value: 'Ban a user + delete all their messages (Admin only)', inline: true },
         { name: '/send', value: 'Make the bot send a message or image', inline: true }
       )
       .setFooter({ text: `Requested by ${message.author.tag}` })
@@ -670,6 +671,70 @@ client.on(Events.MessageCreate, async (message) => {
     return message.reply({ content: `${member}`, embeds: [welcomeEmbed] });
   }
 
+  // ==================== HARDBAN COMMAND ====================
+  if (command === 'hardban') {
+    if (!message.member.permissions.has(PermissionFlagsBits.Administrator)) {
+      return message.reply('You need **Administrator** permission to use this command.');
+    }
+
+    const target = message.mentions.members.first() || message.guild.members.cache.get(args[0]);
+    if (!target) {
+      return message.reply(`Usage: \`${prefix}hardban @user [reason]\``);
+    }
+
+    if (target.id === message.author.id) {
+      return message.reply('You cannot hardban yourself.');
+    }
+
+    if (target.id === client.user.id) {
+      return message.reply('You cannot hardban me.');
+    }
+
+    if (target.id === message.guild.ownerId) {
+      return message.reply('You cannot hardban the server owner.');
+    }
+
+    // Hierarchy check
+    if (
+      message.member.roles.highest.position <= target.roles.highest.position &&
+      message.guild.ownerId !== message.author.id
+    ) {
+      return message.reply('You cannot hardban someone with an equal or higher role than you.');
+    }
+
+    if (!target.bannable) {
+      return message.reply('I cannot ban this user (check my role hierarchy).');
+    }
+
+    const reason = args.slice(1).join(' ') || 'No reason provided';
+
+    try {
+      // Delete messages from the last 7 days + ban
+      await target.ban({
+        deleteMessageSeconds: 60 * 60 * 24 * 7, // 7 days
+        reason: `Hardbanned by ${message.author.tag} | ${reason}`
+      });
+
+      const embed = new EmbedBuilder()
+        .setColor('#FFE0E9')
+        .setTitle('User Hardbanned')
+        .setDescription(`**${target.user.tag}** has been hardbanned.`)
+        .addFields(
+          { name: 'User', value: `${target.user.tag} (${target.id})`, inline: true },
+          { name: 'Moderator', value: `${message.author.tag}`, inline: true },
+          { name: 'Reason', value: reason, inline: false },
+          { name: 'Messages Deleted', value: 'All messages from the last 7 days', inline: false }
+        )
+        .setFooter({ text: 'Petal' })
+        .setTimestamp();
+
+      return message.reply({ embeds: [embed] });
+    } catch (err) {
+      console.error('Hardban failed:', err);
+      return message.reply('Failed to hardban the user.');
+    }
+  }
+
   // ==================== ANTINUKE COMMAND ====================
   if (command === 'antinuke') {
     const sub = args[0]?.toLowerCase();
@@ -692,8 +757,7 @@ client.on(Events.MessageCreate, async (message) => {
       return message.reply({ embeds: [embed] });
     }
 
-    // Just typing ,antinuke (or ,antinuke on) → turns it ON
-    // Anyone with Administrator can enable it
+    // Enable anti-nuke (Administrator only)
     if (!message.member.permissions.has(PermissionFlagsBits.Administrator)) {
       return message.reply('You need Administrator permission to enable anti-nuke.');
     }
