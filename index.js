@@ -518,11 +518,10 @@ client.on(Events.InteractionCreate, async (interaction) => {
         new StringSelectMenuOptionBuilder().setLabel(',np').setDescription('Shows now playing').setValue('np'),
         new StringSelectMenuOptionBuilder().setLabel(',leave').setDescription('Leaves the voice channel').setValue('leave'),
 
-        // Fun
+        // Fun (max 25 options total)
         new StringSelectMenuOptionBuilder().setLabel(',hug').setDescription('Hug someone (needs @user)').setValue('hug'),
         new StringSelectMenuOptionBuilder().setLabel(',slap').setDescription('Slap someone (needs @user)').setValue('slap'),
-        new StringSelectMenuOptionBuilder().setLabel(',punch').setDescription('Punch someone (needs @user)').setValue('punch'),
-        new StringSelectMenuOptionBuilder().setLabel(',kick').setDescription('Kick gif (needs @user)').setValue('kick')
+        new StringSelectMenuOptionBuilder().setLabel(',punch').setDescription('Punch someone (needs @user)').setValue('punch')
       );
     const row = new ActionRowBuilder().addComponents(select);
     const embed = new EmbedBuilder()
@@ -718,7 +717,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
       }
 
       // Fun
-      if (['hug', 'slap', 'punch', 'kick'].includes(choice)) {
+      if (['hug', 'slap', 'punch'].includes(choice)) {
         await channel.send(`Usage: \`${prefix}${choice} @user\``);
       }
 
