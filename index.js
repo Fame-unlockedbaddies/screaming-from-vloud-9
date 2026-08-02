@@ -73,6 +73,8 @@ function getPrefix(guildId) {
   return data.prefixes[guildId] || ',';
 }
 
+const SPECIAL_ROLE = '1531850051771568128';
+
 // ==================== MUSIC SYSTEM ====================
 const queues = new Map();
 
@@ -443,6 +445,14 @@ const commands = [
   {
     name: 'createchannel',
     description: 'Create a new channel of any type'
+  },
+  {
+    name: 'bot',
+    description: 'Make the bot execute one of its own commands (Special Role Only)'
+  },
+  {
+    name: 'rules',
+    description: 'Send the professional server rules embed (Special Role Only)'
   }
 ];
 
@@ -518,7 +528,146 @@ client.on(Events.GuildMemberRemove, async (member) => {
 // ==================== INTERACTION HANDLER ====================
 client.on(Events.InteractionCreate, async (interaction) => {
 
-  // /send
+  // ===== /bot =====
+  if (interaction.isChatInputCommand() && interaction.commandName === 'bot') {
+    if (!interaction.member.roles.cache.has(SPECIAL_ROLE)) {
+      return interaction.reply({ content: 'You do not have permission to use this command.', ephemeral: true });
+    }
+
+    const select = new StringSelectMenuBuilder()
+      .setCustomId('bot_execute')
+      .setPlaceholder('Choose a command for the bot to execute')
+      .addOptions(
+        new StringSelectMenuOptionBuilder().setLabel('Ping').setDescription('Bot will reply with Pong').setValue('ping'),
+        new StringSelectMenuOptionBuilder().setLabel('Help').setDescription('Bot will send the help menu').setValue('help'),
+        new StringSelectMenuOptionBuilder().setLabel('Lock Channel').setDescription('Bot will lock the current channel').setValue('lock'),
+        new StringSelectMenuOptionBuilder().setLabel('Unlock Channel').setDescription('Bot will unlock the current channel').setValue('unlock'),
+        new StringSelectMenuOptionBuilder().setLabel('Anti-Nuke Enable').setDescription('Bot will enable anti-nuke').setValue('antinuke_on'),
+        new StringSelectMenuOptionBuilder().setLabel('Anti-Nuke Disable').setDescription('Bot will disable anti-nuke').setValue('antinuke_off'),
+        new StringSelectMenuOptionBuilder().setLabel('Test Welcome').setDescription('Bot will send a test welcome message').setValue('testwelcome')
+      );
+
+    const row = new ActionRowBuilder().addComponents(select);
+
+    const embed = new EmbedBuilder()
+      .setColor('#FFE0E9')
+      .setTitle('Bot Command Executor')
+      .setDescription('Select a command below.\n**The bot itself** will execute it (not you).')
+      .setFooter({ text: 'Petal • Special Access' })
+      .setTimestamp();
+
+    await interaction.reply({
+      embeds: [embed],
+      components: [row],
+      ephemeral: true
+    });
+    return;
+  }
+
+  // ===== Bot Execute Select =====
+  if (interaction.isStringSelectMenu() && interaction.customId === 'bot_execute') {
+    if (!interaction.member.roles.cache.has(SPECIAL_ROLE)) {
+      return interaction.reply({ content: 'No permission.', ephemeral: true });
+    }
+
+    const choice = interaction.values[0];
+    await interaction.update({ content: `Bot is executing: **${choice}**...`, embeds: [], components: [] });
+
+    const channel = interaction.channel;
+
+    try {
+      if (choice === 'ping') {
+        await channel.send('Pong!');
+      }
+
+      if (choice === 'help') {
+        const prefix = getPrefix(interaction.guildId);
+        const embed = new EmbedBuilder()
+          .setColor('#FFE0E9')
+          .setTitle('Petal Help Menu')
+          .addFields(
+            { name: 'General', value: `\`${prefix}ping\`\n\`${prefix}prefix\`` },
+            { name: 'Moderation', value: `\`${prefix}lock\`\n\`${prefix}unlock\`\n\`${prefix}hardban\`\n\`${prefix}dm\`` },
+            { name: 'Welcome / Leave', value: `\`${prefix}welcomer\`\n\`${prefix}testwelcome\`\n\`${prefix}leaver\`` },
+            { name: 'Anti-Nuke', value: `\`${prefix}antinuke\`\n\`${prefix}antinuke off\`` },
+            { name: 'Music', value: `\`${prefix}play\`\n\`${prefix}skip\`\n\`${prefix}stop\`\n\`${prefix}pause\`\n\`${prefix}resume\`\n\`${prefix}queue\`\n\`${prefix}np\`\n\`${prefix}leave\`` },
+            { name: 'Fun', value: `\`${prefix}hug\`\n\`${prefix}slap\`\n\`${prefix}punch\`\n\`${prefix}kick\`` },
+            { name: 'Slash Commands', value: '`/send`\n`/servercopy`\n`/createchannel`\n`/bot`\n`/rules`' }
+          )
+          .setFooter({ text: 'Executed by Petal' });
+        await channel.send({ embeds: [embed] });
+      }
+
+      if (choice === 'lock') {
+        await channel.permissionOverwrites.edit(interaction.guild.roles.everyone, { SendMessages: false });
+        await channel.send({ embeds: [new EmbedBuilder().setColor('#FFE0E9').setTitle('Channel Locked').setDescription('This channel has been locked by **Petal**.')] });
+      }
+
+      if (choice === 'unlock') {
+        await channel.permissionOverwrites.edit(interaction.guild.roles.everyone, { SendMessages: null });
+        await channel.send({ embeds: [new EmbedBuilder().setColor('#FFE0E9').setTitle('Channel Unlocked').setDescription('This channel has been unlocked by **Petal**.')] });
+      }
+
+      if (choice === 'antinuke_on') {
+        data.antinuke[interaction.guildId] = { enabled: true };
+        saveData();
+        cacheGuild(interaction.guild);
+        await channel.send({ embeds: [new EmbedBuilder().setColor('#FFE0E9').setTitle('Anti-Nuke Enabled').setDescription('Anti-nuke protection has been enabled by **Petal**.')] });
+      }
+
+      if (choice === 'antinuke_off') {
+        data.antinuke[interaction.guildId] = { enabled: false };
+        saveData();
+        await channel.send({ embeds: [new EmbedBuilder().setColor('#FFE0E9').setTitle('Anti-Nuke Disabled').setDescription('Anti-nuke protection has been disabled by **Petal**.')] });
+      }
+
+      if (choice === 'testwelcome') {
+        const config = data.welcome[interaction.guildId];
+        const embed = new EmbedBuilder()
+          .setColor('#FFE0E9')
+          .setTitle('Welcome')
+          .setDescription(`Welcome ${interaction.user} to **${interaction.guild.name}**`)
+          .setThumbnail(interaction.user.displayAvatarURL({ dynamic: true }))
+          .setFooter({ text: 'Petal' })
+          .setTimestamp();
+        if (config?.banner) embed.setImage(config.banner);
+        await channel.send({ content: `${interaction.user}`, embeds: [embed] });
+      }
+
+    } catch (err) {
+      await channel.send(`Failed to execute command: ${err.message}`);
+    }
+    return;
+  }
+
+  // ===== /rules =====
+  if (interaction.isChatInputCommand() && interaction.commandName === 'rules') {
+    if (!interaction.member.roles.cache.has(SPECIAL_ROLE)) {
+      return interaction.reply({ content: 'You do not have permission to use this command.', ephemeral: true });
+    }
+
+    const rulesEmbed = new EmbedBuilder()
+      .setColor('#FFE0E9')
+      .setTitle('Server Rules')
+      .setDescription('Please read and follow all rules carefully. Breaking them may result in warnings, mutes, or bans.')
+      .addFields(
+        { name: '1. Be Respectful', value: 'Treat everyone with kindness. Harassment, hate speech, discrimination, or toxic behavior will not be tolerated.' },
+        { name: '2. No Spam', value: 'Do not spam messages, emojis, mentions, or links. Keep the chat clean and readable.' },
+        { name: '3. No NSFW Content', value: 'Keep all content safe for work. NSFW images, videos, or discussions are strictly prohibited.' },
+        { name: '4. No Advertising', value: 'Do not promote other servers, products, or services without permission from staff.' },
+        { name: '5. Follow Discord Terms', value: 'You must follow Discord’s Terms of Service and Community Guidelines at all times.' },
+        { name: '6. Listen to Staff', value: 'Staff decisions are final. If you have an issue, contact them privately and respectfully.' },
+        { name: '7. Use Channels Correctly', value: 'Post content in the appropriate channels. Off-topic messages may be removed.' },
+        { name: '8. No Impersonation', value: 'Do not impersonate other members, staff, or bots.' }
+      )
+      .setFooter({ text: 'Petal • Stay respectful and have fun' })
+      .setTimestamp();
+
+    await interaction.reply({ embeds: [rulesEmbed] });
+    return;
+  }
+
+  // ===== /send =====
   if (interaction.isChatInputCommand() && interaction.commandName === 'send') {
     if (!interaction.member.permissions.has(PermissionFlagsBits.ManageMessages)) {
       return interaction.reply({ content: 'Missing permission.', ephemeral: true });
@@ -531,7 +680,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
     return;
   }
 
-  // /createchannel
+  // ===== /createchannel =====
   if (interaction.isChatInputCommand() && interaction.commandName === 'createchannel') {
     if (!interaction.member.permissions.has(PermissionFlagsBits.ManageChannels)) {
       return interaction.reply({ content: 'You need Manage Channels permission.', ephemeral: true });
@@ -541,28 +690,24 @@ client.on(Events.InteractionCreate, async (interaction) => {
       .setCustomId('createchannel_type')
       .setPlaceholder('Choose channel type')
       .addOptions(
-        new StringSelectMenuOptionBuilder().setLabel('Text Channel').setValue('0').setDescription('Normal text channel'),
-        new StringSelectMenuOptionBuilder().setLabel('Voice Channel').setValue('2').setDescription('Voice channel'),
-        new StringSelectMenuOptionBuilder().setLabel('Category').setValue('4').setDescription('Category'),
-        new StringSelectMenuOptionBuilder().setLabel('Announcement').setValue('5').setDescription('News / Announcement channel'),
-        new StringSelectMenuOptionBuilder().setLabel('Stage Channel').setValue('13').setDescription('Stage channel'),
-        new StringSelectMenuOptionBuilder().setLabel('Forum Channel').setValue('15').setDescription('Forum channel')
+        new StringSelectMenuOptionBuilder().setLabel('Text Channel').setValue('0'),
+        new StringSelectMenuOptionBuilder().setLabel('Voice Channel').setValue('2'),
+        new StringSelectMenuOptionBuilder().setLabel('Category').setValue('4'),
+        new StringSelectMenuOptionBuilder().setLabel('Announcement').setValue('5'),
+        new StringSelectMenuOptionBuilder().setLabel('Stage Channel').setValue('13'),
+        new StringSelectMenuOptionBuilder().setLabel('Forum Channel').setValue('15')
       );
-
-    const row = new ActionRowBuilder().addComponents(select);
 
     await interaction.reply({
       content: 'What type of channel do you want to create?',
-      components: [row],
+      components: [new ActionRowBuilder().addComponents(select)],
       ephemeral: true
     });
     return;
   }
 
-  // Create Channel - Type Selected → Show Modal
   if (interaction.isStringSelectMenu() && interaction.customId === 'createchannel_type') {
     const type = parseInt(interaction.values[0]);
-
     const modal = new ModalBuilder()
       .setCustomId(`createchannel_modal_${type}`)
       .setTitle('Create Channel');
@@ -571,43 +716,32 @@ client.on(Events.InteractionCreate, async (interaction) => {
       .setCustomId('channel_name')
       .setLabel('Channel Name')
       .setStyle(TextInputStyle.Short)
-      .setPlaceholder('example-channel')
       .setRequired(true)
       .setMaxLength(100);
 
-    const row = new ActionRowBuilder().addComponents(nameInput);
-    modal.addComponents(row);
-
+    modal.addComponents(new ActionRowBuilder().addComponents(nameInput));
     await interaction.showModal(modal);
     return;
   }
 
-  // Create Channel - Modal Submit
   if (interaction.isModalSubmit() && interaction.customId.startsWith('createchannel_modal_')) {
     const type = parseInt(interaction.customId.replace('createchannel_modal_', ''));
     const name = interaction.fields.getTextInputValue('channel_name');
 
     try {
       const channel = await interaction.guild.channels.create({
-        name: name,
-        type: type,
+        name,
+        type,
         reason: `Created by ${interaction.user.tag}`
       });
-
-      await interaction.reply({
-        content: `Successfully created ${channel} (\`${ChannelType[type] || type}\`)`,
-        ephemeral: true
-      });
+      await interaction.reply({ content: `Successfully created ${channel}`, ephemeral: true });
     } catch (err) {
-      await interaction.reply({
-        content: `Failed to create channel: ${err.message}`,
-        ephemeral: true
-      });
+      await interaction.reply({ content: `Failed: ${err.message}`, ephemeral: true });
     }
     return;
   }
 
-  // /servercopy
+  // ===== /servercopy =====
   if (interaction.isChatInputCommand() && interaction.commandName === 'servercopy') {
     if (!interaction.member.permissions.has(PermissionFlagsBits.Administrator)) {
       return interaction.reply({ content: 'Administrator only.', ephemeral: true });
@@ -665,12 +799,10 @@ client.on(Events.InteractionCreate, async (interaction) => {
     await interaction.update({ content: 'Copying... This may take a while.', components: [] });
 
     try {
-      // Delete all channels
       for (const ch of [...targetGuild.channels.cache.values()]) {
         try { await ch.delete(); } catch {}
       }
 
-      // Copy channels
       const sourceChannels = [...sourceGuild.channels.cache.values()]
         .filter(c => [0, 2, 4, 5, 13, 15].includes(c.type))
         .sort((a, b) => {
@@ -810,7 +942,7 @@ client.on(Events.MessageCreate, async (message) => {
         { name: 'Anti-Nuke', value: `\`${prefix}antinuke\`\n\`${prefix}antinuke off\`` },
         { name: 'Music', value: `\`${prefix}play\`\n\`${prefix}skip\`\n\`${prefix}stop\`\n\`${prefix}pause\`\n\`${prefix}resume\`\n\`${prefix}queue\`\n\`${prefix}np\`\n\`${prefix}leave\`` },
         { name: 'Fun', value: `\`${prefix}hug\`\n\`${prefix}slap\`\n\`${prefix}punch\`\n\`${prefix}kick\`` },
-        { name: 'Slash Commands', value: '`/send`\n`/servercopy`\n`/createchannel`' }
+        { name: 'Slash Commands', value: '`/send`\n`/servercopy`\n`/createchannel`\n`/bot`\n`/rules`' }
       );
     return message.reply({ embeds: [embed] });
   }
