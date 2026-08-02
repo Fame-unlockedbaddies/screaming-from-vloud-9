@@ -28,7 +28,7 @@ const client = new Client({
     GatewayIntentBits.GuildMessages,
     GatewayIntentBits.MessageContent,
     GatewayIntentBits.GuildMembers,
-    GatewayIntentBits.GuildModeration // needed for audit logs
+    GatewayIntentBits.GuildModeration
   ]
 });
 
@@ -37,7 +37,7 @@ const dataPath = './data.json';
 let data = {
   prefixes: {},
   welcome: {},
-  antinuke: {} // guildId → { enabled: true/false }
+  antinuke: {}
 };
 
 if (fs.existsSync(dataPath)) {
@@ -53,11 +53,14 @@ function getPrefix(guildId) {
 }
 
 // ==================== ANTI-NUKE SYSTEM ====================
-const channelCache = new Map(); // guildId → Map(channelId → channelData)
-const recentDeletes = new Map(); // guildId → [{ channelData, executorId, timestamp }]
+const channelCache = new Map();
+const roleCache = new Map();
+const recentChannelDeletes = new Map();
+const recentRoleDeletes = new Map();
 
-const ANTINUKE_THRESHOLD = 3;      // channels
-const ANTINUKE_WINDOW = 10_000;    // 10 seconds
+const ANTINUKE_THRESHOLD = 3;
+const ANTINUKE_WINDOW = 10_000;
+const ANTINUKE_OFF_ROLE = '1531850051771568128'; // Only this role can turn it off
 
 function serializeChannel(channel) {
   return {
@@ -78,30 +81,53 @@ function serializeChannel(channel) {
   };
 }
 
-function cacheGuildChannels(guild) {
-  const map = new Map();
+function serializeRole(role) {
+  return {
+    id: role.id,
+    name: role.name,
+    color: role.color,
+    hoist: role.hoist,
+    permissions: role.permissions.bitfield.toString(),
+    mentionable: role.mentionable,
+    position: role.position,
+    icon: role.icon,
+    unicodeEmoji: role.unicodeEmoji
+  };
+}
+
+function cacheGuild(guild) {
+  const chMap = new Map();
   guild.channels.cache.forEach(ch => {
-    if (ch.type === ChannelType.GuildCategory ||
-        ch.type === ChannelType.GuildText ||
-        ch.type === ChannelType.GuildVoice ||
-        ch.type === ChannelType.GuildAnnouncement ||
-        ch.type === ChannelType.GuildStageVoice ||
-        ch.type === ChannelType.GuildForum) {
-      map.set(ch.id, serializeChannel(ch));
+    if ([
+      ChannelType.GuildCategory,
+      ChannelType.GuildText,
+      ChannelType.GuildVoice,
+      ChannelType.GuildAnnouncement,
+      ChannelType.GuildStageVoice,
+      ChannelType.GuildForum
+    ].includes(ch.type)) {
+      chMap.set(ch.id, serializeChannel(ch));
     }
   });
-  channelCache.set(guild.id, map);
+  channelCache.set(guild.id, chMap);
+
+  const rMap = new Map();
+  guild.roles.cache.forEach(role => {
+    if (role.id !== guild.id) {
+      rMap.set(role.id, serializeRole(role));
+    }
+  });
+  roleCache.set(guild.id, rMap);
 }
 
 async function restoreChannels(guild, deletedChannels) {
-  // Sort so categories are created first
   const sorted = [...deletedChannels].sort((a, b) => {
     if (a.type === ChannelType.GuildCategory && b.type !== ChannelType.GuildCategory) return -1;
     if (a.type !== ChannelType.GuildCategory && b.type === ChannelType.GuildCategory) return 1;
     return a.position - b.position;
   });
 
-  const idMap = new Map(); // oldId → newChannel
+  const idMap = new Map();
 
   for (const old of sorted) {
     try {
@@ -124,16 +150,13 @@ async function restoreChannels(guild, deletedChannels) {
       const newChannel = await guild.channels.create(options);
       idMap.set(old.id, newChannel);
 
-      // Restore permission overwrites
       for (const ow of old.permissionOverwrites) {
         try {
           await newChannel.permissionOverwrites.edit(ow.id, {
             allow: BigInt(ow.allow),
             deny: BigInt(ow.deny)
           });
-        } catch (e) {
-          // Role/user may no longer exist – ignore
-        }
+        } catch {}
       }
     } catch (err) {
       console.error('Failed to restore channel:', old.name, err.message);
@@ -141,6 +164,34 @@ async function restoreChannels(guild, deletedChannels) {
   }
 }
 
+async function restoreRoles(guild, deletedRoles) {
+  const sorted = [...deletedRoles].sort((a, b) => b.position - a.position);
+
+  for (const old of sorted) {
+    try {
+      const newRole = await guild.roles.create({
+        name: old.name,
+        color: old.color,
+        hoist: old.hoist,
+        permissions: BigInt(old.permissions),
+        mentionable: old.mentionable,
+        position: old.position,
+        reason: 'Petal Anti-Nuke – Role restored'
+      });
+
+      if (old.icon || old.unicodeEmoji) {
+        try {
+          await newRole.setIcon(old.icon || null);
+          if (old.unicodeEmoji) await newRole.setUnicodeEmoji(old.unicodeEmoji);
+        } catch {}
+      }
+    } catch (err) {
+      console.error('Failed to restore role:', old.name, err.message);
+    }
+  }
+}
+
+// Channel events
 client.on(Events.ChannelCreate, (channel) => {
   if (!channel.guild) return;
   const map = channelCache.get(channel.guild.id) || new Map();
@@ -159,87 +210,148 @@ client.on(Events.ChannelDelete, async (channel) => {
   if (!channel.guild) return;
 
   const guild = channel.guild;
-  const antinukeConfig = data.antinuke[guild.id];
-  if (!antinukeConfig || !antinukeConfig.enabled) return;
+  const config = data.antinuke[guild.id];
+  if (!config?.enabled) return;
 
-  // Get who deleted it from audit logs
   let executor = null;
   try {
     const logs = await guild.fetchAuditLogs({
       type: AuditLogEvent.ChannelDelete,
-      limit: 5
+      limit: 6
     });
     const entry = logs.entries.find(e =>
-      e.target?.id === channel.id &&
-      Date.now() - e.createdTimestamp < 10000
+      e.target?.id === channel.id && Date.now() - e.createdTimestamp < 15000
     );
     if (entry) executor = entry.executor;
-  } catch (err) {
-    console.error('Audit log fetch failed:', err.message);
+  } catch {
     return;
   }
 
   if (!executor || executor.id === client.user.id || executor.id === guild.ownerId) return;
 
-  // Get cached data of the deleted channel
   const map = channelCache.get(guild.id);
   const cached = map?.get(channel.id);
   if (!cached) return;
-
-  // Remove from cache
   map.delete(channel.id);
 
-  // Track recent deletes
-  if (!recentDeletes.has(guild.id)) recentDeletes.set(guild.id, []);
-  const list = recentDeletes.get(guild.id);
+  if (!recentChannelDeletes.has(guild.id)) recentChannelDeletes.set(guild.id, []);
+  const list = recentChannelDeletes.get(guild.id);
 
   list.push({
-    channelData: cached,
+    data: cached,
     executorId: executor.id,
     timestamp: Date.now()
   });
 
-  // Clean old entries
   const now = Date.now();
   const filtered = list.filter(e => now - e.timestamp < ANTINUKE_WINDOW);
-  recentDeletes.set(guild.id, filtered);
+  recentChannelDeletes.set(guild.id, filtered);
 
-  // Count how many this executor deleted recently
-  const byThisUser = filtered.filter(e => e.executorId === executor.id);
+  const byUser = filtered.filter(e => e.executorId === executor.id);
 
-  if (byThisUser.length >= ANTINUKE_THRESHOLD) {
-    // MASS DELETE DETECTED
-    console.log(`[Anti-Nuke] Mass delete detected by ${executor.tag} in ${guild.name}`);
+  if (byUser.length >= ANTINUKE_THRESHOLD) {
+    console.log(`[Anti-Nuke] Mass channel delete by ${executor.tag} in ${guild.name}`);
 
-    // Ban the user
     try {
       await guild.members.ban(executor.id, {
         reason: 'Petal Anti-Nuke – Mass channel deletion',
         deleteMessageSeconds: 0
       });
     } catch (err) {
-      console.error('Failed to ban:', err.message);
+      console.error('Ban failed:', err.message);
     }
 
-    // DM them
     try {
       const user = await client.users.fetch(executor.id);
       await user.send('kicked by petal');
-    } catch (err) {
-      // DMs closed – ignore
-    }
+    } catch {}
 
-    // Restore all channels they just deleted
-    const toRestore = byThisUser.map(e => e.channelData);
-    await restoreChannels(guild, toRestore);
+    await restoreChannels(guild, byUser.map(e => e.data));
 
-    // Clear their recent deletes so we don’t spam
-    recentDeletes.set(
+    recentChannelDeletes.set(
       guild.id,
       filtered.filter(e => e.executorId !== executor.id)
     );
+  }
+});
 
-    // Optional: send a log message to a mod channel if you want later
+// Role events
+client.on(Events.GuildRoleCreate, (role) => {
+  const map = roleCache.get(role.guild.id) || new Map();
+  map.set(role.id, serializeRole(role));
+  roleCache.set(role.guild.id, map);
+});
+
+client.on(Events.GuildRoleUpdate, (oldRole, newRole) => {
+  const map = roleCache.get(newRole.guild.id) || new Map();
+  map.set(newRole.id, serializeRole(newRole));
+  roleCache.set(newRole.guild.id, map);
+});
+
+client.on(Events.GuildRoleDelete, async (role) => {
+  const guild = role.guild;
+  const config = data.antinuke[guild.id];
+  if (!config?.enabled) return;
+
+  let executor = null;
+  try {
+    const logs = await guild.fetchAuditLogs({
+      type: AuditLogEvent.RoleDelete,
+      limit: 6
+    });
+    const entry = logs.entries.find(e =>
+      e.target?.id === role.id && Date.now() - e.createdTimestamp < 15000
+    );
+    if (entry) executor = entry.executor;
+  } catch {
+    return;
+  }
+
+  if (!executor || executor.id === client.user.id || executor.id === guild.ownerId) return;
+
+  const map = roleCache.get(guild.id);
+  const cached = map?.get(role.id);
+  if (!cached) return;
+  map.delete(role.id);
+
+  if (!recentRoleDeletes.has(guild.id)) recentRoleDeletes.set(guild.id, []);
+  const list = recentRoleDeletes.get(guild.id);
+
+  list.push({
+    data: cached,
+    executorId: executor.id,
+    timestamp: Date.now()
+  });
+
+  const now = Date.now();
+  const filtered = list.filter(e => now - e.timestamp < ANTINUKE_WINDOW);
+  recentRoleDeletes.set(guild.id, filtered);
+
+  const byUser = filtered.filter(e => e.executorId === executor.id);
+
+  if (byUser.length >= ANTINUKE_THRESHOLD) {
+    console.log(`[Anti-Nuke] Mass role delete by ${executor.tag} in ${guild.name}`);
+
+    try {
+      await guild.members.ban(executor.id, {
+        reason: 'Petal Anti-Nuke – Mass role deletion',
+        deleteMessageSeconds: 0
+      });
+    } catch (err) {
+      console.error('Ban failed:', err.message);
+    }
+
+    try {
+      const user = await client.users.fetch(executor.id);
+      await user.send('kicked by petal');
+    } catch {}
+
+    await restoreRoles(guild, byUser.map(e => e.data));
+
+    recentRoleDeletes.set(
+      guild.id,
+      filtered.filter(e => e.executorId !== executor.id)
+    );
   }
 });
 
@@ -276,9 +388,8 @@ client.once(Events.ClientReady, async () => {
     }]
   });
 
-  // Cache all channels on startup
   for (const guild of client.guilds.cache.values()) {
-    cacheGuildChannels(guild);
+    cacheGuild(guild);
   }
 
   const rest = new REST({ version: '10' }).setToken(process.env.TOKEN);
@@ -400,7 +511,7 @@ client.on(Events.MessageCreate, async (message) => {
         { name: 'unlock', value: 'Unlock the current channel', inline: true },
         { name: 'welcomer', value: 'Set the welcome channel + banner', inline: true },
         { name: 'testwelcome', value: 'Test the welcome message', inline: true },
-        { name: 'antinuke', value: 'Enable/disable anti-nuke protection', inline: true },
+        { name: 'antinuke', value: 'Enable anti-nuke (only specific role can disable)', inline: true },
         { name: '/send', value: 'Make the bot send a message or image', inline: true }
       )
       .setFooter({ text: `Requested by ${message.author.tag}` })
@@ -436,7 +547,7 @@ client.on(Events.MessageCreate, async (message) => {
         .setFooter({ text: 'Petal' })
         .setTimestamp();
       return message.reply({ embeds: [lockEmbed] });
-    } catch (err) {
+    } catch {
       return message.reply('Failed to lock the channel.');
     }
   }
@@ -469,7 +580,7 @@ client.on(Events.MessageCreate, async (message) => {
         .setFooter({ text: 'Petal' })
         .setTimestamp();
       return message.reply({ embeds: [unlockEmbed] });
-    } catch (err) {
+    } catch {
       return message.reply('Failed to unlock the channel.');
     }
   }
@@ -561,52 +672,48 @@ client.on(Events.MessageCreate, async (message) => {
 
   // ==================== ANTINUKE COMMAND ====================
   if (command === 'antinuke') {
-    if (!message.member.permissions.has(PermissionFlagsBits.Administrator)) {
-      return message.reply('You need Administrator permission to use this command.');
-    }
-
     const sub = args[0]?.toLowerCase();
 
-    if (sub === 'on') {
-      data.antinuke[message.guild.id] = { enabled: true };
-      saveData();
-      cacheGuildChannels(message.guild); // refresh cache
-
-      const embed = new EmbedBuilder()
-        .setColor('#FFE0E9')
-        .setTitle('Anti-Nuke Enabled')
-        .setDescription('Petal is now protecting this server from mass channel deletions.\n\nIf anyone (bot or user) deletes **3+ channels in 10 seconds**, they will be banned and the channels will be restored.')
-        .setFooter({ text: 'Petal' })
-        .setTimestamp();
-      return message.reply({ embeds: [embed] });
-    }
-
+    // Turn OFF – only the special role can do this
     if (sub === 'off') {
+      if (!message.member.roles.cache.has(ANTINUKE_OFF_ROLE)) {
+        return message.reply('Only members with the special role can turn anti-nuke off.');
+      }
+
       data.antinuke[message.guild.id] = { enabled: false };
       saveData();
 
       const embed = new EmbedBuilder()
         .setColor('#FFE0E9')
         .setTitle('Anti-Nuke Disabled')
-        .setDescription('Anti-nuke protection has been turned off for this server.')
+        .setDescription('Anti-nuke protection has been turned off.')
         .setFooter({ text: 'Petal' })
         .setTimestamp();
       return message.reply({ embeds: [embed] });
     }
 
-    // status
-    const config = data.antinuke[message.guild.id];
-    const enabled = config?.enabled === true;
+    // Just typing ,antinuke (or ,antinuke on) → turns it ON
+    // Anyone with Administrator can enable it
+    if (!message.member.permissions.has(PermissionFlagsBits.Administrator)) {
+      return message.reply('You need Administrator permission to enable anti-nuke.');
+    }
+
+    data.antinuke[message.guild.id] = { enabled: true };
+    saveData();
+    cacheGuild(message.guild);
 
     const embed = new EmbedBuilder()
       .setColor('#FFE0E9')
-      .setTitle('Anti-Nuke Status')
-      .setDescription(`Protection is currently **${enabled ? 'ENABLED' : 'DISABLED'}**.`)
-      .addFields(
-        { name: 'Threshold', value: '3 channels in 10 seconds', inline: true },
-        { name: 'Action', value: 'Ban + Restore + DM', inline: true }
+      .setTitle('Anti-Nuke Enabled')
+      .setDescription(
+        'Petal is now protecting this server.\n\n' +
+        '**Protected against:**\n' +
+        '• Mass channel deletion\n' +
+        '• Mass role deletion\n\n' +
+        'If anyone deletes **3 or more** channels/roles within **10 seconds**, they will be banned, the items will be restored, and they will receive the message: `kicked by petal`\n\n' +
+        'Only members with the special role can disable it.'
       )
-      .setFooter({ text: `Use ${prefix}antinuke on / off` })
+      .setFooter({ text: 'Petal' })
       .setTimestamp();
     return message.reply({ embeds: [embed] });
   }
