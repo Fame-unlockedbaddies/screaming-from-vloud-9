@@ -17,8 +17,7 @@ const {
   StringSelectMenuOptionBuilder,
   ModalBuilder,
   TextInputBuilder,
-  TextInputStyle,
-  PermissionOverwrites
+  TextInputStyle
 } = require('discord.js');
 const {
   joinVoiceChannel,
@@ -485,23 +484,51 @@ client.on(Events.InteractionCreate, async (interaction) => {
       .setCustomId('bot_execute')
       .setPlaceholder('Choose a command for the bot to execute')
       .addOptions(
+        // General
         new StringSelectMenuOptionBuilder().setLabel(',ping').setDescription('Bot replies with Pong').setValue('ping'),
         new StringSelectMenuOptionBuilder().setLabel(',help').setDescription('Bot sends the help menu').setValue('help'),
-        new StringSelectMenuOptionBuilder().setLabel(',lock').setDescription('Bot locks the current channel').setValue('lock'),
-        new StringSelectMenuOptionBuilder().setLabel(',unlock').setDescription('Bot unlocks the current channel').setValue('unlock'),
-        new StringSelectMenuOptionBuilder().setLabel(',antinuke').setDescription('Bot enables anti-nuke').setValue('antinuke_on'),
-        new StringSelectMenuOptionBuilder().setLabel(',antinuke off').setDescription('Bot disables anti-nuke').setValue('antinuke_off'),
-        new StringSelectMenuOptionBuilder().setLabel(',testwelcome').setDescription('Bot sends a test welcome').setValue('testwelcome'),
-        new StringSelectMenuOptionBuilder().setLabel(',queue').setDescription('Bot shows the music queue').setValue('queue'),
-        new StringSelectMenuOptionBuilder().setLabel(',np').setDescription('Bot shows now playing').setValue('np'),
-        new StringSelectMenuOptionBuilder().setLabel(',stop').setDescription('Bot stops the music').setValue('stop'),
-        new StringSelectMenuOptionBuilder().setLabel(',leave').setDescription('Bot leaves the voice channel').setValue('leave')
+        new StringSelectMenuOptionBuilder().setLabel(',prefix').setDescription('Shows current prefix').setValue('prefix'),
+
+        // Moderation
+        new StringSelectMenuOptionBuilder().setLabel(',lock').setDescription('Locks the current channel').setValue('lock'),
+        new StringSelectMenuOptionBuilder().setLabel(',unlock').setDescription('Unlocks the current channel').setValue('unlock'),
+        new StringSelectMenuOptionBuilder().setLabel(',set automod').setDescription('Enables automod word filter').setValue('set_automod'),
+        new StringSelectMenuOptionBuilder().setLabel(',hardban').setDescription('Hardban (needs @user)').setValue('hardban'),
+        new StringSelectMenuOptionBuilder().setLabel(',dm').setDescription('DM a user (needs args)').setValue('dm'),
+
+        // Welcome / Leave
+        new StringSelectMenuOptionBuilder().setLabel(',welcomer').setDescription('Setup welcomer (needs #channel)').setValue('welcomer'),
+        new StringSelectMenuOptionBuilder().setLabel(',testwelcome').setDescription('Sends a test welcome').setValue('testwelcome'),
+        new StringSelectMenuOptionBuilder().setLabel(',leaver').setDescription('Setup leave channel (needs #channel)').setValue('leaver'),
+
+        // Anti-Nuke
+        new StringSelectMenuOptionBuilder().setLabel(',antinuke').setDescription('Enables anti-nuke').setValue('antinuke_on'),
+        new StringSelectMenuOptionBuilder().setLabel(',antinuke off').setDescription('Disables anti-nuke').setValue('antinuke_off'),
+
+        // Tickets
+        new StringSelectMenuOptionBuilder().setLabel(',set ticket system').setDescription('Starts ticket system setup').setValue('set_ticket'),
+
+        // Music
+        new StringSelectMenuOptionBuilder().setLabel(',play').setDescription('Play a song (needs query)').setValue('play'),
+        new StringSelectMenuOptionBuilder().setLabel(',skip').setDescription('Skips the current song').setValue('skip'),
+        new StringSelectMenuOptionBuilder().setLabel(',stop').setDescription('Stops the music').setValue('stop'),
+        new StringSelectMenuOptionBuilder().setLabel(',pause').setDescription('Pauses the music').setValue('pause'),
+        new StringSelectMenuOptionBuilder().setLabel(',resume').setDescription('Resumes the music').setValue('resume'),
+        new StringSelectMenuOptionBuilder().setLabel(',queue').setDescription('Shows the music queue').setValue('queue'),
+        new StringSelectMenuOptionBuilder().setLabel(',np').setDescription('Shows now playing').setValue('np'),
+        new StringSelectMenuOptionBuilder().setLabel(',leave').setDescription('Leaves the voice channel').setValue('leave'),
+
+        // Fun
+        new StringSelectMenuOptionBuilder().setLabel(',hug').setDescription('Hug someone (needs @user)').setValue('hug'),
+        new StringSelectMenuOptionBuilder().setLabel(',slap').setDescription('Slap someone (needs @user)').setValue('slap'),
+        new StringSelectMenuOptionBuilder().setLabel(',punch').setDescription('Punch someone (needs @user)').setValue('punch'),
+        new StringSelectMenuOptionBuilder().setLabel(',kick').setDescription('Kick gif (needs @user)').setValue('kick')
       );
     const row = new ActionRowBuilder().addComponents(select);
     const embed = new EmbedBuilder()
       .setColor('#FFE0E9')
       .setTitle('Bot Command Executor')
-      .setDescription('Select a command below.\n**The bot itself** will execute it.')
+      .setDescription('Select a command below.\n**The bot itself** will execute it.\n\nCommands that need arguments will show their usage.')
       .setFooter({ text: 'Petal • Special Access' })
       .setTimestamp();
     await interaction.reply({
@@ -522,7 +549,9 @@ client.on(Events.InteractionCreate, async (interaction) => {
     const channel = interaction.channel;
     const guild = interaction.guild;
     const prefix = getPrefix(guild.id);
+
     try {
+      // General
       if (choice === 'ping') {
         await channel.send('Pong!');
       }
@@ -543,6 +572,11 @@ client.on(Events.InteractionCreate, async (interaction) => {
           .setFooter({ text: 'Executed by Petal' });
         await channel.send({ embeds: [embed] });
       }
+      if (choice === 'prefix') {
+        await channel.send(`Current prefix: \`${prefix}\``);
+      }
+
+      // Moderation
       if (choice === 'lock') {
         await channel.permissionOverwrites.edit(guild.roles.everyone, { SendMessages: false });
         await channel.send({ embeds: [new EmbedBuilder().setColor('#FFE0E9').setTitle('Channel Locked').setDescription('This channel has been locked by **Petal**.')] });
@@ -551,16 +585,27 @@ client.on(Events.InteractionCreate, async (interaction) => {
         await channel.permissionOverwrites.edit(guild.roles.everyone, { SendMessages: null });
         await channel.send({ embeds: [new EmbedBuilder().setColor('#FFE0E9').setTitle('Channel Unlocked').setDescription('This channel has been unlocked by **Petal**.')] });
       }
-      if (choice === 'antinuke_on') {
-        data.antinuke[guild.id] = { enabled: true };
+      if (choice === 'set_automod') {
+        data.automod[guild.id] = { enabled: true };
         saveData();
-        cacheGuild(guild);
-        await channel.send({ embeds: [new EmbedBuilder().setColor('#FFE0E9').setTitle('Anti-Nuke Enabled').setDescription('Anti-nuke has been enabled by **Petal**.')] });
+        await channel.send({
+          embeds: [new EmbedBuilder()
+            .setColor('#FFE0E9')
+            .setTitle('Automod Enabled')
+            .setDescription('Messages containing these words will be **immediately deleted**:\n\n' + AUTOMOD_WORDS.map(w => `\`${w}\``).join(', '))
+            .setFooter({ text: 'Petal Automod' })]
+        });
       }
-      if (choice === 'antinuke_off') {
-        data.antinuke[guild.id] = { enabled: false };
-        saveData();
-        await channel.send({ embeds: [new EmbedBuilder().setColor('#FFE0E9').setTitle('Anti-Nuke Disabled').setDescription('Anti-nuke has been disabled by **Petal**.')] });
+      if (choice === 'hardban') {
+        await channel.send(`Usage: \`${prefix}hardban @user\``);
+      }
+      if (choice === 'dm') {
+        await channel.send(`Usage: \`${prefix}dm @user message\``);
+      }
+
+      // Welcome / Leave
+      if (choice === 'welcomer') {
+        await channel.send(`Usage: \`${prefix}welcomer #channel\` then upload a banner.`);
       }
       if (choice === 'testwelcome') {
         const config = data.welcome[guild.id];
@@ -573,6 +618,67 @@ client.on(Events.InteractionCreate, async (interaction) => {
           .setTimestamp();
         if (config?.banner) embed.setImage(config.banner);
         await channel.send({ content: `${interaction.user}`, embeds: [embed] });
+      }
+      if (choice === 'leaver') {
+        await channel.send(`Usage: \`${prefix}leaver #channel\``);
+      }
+
+      // Anti-Nuke
+      if (choice === 'antinuke_on') {
+        data.antinuke[guild.id] = { enabled: true };
+        saveData();
+        cacheGuild(guild);
+        await channel.send({ embeds: [new EmbedBuilder().setColor('#FFE0E9').setTitle('Anti-Nuke Enabled').setDescription('Anti-nuke has been enabled by **Petal**.')] });
+      }
+      if (choice === 'antinuke_off') {
+        data.antinuke[guild.id] = { enabled: false };
+        saveData();
+        await channel.send({ embeds: [new EmbedBuilder().setColor('#FFE0E9').setTitle('Anti-Nuke Disabled').setDescription('Anti-nuke has been disabled by **Petal**.')] });
+      }
+
+      // Tickets
+      if (choice === 'set_ticket') {
+        await channel.send(`Run \`${prefix}set ticket system\` to start the interactive setup.`);
+      }
+
+      // Music
+      if (choice === 'play') {
+        await channel.send(`Usage: \`${prefix}play <song name or url>\``);
+      }
+      if (choice === 'skip') {
+        const queue = getQueue(guild.id);
+        if (!queue) await channel.send('Nothing is playing.');
+        else {
+          queue.player.stop();
+          await channel.send('Skipped.');
+        }
+      }
+      if (choice === 'stop') {
+        const queue = getQueue(guild.id);
+        if (!queue) await channel.send('Nothing is playing.');
+        else {
+          queue.songs = [];
+          queue.player.stop();
+          queue.connection.destroy();
+          queues.delete(guild.id);
+          await channel.send('Stopped the music.');
+        }
+      }
+      if (choice === 'pause') {
+        const queue = getQueue(guild.id);
+        if (!queue) await channel.send('Nothing is playing.');
+        else {
+          queue.player.pause();
+          await channel.send('Paused.');
+        }
+      }
+      if (choice === 'resume') {
+        const queue = getQueue(guild.id);
+        if (!queue) await channel.send('Nothing is playing.');
+        else {
+          queue.player.unpause();
+          await channel.send('Resumed.');
+        }
       }
       if (choice === 'queue') {
         const queue = getQueue(guild.id);
@@ -599,23 +705,10 @@ client.on(Events.InteractionCreate, async (interaction) => {
           });
         }
       }
-      if (choice === 'stop') {
-        const queue = getQueue(guild.id);
-        if (!queue) {
-          await channel.send('Nothing is playing.');
-        } else {
-          queue.songs = [];
-          queue.player.stop();
-          queue.connection.destroy();
-          queues.delete(guild.id);
-          await channel.send('Stopped the music.');
-        }
-      }
       if (choice === 'leave') {
         const queue = getQueue(guild.id);
-        if (!queue) {
-          await channel.send('I am not in a voice channel.');
-        } else {
+        if (!queue) await channel.send('I am not in a voice channel.');
+        else {
           queue.songs = [];
           queue.player.stop();
           queue.connection.destroy();
@@ -623,6 +716,12 @@ client.on(Events.InteractionCreate, async (interaction) => {
           await channel.send('Left the voice channel.');
         }
       }
+
+      // Fun
+      if (['hug', 'slap', 'punch', 'kick'].includes(choice)) {
+        await channel.send(`Usage: \`${prefix}${choice} @user\``);
+      }
+
     } catch (err) {
       await channel.send(`Failed to execute: ${err.message}`);
     }
@@ -861,7 +960,6 @@ client.on(Events.InteractionCreate, async (interaction) => {
     const button = ticketConfig.buttons[buttonIndex];
     if (!button) return interaction.reply({ content: 'Invalid button.', ephemeral: true });
 
-    // Check if user already has an open ticket
     const existing = interaction.guild.channels.cache.find(
       c => c.name === `ticket-${interaction.user.username.toLowerCase().replace(/[^a-z0-9]/g, '')}` && c.type === ChannelType.GuildText
     );
@@ -954,7 +1052,6 @@ client.on(Events.MessageCreate, async (message) => {
     const contentLower = message.content.toLowerCase();
     const hasBannedWord = AUTOMOD_WORDS.some(word => contentLower.includes(word.toLowerCase()));
     if (hasBannedWord) {
-      // Allow admins to bypass
       if (!message.member.permissions.has(PermissionFlagsBits.Administrator) &&
           !message.member.permissions.has(PermissionFlagsBits.ManageMessages)) {
         try {
