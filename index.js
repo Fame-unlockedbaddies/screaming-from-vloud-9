@@ -110,6 +110,18 @@ async function playSong(guildId) {
   }
 }
 
+// ==================== ANIME GIF HELPER ====================
+async function getAnimeGif(category) {
+  try {
+    const response = await fetch(`https://api.waifu.pics/sfw/${category}`);
+    const data = await response.json();
+    return data.url;
+  } catch (err) {
+    console.error('Failed to fetch anime gif:', err);
+    return null;
+  }
+}
+
 // ==================== ANTI-NUKE SYSTEM ====================
 const channelCache = new Map();
 const roleCache = new Map();
@@ -616,7 +628,7 @@ client.on(Events.MessageCreate, async (message) => {
     return message.reply(`Current prefix is \`${prefix}\``);
   }
 
-  // ==================== HELP COMMAND (UPDATED) ====================
+  // ==================== HELP COMMAND ====================
   if (command === 'help') {
     const helpEmbed = new EmbedBuilder()
       .setColor('#FFE0E9')
@@ -664,6 +676,14 @@ client.on(Events.MessageCreate, async (message) => {
             `\`${prefix}leave\` – Make the bot leave the voice channel`
         },
         {
+          name: 'Fun / Interaction Commands',
+          value:
+            `\`${prefix}hug @user\` – Hug someone with a random anime gif\n` +
+            `\`${prefix}slap @user\` – Slap someone with a random anime gif\n` +
+            `\`${prefix}punch @user\` – Punch someone with a random anime gif\n` +
+            `\`${prefix}kick @user\` – Kick someone with a random anime gif`
+        },
+        {
           name: 'Slash Commands',
           value: `\`/send\` – Make the bot send a message or image`
         }
@@ -672,6 +692,90 @@ client.on(Events.MessageCreate, async (message) => {
       .setTimestamp();
 
     return message.reply({ embeds: [helpEmbed] });
+  }
+
+  // ==================== FUN INTERACTION COMMANDS ====================
+
+  // hug
+  if (command === 'hug') {
+    const target = message.mentions.users.first();
+    if (!target) {
+      return message.reply(`Usage: \`${prefix}hug @user\``);
+    }
+
+    const gif = await getAnimeGif('hug');
+    if (!gif) return message.reply('Failed to get a hug gif.');
+
+    const embed = new EmbedBuilder()
+      .setColor('#FFE0E9')
+      .setDescription(`**${message.author}** hugged **${target}**!`)
+      .setImage(gif)
+      .setFooter({ text: 'Petal' })
+      .setTimestamp();
+
+    return message.reply({ embeds: [embed] });
+  }
+
+  // slap
+  if (command === 'slap') {
+    const target = message.mentions.users.first();
+    if (!target) {
+      return message.reply(`Usage: \`${prefix}slap @user\``);
+    }
+
+    const gif = await getAnimeGif('slap');
+    if (!gif) return message.reply('Failed to get a slap gif.');
+
+    const embed = new EmbedBuilder()
+      .setColor('#FFE0E9')
+      .setDescription(`**${message.author}** slapped **${target}**!`)
+      .setImage(gif)
+      .setFooter({ text: 'Petal' })
+      .setTimestamp();
+
+    return message.reply({ embeds: [embed] });
+  }
+
+  // punch
+  if (command === 'punch') {
+    const target = message.mentions.users.first();
+    if (!target) {
+      return message.reply(`Usage: \`${prefix}punch @user\``);
+    }
+
+    // waifu.pics uses "punch" or fallback to "slap" if needed
+    let gif = await getAnimeGif('punch');
+    if (!gif) gif = await getAnimeGif('slap');
+    if (!gif) return message.reply('Failed to get a punch gif.');
+
+    const embed = new EmbedBuilder()
+      .setColor('#FFE0E9')
+      .setDescription(`**${message.author}** punched **${target}**!`)
+      .setImage(gif)
+      .setFooter({ text: 'Petal' })
+      .setTimestamp();
+
+    return message.reply({ embeds: [embed] });
+  }
+
+  // kick (fun version)
+  if (command === 'kick') {
+    const target = message.mentions.users.first();
+    if (!target) {
+      return message.reply(`Usage: \`${prefix}kick @user\``);
+    }
+
+    const gif = await getAnimeGif('kick');
+    if (!gif) return message.reply('Failed to get a kick gif.');
+
+    const embed = new EmbedBuilder()
+      .setColor('#FFE0E9')
+      .setDescription(`**${message.author}** kicked **${target}**!`)
+      .setImage(gif)
+      .setFooter({ text: 'Petal' })
+      .setTimestamp();
+
+    return message.reply({ embeds: [embed] });
   }
 
   // ==================== MUSIC COMMANDS ====================
