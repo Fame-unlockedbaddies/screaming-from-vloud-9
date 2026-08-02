@@ -27,6 +27,22 @@ const express = require('express');
 const fs = require('fs');
 require('dotenv').config();
 
+// ========== LOAD YOUTUBE COOKIES FROM RENDER ==========
+try {
+  if (process.env.YT_COOKIES) {
+    play.setToken({
+      youtube: {
+        cookie: process.env.YT_COOKIES
+      }
+    });
+    console.log('YouTube cookies loaded successfully');
+  } else {
+    console.log('No YT_COOKIES found in environment variables');
+  }
+} catch (err) {
+  console.log('Failed to load cookies:', err.message);
+}
+
 // Web server for Render
 const app = express();
 app.get('/', (req, res) => res.send('Bot is online'));
@@ -145,7 +161,7 @@ async function playSong(guildId) {
 
     queue.nowPlayingMessage = msg;
   } catch (err) {
-    console.error('Error playing song:', err);
+    console.error('Error playing song:', err.message);
     queue.textChannel.send(`Failed to play **${song.title}**. Skipping...`).catch(() => {});
     queue.songs.shift();
     playSong(guildId);
@@ -154,15 +170,13 @@ async function playSong(guildId) {
 
 // ==================== IMPROVED SONG FINDER ====================
 async function findSong(query) {
-  // Clean the query
   query = query.trim();
 
-  // Extract YouTube video ID if possible
-  const ytRegex = /(?:youtube\.com\/(?:[^\/]+\/.+\/|(?:v|e(?:mbed)?)\/|.*[?&]v=)|youtu\.be\/)([^"&?\/\s]{11})/;
+  const ytRegex = /(?:youtube\.com\/(?:[^\/]+\/.+\/|(?:v|e(?:mbed)?)\/|.*[?&]v=)|youtu\.be\/)([^"&?\/\s]{11})/i;
   const match = query.match(ytRegex);
 
   try {
-    // Method 1: Direct video link
+    // Method 1: Direct link
     if (match) {
       const videoId = match[1];
       const url = `https://www.youtube.com/watch?v=${videoId}`;
@@ -181,27 +195,29 @@ async function findSong(query) {
       }
     }
 
-    // Method 2: Try play-dl validate + info
-    const validate = play.yt_validate(query);
-    if (validate === 'video') {
-      const info = await play.video_info(query);
-      return {
-        title: info.video_details.title,
-        url: info.video_details.url,
-        duration: info.video_details.durationRaw,
-        thumbnail: info.video_details.thumbnails?.[0]?.url || null,
-        success: true
-      };
-    }
+    // Method 2: Validate + info
+    try {
+      const validate = play.yt_validate(query);
+      if (validate === 'video') {
+        const info = await play.video_info(query);
+        return {
+          title: info.video_details.title,
+          url: info.video_details.url,
+          duration: info.video_details.durationRaw,
+          thumbnail: info.video_details.thumbnails?.[0]?.url || null,
+          success: true
+        };
+      }
+    } catch (e) {}
 
     // Method 3: Search
-    const results = await play.search(query, { limit: 1, source: { youtube: 'video' } });
+    const results = await play.search(query, { limit: 1 });
     if (results && results.length > 0) {
       const video = results[0];
       return {
         title: video.title,
         url: video.url,
-        duration: video.durationRaw || video.duration || 'Unknown',
+        duration: video.durationRaw || 'Unknown',
         thumbnail: video.thumbnails?.[0]?.url || null,
         success: true
       };
@@ -209,8 +225,11 @@ async function findSong(query) {
 
     return { success: false, error: 'No results found.' };
   } catch (err) {
-    console.error('findSong error:', err);
-    return { success: false, error: 'Failed to find the song. Please try another link or search term.' };
+    console.error('findSong error:', err.message);
+    return { 
+      success: false, 
+      error: 'YouTube is blocking the request. Make sure your YT_COOKIES are correct and you redeployed.' 
+    };
   }
 }
 
@@ -221,7 +240,6 @@ async function getAnimeGif(category) {
     const data = await response.json();
     return data.url;
   } catch (err) {
-    console.error('Failed to fetch anime gif:', err);
     return null;
   }
 }
@@ -332,9 +350,7 @@ async function restoreChannels(guild, deletedChannels) {
           });
         } catch {}
       }
-    } catch (err) {
-      console.error('Failed to restore channel:', old.name, err.message);
-    }
+    } catch (err) {}
   }
 }
 
@@ -343,7 +359,7 @@ async function restoreRoles(guild, deletedRoles) {
 
   for (const old of sorted) {
     try {
-      const newRole = await guild.roles.create({
+      await guild.roles.create({
         name: old.name,
         color: old.color,
         hoist: old.hoist,
@@ -352,16 +368,7 @@ async function restoreRoles(guild, deletedRoles) {
         position: old.position,
         reason: 'Petal Anti-Nuke – Role restored'
       });
-
-      if (old.icon || old.unicodeEmoji) {
-        try {
-          await newRole.setIcon(old.icon || null);
-          if (old.unicodeEmoji) await newRole.setUnicodeEmoji(old.unicodeEmoji);
-        } catch {}
-      }
-    } catch (err) {
-      console.error('Failed to restore role:', old.name, err.message);
-    }
+    } catch (err) {}
   }
 }
 
@@ -382,24 +389,16 @@ client.on(Events.ChannelUpdate, (oldCh, newCh) => {
 
 client.on(Events.ChannelDelete, async (channel) => {
   if (!channel.guild) return;
-
   const guild = channel.guild;
   const config = data.antinuke[guild.id];
   if (!config?.enabled) return;
 
   let executor = null;
   try {
-    const logs = await guild.fetchAuditLogs({
-      type: AuditLogEvent.ChannelDelete,
-      limit: 6
-    });
-    const entry = logs.entries.find(e =>
-      e.target?.id === channel.id && Date.now() - e.createdTimestamp < 15000
-    );
+    const logs = await guild.fetchAuditLogs({ type: AuditLogEvent.ChannelDelete, limit: 6 });
+    const entry = logs.entries.find(e => e.target?.id === channel.id && Date.now() - e.createdTimestamp < 15000);
     if (entry) executor = entry.executor;
-  } catch {
-    return;
-  }
+  } catch { return; }
 
   if (!executor || executor.id === client.user.id || executor.id === guild.ownerId) return;
 
@@ -410,12 +409,7 @@ client.on(Events.ChannelDelete, async (channel) => {
 
   if (!recentChannelDeletes.has(guild.id)) recentChannelDeletes.set(guild.id, []);
   const list = recentChannelDeletes.get(guild.id);
-
-  list.push({
-    data: cached,
-    executorId: executor.id,
-    timestamp: Date.now()
-  });
+  list.push({ data: cached, executorId: executor.id, timestamp: Date.now() });
 
   const now = Date.now();
   const filtered = list.filter(e => now - e.timestamp < ANTINUKE_WINDOW);
@@ -424,28 +418,15 @@ client.on(Events.ChannelDelete, async (channel) => {
   const byUser = filtered.filter(e => e.executorId === executor.id);
 
   if (byUser.length >= ANTINUKE_THRESHOLD) {
-    console.log(`[Anti-Nuke] Mass channel delete by ${executor.tag} in ${guild.name}`);
-
     try {
-      await guild.members.ban(executor.id, {
-        reason: 'Petal Anti-Nuke – Mass channel deletion',
-        deleteMessageSeconds: 0
-      });
-    } catch (err) {
-      console.error('Ban failed:', err.message);
-    }
-
+      await guild.members.ban(executor.id, { reason: 'Petal Anti-Nuke – Mass channel deletion' });
+    } catch {}
     try {
       const user = await client.users.fetch(executor.id);
       await user.send('kicked by petal');
     } catch {}
-
     await restoreChannels(guild, byUser.map(e => e.data));
-
-    recentChannelDeletes.set(
-      guild.id,
-      filtered.filter(e => e.executorId !== executor.id)
-    );
+    recentChannelDeletes.set(guild.id, filtered.filter(e => e.executorId !== executor.id));
   }
 });
 
@@ -469,17 +450,10 @@ client.on(Events.GuildRoleDelete, async (role) => {
 
   let executor = null;
   try {
-    const logs = await guild.fetchAuditLogs({
-      type: AuditLogEvent.RoleDelete,
-      limit: 6
-    });
-    const entry = logs.entries.find(e =>
-      e.target?.id === role.id && Date.now() - e.createdTimestamp < 15000
-    );
+    const logs = await guild.fetchAuditLogs({ type: AuditLogEvent.RoleDelete, limit: 6 });
+    const entry = logs.entries.find(e => e.target?.id === role.id && Date.now() - e.createdTimestamp < 15000);
     if (entry) executor = entry.executor;
-  } catch {
-    return;
-  }
+  } catch { return; }
 
   if (!executor || executor.id === client.user.id || executor.id === guild.ownerId) return;
 
@@ -490,12 +464,7 @@ client.on(Events.GuildRoleDelete, async (role) => {
 
   if (!recentRoleDeletes.has(guild.id)) recentRoleDeletes.set(guild.id, []);
   const list = recentRoleDeletes.get(guild.id);
-
-  list.push({
-    data: cached,
-    executorId: executor.id,
-    timestamp: Date.now()
-  });
+  list.push({ data: cached, executorId: executor.id, timestamp: Date.now() });
 
   const now = Date.now();
   const filtered = list.filter(e => now - e.timestamp < ANTINUKE_WINDOW);
@@ -504,28 +473,15 @@ client.on(Events.GuildRoleDelete, async (role) => {
   const byUser = filtered.filter(e => e.executorId === executor.id);
 
   if (byUser.length >= ANTINUKE_THRESHOLD) {
-    console.log(`[Anti-Nuke] Mass role delete by ${executor.tag} in ${guild.name}`);
-
     try {
-      await guild.members.ban(executor.id, {
-        reason: 'Petal Anti-Nuke – Mass role deletion',
-        deleteMessageSeconds: 0
-      });
-    } catch (err) {
-      console.error('Ban failed:', err.message);
-    }
-
+      await guild.members.ban(executor.id, { reason: 'Petal Anti-Nuke – Mass role deletion' });
+    } catch {}
     try {
       const user = await client.users.fetch(executor.id);
       await user.send('kicked by petal');
     } catch {}
-
     await restoreRoles(guild, byUser.map(e => e.data));
-
-    recentRoleDeletes.set(
-      guild.id,
-      filtered.filter(e => e.executorId !== executor.id)
-    );
+    recentRoleDeletes.set(guild.id, filtered.filter(e => e.executorId !== executor.id));
   }
 });
 
@@ -585,9 +541,7 @@ client.on(Events.GuildMemberAdd, async (member) => {
 
   try {
     await member.roles.add('1531850889357299892');
-  } catch (err) {
-    console.error('Failed to give role:', err);
-  }
+  } catch (err) {}
 
   const joinDate = `<t:${Math.floor(member.user.createdTimestamp / 1000)}:R>`;
   const banner = welcomeConfig.banner || null;
@@ -634,25 +588,19 @@ client.on(Events.GuildMemberRemove, async (member) => {
   channel.send({ embeds: [leaveEmbed] }).catch(() => {});
 });
 
-// ==================== BUTTON HANDLER ====================
+// ==================== BUTTON + SLASH HANDLER ====================
 client.on(Events.InteractionCreate, async (interaction) => {
   if (interaction.isChatInputCommand()) {
     if (interaction.commandName === 'send') {
       if (!interaction.member.permissions.has(PermissionFlagsBits.ManageMessages)) {
-        return interaction.reply({
-          content: 'You need Manage Messages permission to use this command.',
-          ephemeral: true
-        });
+        return interaction.reply({ content: 'You need Manage Messages permission.', ephemeral: true });
       }
 
       const text = interaction.options.getString('message');
       const image = interaction.options.getAttachment('image');
 
       if (!text && !image) {
-        return interaction.reply({
-          content: 'You must provide a message or an image.',
-          ephemeral: true
-        });
+        return interaction.reply({ content: 'You must provide a message or an image.', ephemeral: true });
       }
 
       await interaction.reply({ content: 'Message sent.', ephemeral: true });
@@ -678,15 +626,11 @@ client.on(Events.InteractionCreate, async (interaction) => {
   if (interaction.customId === 'music_pause_resume') {
     if (queue.player.state.status === AudioPlayerStatus.Paused) {
       queue.player.unpause();
-      await interaction.update({
-        components: createMusicButtons(false, queue.loop || false)
-      });
+      await interaction.update({ components: createMusicButtons(false, queue.loop || false) });
       await interaction.followUp({ content: `${interaction.user} resumed the playback!` });
     } else {
       queue.player.pause();
-      await interaction.update({
-        components: createMusicButtons(true, queue.loop || false)
-      });
+      await interaction.update({ components: createMusicButtons(true, queue.loop || false) });
       await interaction.followUp({ content: `${interaction.user} has just paused the playback!` });
     }
   }
@@ -701,10 +645,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
     await interaction.update({
       components: createMusicButtons(queue.player.state.status === AudioPlayerStatus.Paused, queue.loop)
     });
-    await interaction.followUp({
-      content: `Loop is now **${queue.loop ? 'enabled' : 'disabled'}**.`,
-      ephemeral: true
-    });
+    await interaction.followUp({ content: `Loop is now **${queue.loop ? 'enabled' : 'disabled'}**.`, ephemeral: true });
   }
 
   if (interaction.customId === 'music_stop') {
@@ -712,45 +653,29 @@ client.on(Events.InteractionCreate, async (interaction) => {
     queue.player.stop();
     queue.connection.destroy();
     queues.delete(interaction.guildId);
-
-    await interaction.update({
-      content: 'Music session ended.',
-      embeds: [],
-      components: []
-    });
+    await interaction.update({ content: 'Music session ended.', embeds: [], components: [] });
   }
 });
 
-// Prefix commands + Invite Blocker
+// Prefix commands
 client.on(Events.MessageCreate, async (message) => {
   if (message.author.bot || !message.guild) return;
 
   // Invite blocker
   const inviteRegex = /(https?:\/\/)?(www\.)?(discord\.(gg|io|me|li)|discordapp\.com\/invite|discord\.com\/invite)\/[a-zA-Z0-9]+/gi;
-
   if (inviteRegex.test(message.content)) {
-    if (
-      !message.member.permissions.has(PermissionFlagsBits.Administrator) &&
-      !message.member.permissions.has(PermissionFlagsBits.ManageMessages)
-    ) {
+    if (!message.member.permissions.has(PermissionFlagsBits.Administrator) && !message.member.permissions.has(PermissionFlagsBits.ManageMessages)) {
       try {
         await message.delete();
-
         const embed = new EmbedBuilder()
           .setColor('#FFE0E9')
           .setTitle('Invite Links Are Not Allowed')
-          .setDescription(
-            `${message.author}, posting Discord invite links is **not permitted** in this server.\n\n` +
-            `Please refrain from sharing invites. Repeated offenses may result in further action.`
-          )
+          .setDescription(`${message.author}, posting Discord invite links is **not permitted** in this server.`)
           .setFooter({ text: 'Petal • Server Protection' })
           .setTimestamp();
-
         const warning = await message.channel.send({ embeds: [embed] });
         setTimeout(() => warning.delete().catch(() => {}), 8000);
-      } catch (err) {
-        console.error('Failed to delete invite message:', err.message);
-      }
+      } catch {}
       return;
     }
   }
@@ -762,20 +687,14 @@ client.on(Events.MessageCreate, async (message) => {
   const command = args.shift().toLowerCase();
 
   // ping
-  if (command === 'ping') {
-    return message.reply('Pong!');
-  }
+  if (command === 'ping') return message.reply('Pong!');
 
   // prefix
   if (command === 'prefix') {
     if (args[0] === 'set') {
-      if (!message.member.permissions.has(PermissionFlagsBits.ManageGuild)) {
-        return message.reply('You need Manage Server permission to change the prefix.');
-      }
+      if (!message.member.permissions.has(PermissionFlagsBits.ManageGuild)) return message.reply('You need Manage Server permission.');
       const newPrefix = args[1];
-      if (!newPrefix || newPrefix.length > 5) {
-        return message.reply('Please provide a valid prefix (max 5 characters).');
-      }
+      if (!newPrefix || newPrefix.length > 5) return message.reply('Please provide a valid prefix (max 5 characters).');
       data.prefixes[message.guild.id] = newPrefix;
       saveData();
       return message.reply(`Prefix has been changed to \`${newPrefix}\``);
@@ -790,76 +709,32 @@ client.on(Events.MessageCreate, async (message) => {
       .setTitle('Petal Help Menu')
       .setDescription('Here is the full list of available commands:')
       .addFields(
-        {
-          name: 'General Commands',
-          value: 
-            `\`${prefix}ping\` – Check if the bot is online\n` +
-            `\`${prefix}prefix\` – Show the current prefix\n` +
-            `\`${prefix}prefix set <prefix>\` – Change the bot prefix`
-        },
-        {
-          name: 'Moderation',
-          value:
-            `\`${prefix}lock\` – Lock the current channel\n` +
-            `\`${prefix}unlock\` – Unlock the current channel\n` +
-            `\`${prefix}hardban @user [reason]\` – Ban a user + delete all their messages (Admin only)\n` +
-            `\`${prefix}dm @user <message>\` – Send a DM to a user (Admin only)`
-        },
-        {
-          name: 'Welcome & Leave System',
-          value:
-            `\`${prefix}welcomer #channel\` – Set the welcome channel + banner\n` +
-            `\`${prefix}testwelcome\` – Test the welcome message\n` +
-            `\`${prefix}leaver #channel\` – Set the leave channel`
-        },
-        {
-          name: 'Anti-Nuke',
-          value:
-            `\`${prefix}antinuke\` – Enable anti-nuke protection\n` +
-            `\`${prefix}antinuke off\` – Disable anti-nuke (special role only)`
-        },
-        {
-          name: 'Music Commands',
-          value:
-            `\`${prefix}play <song/url>\` – Play a song from YouTube\n` +
-            `\`${prefix}skip\` – Skip the current song\n` +
-            `\`${prefix}stop\` – Stop everything and clear the queue\n` +
-            `\`${prefix}pause\` – Pause the current song\n` +
-            `\`${prefix}resume\` – Resume the paused song\n` +
-            `\`${prefix}queue\` – Show the current music queue\n` +
-            `\`${prefix}np\` – Show what is currently playing\n` +
-            `\`${prefix}leave\` – Make the bot leave the voice channel`
-        },
-        {
-          name: 'Fun / Interaction Commands',
-          value:
-            `\`${prefix}hug @user\` – Hug someone with a random anime gif\n` +
-            `\`${prefix}slap @user\` – Slap someone with a random anime gif\n` +
-            `\`${prefix}punch @user\` – Punch someone with a random anime gif\n` +
-            `\`${prefix}kick @user\` – Kick someone with a random anime gif`
-        },
-        {
-          name: 'Slash Commands',
-          value: `\`/send\` – Make the bot send a message or image`
-        }
+        { name: 'General', value: `\`${prefix}ping\`\n\`${prefix}prefix\`\n\`${prefix}prefix set <prefix>\`` },
+        { name: 'Moderation', value: `\`${prefix}lock\`\n\`${prefix}unlock\`\n\`${prefix}hardban @user\`\n\`${prefix}dm @user <msg>\`` },
+        { name: 'Welcome / Leave', value: `\`${prefix}welcomer #channel\`\n\`${prefix}testwelcome\`\n\`${prefix}leaver #channel\`` },
+        { name: 'Anti-Nuke', value: `\`${prefix}antinuke\`\n\`${prefix}antinuke off\`` },
+        { name: 'Music', value: `\`${prefix}play <song/url>\`\n\`${prefix}skip\`\n\`${prefix}stop\`\n\`${prefix}pause\`\n\`${prefix}resume\`\n\`${prefix}queue\`\n\`${prefix}np\`\n\`${prefix}leave\`` },
+        { name: 'Fun', value: `\`${prefix}hug @user\`\n\`${prefix}slap @user\`\n\`${prefix}punch @user\`\n\`${prefix}kick @user\`` }
       )
-      .setFooter({ text: `Requested by ${message.author.tag} • Prefix: ${prefix}` })
+      .setFooter({ text: `Requested by ${message.author.tag}` })
       .setTimestamp();
-
     return message.reply({ embeds: [helpEmbed] });
   }
 
   // Fun commands
-  if (command === 'hug') {
+  if (['hug', 'slap', 'punch', 'kick'].includes(command)) {
     const target = message.mentions.users.first();
-    if (!target) return message.reply(`Usage: \`${prefix}hug @user\``);
+    if (!target) return message.reply(`Usage: \`${prefix}${command} @user\``);
 
-    const gif = await getAnimeGif('hug');
-    if (!gif) return message.reply('Failed to get a hug gif.');
+    let category = command;
+    if (command === 'punch') category = 'slap'; // fallback
+
+    const gif = await getAnimeGif(category);
+    if (!gif) return message.reply(`Failed to get a ${command} gif.`);
 
     const embed = new EmbedBuilder()
       .setColor('#FFE0E9')
-      .setDescription(`**${message.author}** hugged **${target}**!`)
+      .setDescription(`**${message.author}** ${command}ed **${target}**!`)
       .setImage(gif)
       .setFooter({ text: 'Petal' })
       .setTimestamp();
@@ -867,82 +742,19 @@ client.on(Events.MessageCreate, async (message) => {
     return message.reply({ embeds: [embed] });
   }
 
-  if (command === 'slap') {
-    const target = message.mentions.users.first();
-    if (!target) return message.reply(`Usage: \`${prefix}slap @user\``);
-
-    const gif = await getAnimeGif('slap');
-    if (!gif) return message.reply('Failed to get a slap gif.');
-
-    const embed = new EmbedBuilder()
-      .setColor('#FFE0E9')
-      .setDescription(`**${message.author}** slapped **${target}**!`)
-      .setImage(gif)
-      .setFooter({ text: 'Petal' })
-      .setTimestamp();
-
-    return message.reply({ embeds: [embed] });
-  }
-
-  if (command === 'punch') {
-    const target = message.mentions.users.first();
-    if (!target) return message.reply(`Usage: \`${prefix}punch @user\``);
-
-    let gif = await getAnimeGif('punch');
-    if (!gif) gif = await getAnimeGif('slap');
-    if (!gif) return message.reply('Failed to get a punch gif.');
-
-    const embed = new EmbedBuilder()
-      .setColor('#FFE0E9')
-      .setDescription(`**${message.author}** punched **${target}**!`)
-      .setImage(gif)
-      .setFooter({ text: 'Petal' })
-      .setTimestamp();
-
-    return message.reply({ embeds: [embed] });
-  }
-
-  if (command === 'kick') {
-    const target = message.mentions.users.first();
-    if (!target) return message.reply(`Usage: \`${prefix}kick @user\``);
-
-    const gif = await getAnimeGif('kick');
-    if (!gif) return message.reply('Failed to get a kick gif.');
-
-    const embed = new EmbedBuilder()
-      .setColor('#FFE0E9')
-      .setDescription(`**${message.author}** kicked **${target}**!`)
-      .setImage(gif)
-      .setFooter({ text: 'Petal' })
-      .setTimestamp();
-
-    return message.reply({ embeds: [embed] });
-  }
-
-  // ==================== PLAY COMMAND (FIXED) ====================
+  // ==================== PLAY COMMAND ====================
   if (command === 'play') {
     const query = args.join(' ');
-    if (!query) {
-      return message.reply(`Usage: \`${prefix}play <song name or YouTube URL>\``);
-    }
+    if (!query) return message.reply(`Usage: \`${prefix}play <song name or YouTube URL>\``);
 
     const voiceChannel = message.member.voice.channel;
-    if (!voiceChannel) {
-      return message.reply('You need to be in a voice channel to play music.');
-    }
+    if (!voiceChannel) return message.reply('You need to be in a voice channel.');
+    if (!voiceChannel.joinable || !voiceChannel.speakable) return message.reply('I cannot join that voice channel.');
 
-    if (!voiceChannel.joinable || !voiceChannel.speakable) {
-      return message.reply('I cannot join or speak in that voice channel.');
-    }
-
-    // Show searching message
-    const searchingMsg = await message.reply('Searching for the song...');
+    const searchingMsg = await message.reply('Searching...');
 
     const result = await findSong(query);
-
-    if (!result.success) {
-      return searchingMsg.edit(result.error || 'Failed to find that song.');
-    }
+    if (!result.success) return searchingMsg.edit(result.error);
 
     const songInfo = {
       title: result.title,
@@ -984,8 +796,7 @@ client.on(Events.MessageCreate, async (message) => {
         }
       });
 
-      player.on('error', (error) => {
-        console.error('Player error:', error);
+      player.on('error', () => {
         queue.songs.shift();
         playSong(message.guild.id);
       });
@@ -993,8 +804,8 @@ client.on(Events.MessageCreate, async (message) => {
       connection.on(VoiceConnectionStatus.Disconnected, async () => {
         try {
           await Promise.race([
-            entersState(connection, VoiceConnectionStatus.Signalling, 5_000),
-            entersState(connection, VoiceConnectionStatus.Connecting, 5_000)
+            entersState(connection, VoiceConnectionStatus.Signalling, 5000),
+            entersState(connection, VoiceConnectionStatus.Connecting, 5000)
           ]);
         } catch {
           connection.destroy();
@@ -1024,384 +835,171 @@ client.on(Events.MessageCreate, async (message) => {
   if (command === 'stop') {
     const queue = getQueue(message.guild.id);
     if (!queue) return message.reply('Nothing is playing.');
-
     queue.songs = [];
     queue.player.stop();
     queue.connection.destroy();
     queues.delete(message.guild.id);
-
-    return message.reply('Stopped the music and cleared the queue.');
+    return message.reply('Stopped the music.');
   }
 
   if (command === 'skip') {
     const queue = getQueue(message.guild.id);
-    if (!queue || queue.songs.length === 0) {
-      return message.reply('Nothing is playing.');
-    }
-
+    if (!queue || queue.songs.length === 0) return message.reply('Nothing is playing.');
     queue.player.stop();
-    return message.reply('Skipped the current song.');
+    return message.reply('Skipped.');
   }
 
   if (command === 'pause') {
     const queue = getQueue(message.guild.id);
     if (!queue) return message.reply('Nothing is playing.');
-
     queue.player.pause();
-    return message.reply('Paused the music.');
+    return message.reply('Paused.');
   }
 
   if (command === 'resume') {
     const queue = getQueue(message.guild.id);
     if (!queue) return message.reply('Nothing is playing.');
-
     queue.player.unpause();
-    return message.reply('Resumed the music.');
+    return message.reply('Resumed.');
   }
 
   if (command === 'queue') {
     const queue = getQueue(message.guild.id);
-    if (!queue || queue.songs.length === 0) {
-      return message.reply('The queue is empty.');
-    }
-
-    const list = queue.songs
-      .slice(0, 10)
-      .map((s, i) => `**${i + 1}.** [${s.title}](${s.url})`)
-      .join('\n');
-
-    const embed = new EmbedBuilder()
-      .setColor('#FFE0E9')
-      .setTitle('Music Queue')
-      .setDescription(list)
-      .setFooter({ text: `Total songs: ${queue.songs.length}` })
-      .setTimestamp();
-
+    if (!queue || queue.songs.length === 0) return message.reply('Queue is empty.');
+    const list = queue.songs.slice(0, 10).map((s, i) => `**${i + 1}.** [${s.title}](${s.url})`).join('\n');
+    const embed = new EmbedBuilder().setColor('#FFE0E9').setTitle('Queue').setDescription(list);
     return message.reply({ embeds: [embed] });
   }
 
   if (command === 'np' || command === 'nowplaying') {
     const queue = getQueue(message.guild.id);
-    if (!queue || queue.songs.length === 0) {
-      return message.reply('Nothing is playing right now.');
-    }
-
+    if (!queue || queue.songs.length === 0) return message.reply('Nothing is playing.');
     const song = queue.songs[0];
-
     const embed = new EmbedBuilder()
       .setColor('#FFE0E9')
       .setAuthor({ name: 'Now Playing' })
       .setTitle(song.title)
       .setURL(song.url)
       .addFields(
-        { name: 'Duration', value: `\`${song.duration || 'Unknown'}\``, inline: true },
+        { name: 'Duration', value: `\`${song.duration}\``, inline: true },
         { name: 'Requested by', value: `${song.requestedBy}`, inline: true }
       )
-      .setThumbnail(song.thumbnail || null)
-      .setFooter({ text: 'Petal Music' })
-      .setTimestamp();
-
+      .setThumbnail(song.thumbnail);
     return message.reply({ embeds: [embed] });
   }
 
   if (command === 'leave') {
     const queue = getQueue(message.guild.id);
     if (!queue) return message.reply('I am not in a voice channel.');
-
     queue.songs = [];
     queue.player.stop();
     queue.connection.destroy();
     queues.delete(message.guild.id);
-
     return message.reply('Left the voice channel.');
   }
 
-  // lock
+  // lock / unlock
   if (command === 'lock') {
-    if (!message.member.permissions.has(PermissionFlagsBits.ManageChannels)) {
-      return message.reply('You need the **Manage Channels** permission to use this command.');
-    }
-
-    try {
-      await message.channel.permissionOverwrites.edit(message.guild.roles.everyone, {
-        SendMessages: false
-      });
-
-      const lockEmbed = new EmbedBuilder()
-        .setColor('#FFE0E9')
-        .setTitle('Channel Locked')
-        .setDescription(`This channel has been locked by **${message.author.tag}**.`)
-        .setFooter({ text: 'Petal' })
-        .setTimestamp();
-      return message.reply({ embeds: [lockEmbed] });
-    } catch {
-      return message.reply('Failed to lock the channel.');
-    }
+    if (!message.member.permissions.has(PermissionFlagsBits.ManageChannels)) return message.reply('Missing permission.');
+    await message.channel.permissionOverwrites.edit(message.guild.roles.everyone, { SendMessages: false });
+    return message.reply({ embeds: [new EmbedBuilder().setColor('#FFE0E9').setTitle('Channel Locked')] });
   }
 
-  // unlock
   if (command === 'unlock') {
-    if (!message.member.permissions.has(PermissionFlagsBits.ManageChannels)) {
-      return message.reply('You need the **Manage Channels** permission to use this command.');
-    }
-
-    try {
-      await message.channel.permissionOverwrites.edit(message.guild.roles.everyone, {
-        SendMessages: null
-      });
-
-      const unlockEmbed = new EmbedBuilder()
-        .setColor('#FFE0E9')
-        .setTitle('Channel Unlocked')
-        .setDescription(`This channel has been unlocked by **${message.author.tag}**.`)
-        .setFooter({ text: 'Petal' })
-        .setTimestamp();
-      return message.reply({ embeds: [unlockEmbed] });
-    } catch {
-      return message.reply('Failed to unlock the channel.');
-    }
+    if (!message.member.permissions.has(PermissionFlagsBits.ManageChannels)) return message.reply('Missing permission.');
+    await message.channel.permissionOverwrites.edit(message.guild.roles.everyone, { SendMessages: null });
+    return message.reply({ embeds: [new EmbedBuilder().setColor('#FFE0E9').setTitle('Channel Unlocked')] });
   }
 
   // welcomer
   if (command === 'welcomer') {
-    if (!message.member.permissions.has(PermissionFlagsBits.Administrator)) {
-      return message.reply('You need Administrator permission to use this command.');
-    }
-
+    if (!message.member.permissions.has(PermissionFlagsBits.Administrator)) return message.reply('Administrator only.');
     const channel = message.mentions.channels.first();
-    if (!channel) {
-      return message.reply(`Usage: \`${prefix}welcomer #channel\``);
-    }
+    if (!channel) return message.reply(`Usage: \`${prefix}welcomer #channel\``);
 
-    const askEmbed = new EmbedBuilder()
-      .setColor('#FFE0E9')
-      .setTitle('Welcome Setup')
-      .setDescription(`Welcome channel set to ${channel}.\n\nPlease upload a **banner image** in the next message (you have 60 seconds).`)
-      .setFooter({ text: 'Petal' })
-      .setTimestamp();
-
-    await message.reply({ embeds: [askEmbed] });
-
-    const filter = (m) => m.author.id === message.author.id && m.attachments.size > 0;
+    await message.reply('Please upload a banner image within 60 seconds.');
     const collected = await message.channel.awaitMessages({
-      filter,
+      filter: m => m.author.id === message.author.id && m.attachments.size > 0,
       max: 1,
-      time: 60000,
-      errors: ['time']
+      time: 60000
     }).catch(() => null);
 
-    if (!collected) {
-      return message.channel.send('Timed out. Please run the command again and upload an image.');
-    }
+    if (!collected) return message.channel.send('Timed out.');
+    const bannerUrl = collected.first().attachments.first().url;
 
-    const imageMessage = collected.first();
-    const bannerUrl = imageMessage.attachments.first().url;
-
-    data.welcome[message.guild.id] = {
-      channelId: channel.id,
-      banner: bannerUrl
-    };
+    data.welcome[message.guild.id] = { channelId: channel.id, banner: bannerUrl };
     saveData();
 
-    const successEmbed = new EmbedBuilder()
-      .setColor('#FFE0E9')
-      .setTitle('Welcome System Ready')
-      .setDescription(`Welcome messages will be sent in ${channel}`)
-      .setImage(bannerUrl)
-      .setFooter({ text: 'Petal' })
-      .setTimestamp();
-
-    return message.channel.send({ embeds: [successEmbed] });
+    return message.channel.send({
+      embeds: [new EmbedBuilder().setColor('#FFE0E9').setTitle('Welcome System Ready').setImage(bannerUrl)]
+    });
   }
 
-  // testwelcome
   if (command === 'testwelcome') {
-    if (!message.member.permissions.has(PermissionFlagsBits.Administrator)) {
-      return message.reply('You need Administrator permission to use this command.');
-    }
+    if (!message.member.permissions.has(PermissionFlagsBits.Administrator)) return message.reply('Administrator only.');
+    const config = data.welcome[message.guild.id];
+    if (!config) return message.reply('Welcome not set up.');
 
-    const welcomeConfig = data.welcome[message.guild.id];
-    if (!welcomeConfig) {
-      return message.reply(`Welcome system is not set up yet. Use \`${prefix}welcomer #channel\` first.`);
-    }
-
-    const member = message.member;
-    const joinDate = `<t:${Math.floor(member.user.createdTimestamp / 1000)}:R>`;
-    const banner = welcomeConfig.banner || null;
-
-    const welcomeEmbed = new EmbedBuilder()
+    const embed = new EmbedBuilder()
       .setColor('#FFE0E9')
       .setTitle('Welcome')
-      .setDescription(`Welcome ${member} to **${member.guild.name}**`)
-      .setThumbnail(member.user.displayAvatarURL({ dynamic: true, size: 512 }))
-      .addFields(
-        { name: 'User', value: `${member.user.tag}`, inline: true },
-        { name: 'Account Created', value: joinDate, inline: true },
-        { name: 'Member Count', value: `${member.guild.memberCount}`, inline: true }
-      )
-      .setFooter({ text: 'Petal' })
-      .setTimestamp();
+      .setDescription(`Welcome ${message.member} to **${message.guild.name}**`)
+      .setThumbnail(message.author.displayAvatarURL({ dynamic: true }));
+    if (config.banner) embed.setImage(config.banner);
 
-    if (banner) welcomeEmbed.setImage(banner);
-
-    return message.reply({ content: `${member}`, embeds: [welcomeEmbed] });
+    return message.reply({ content: `${message.member}`, embeds: [embed] });
   }
 
-  // leaver
   if (command === 'leaver') {
-    if (!message.member.permissions.has(PermissionFlagsBits.Administrator)) {
-      return message.reply('You need Administrator permission to use this command.');
-    }
-
+    if (!message.member.permissions.has(PermissionFlagsBits.Administrator)) return message.reply('Administrator only.');
     const channel = message.mentions.channels.first();
-    if (!channel) {
-      return message.reply(`Usage: \`${prefix}leaver #channel\``);
-    }
-
-    data.leave[message.guild.id] = {
-      channelId: channel.id
-    };
+    if (!channel) return message.reply(`Usage: \`${prefix}leaver #channel\``);
+    data.leave[message.guild.id] = { channelId: channel.id };
     saveData();
-
-    const successEmbed = new EmbedBuilder()
-      .setColor('#FFE0E9')
-      .setTitle('Leave Channel Set')
-      .setDescription(`Leave messages will now be sent in ${channel}.`)
-      .setFooter({ text: 'Petal' })
-      .setTimestamp();
-
-    return message.reply({ embeds: [successEmbed] });
+    return message.reply({ embeds: [new EmbedBuilder().setColor('#FFE0E9').setTitle('Leave Channel Set')] });
   }
 
   // dm
   if (command === 'dm') {
-    if (!message.member.permissions.has(PermissionFlagsBits.Administrator)) {
-      return message.reply('You need **Administrator** permission to use this command.');
-    }
-
-    const target =
-      message.mentions.users.first() ||
-      (args[0] ? await client.users.fetch(args[0]).catch(() => null) : null);
-
-    if (!target) {
-      return message.reply(`Usage: \`${prefix}dm @user your message here\``);
-    }
-
+    if (!message.member.permissions.has(PermissionFlagsBits.Administrator)) return message.reply('Administrator only.');
+    const target = message.mentions.users.first() || (args[0] ? await client.users.fetch(args[0]).catch(() => null) : null);
+    if (!target) return message.reply(`Usage: \`${prefix}dm @user message\``);
     const dmMessage = args.slice(message.mentions.users.first() ? 1 : 1).join(' ');
-    if (!dmMessage) return message.reply('Please provide a message to send.');
-
+    if (!dmMessage) return message.reply('Please provide a message.');
     try {
       await target.send(dmMessage);
-
-      const embed = new EmbedBuilder()
-        .setColor('#FFE0E9')
-        .setTitle('Direct Message Sent')
-        .setDescription(`Successfully sent a DM to **${target.tag}**.`)
-        .addFields(
-          { name: 'User', value: `${target.tag}`, inline: true },
-          { name: 'Sent by', value: `${message.author.tag}`, inline: true }
-        )
-        .setFooter({ text: 'Petal' })
-        .setTimestamp();
-
-      return message.reply({ embeds: [embed] });
+      return message.reply(`DM sent to **${target.tag}**`);
     } catch {
-      return message.reply(`Failed to DM **${target.tag}**. They may have DMs disabled.`);
+      return message.reply('Failed to DM that user.');
     }
   }
 
   // hardban
   if (command === 'hardban') {
-    if (!message.member.permissions.has(PermissionFlagsBits.Administrator)) {
-      return message.reply('You need **Administrator** permission to use this command.');
-    }
-
+    if (!message.member.permissions.has(PermissionFlagsBits.Administrator)) return message.reply('Administrator only.');
     const target = message.mentions.members.first() || message.guild.members.cache.get(args[0]);
-    if (!target) {
-      return message.reply(`Usage: \`${prefix}hardban @user [reason]\``);
-    }
-
-    if (target.id === message.author.id) return message.reply('You cannot hardban yourself.');
-    if (target.id === client.user.id) return message.reply('You cannot hardban me.');
-    if (target.id === message.guild.ownerId) return message.reply('You cannot hardban the server owner.');
-
-    if (
-      message.member.roles.highest.position <= target.roles.highest.position &&
-      message.guild.ownerId !== message.author.id
-    ) {
-      return message.reply('You cannot hardban someone with an equal or higher role than you.');
-    }
-
+    if (!target) return message.reply(`Usage: \`${prefix}hardban @user [reason]\``);
     if (!target.bannable) return message.reply('I cannot ban this user.');
-
-    const reason = args.slice(1).join(' ') || 'No reason provided';
-
-    try {
-      await target.ban({
-        deleteMessageSeconds: 60 * 60 * 24 * 7,
-        reason: `Hardbanned by ${message.author.tag} | ${reason}`
-      });
-
-      const embed = new EmbedBuilder()
-        .setColor('#FFE0E9')
-        .setTitle('User Hardbanned')
-        .setDescription(`**${target.user.tag}** has been hardbanned.`)
-        .addFields(
-          { name: 'User', value: `${target.user.tag}`, inline: true },
-          { name: 'Moderator', value: `${message.author.tag}`, inline: true },
-          { name: 'Reason', value: reason }
-        )
-        .setFooter({ text: 'Petal' })
-        .setTimestamp();
-
-      return message.reply({ embeds: [embed] });
-    } catch {
-      return message.reply('Failed to hardban the user.');
-    }
+    const reason = args.slice(1).join(' ') || 'No reason';
+    await target.ban({ deleteMessageSeconds: 604800, reason: `Hardbanned by ${message.author.tag} | ${reason}` });
+    return message.reply({ embeds: [new EmbedBuilder().setColor('#FFE0E9').setTitle('User Hardbanned').setDescription(`**${target.user.tag}** was hardbanned.`)] });
   }
 
   // antinuke
   if (command === 'antinuke') {
     const sub = args[0]?.toLowerCase();
-
     if (sub === 'off') {
-      if (!message.member.roles.cache.has(ANTINUKE_OFF_ROLE)) {
-        return message.reply('Only members with the special role can turn anti-nuke off.');
-      }
-
+      if (!message.member.roles.cache.has(ANTINUKE_OFF_ROLE)) return message.reply('You cannot disable anti-nuke.');
       data.antinuke[message.guild.id] = { enabled: false };
       saveData();
-
-      const embed = new EmbedBuilder()
-        .setColor('#FFE0E9')
-        .setTitle('Anti-Nuke Disabled')
-        .setDescription('Anti-nuke protection has been turned off.')
-        .setFooter({ text: 'Petal' })
-        .setTimestamp();
-      return message.reply({ embeds: [embed] });
+      return message.reply({ embeds: [new EmbedBuilder().setColor('#FFE0E9').setTitle('Anti-Nuke Disabled')] });
     }
 
-    if (!message.member.permissions.has(PermissionFlagsBits.Administrator)) {
-      return message.reply('You need Administrator permission to enable anti-nuke.');
-    }
-
+    if (!message.member.permissions.has(PermissionFlagsBits.Administrator)) return message.reply('Administrator only.');
     data.antinuke[message.guild.id] = { enabled: true };
     saveData();
     cacheGuild(message.guild);
-
-    const embed = new EmbedBuilder()
-      .setColor('#FFE0E9')
-      .setTitle('Anti-Nuke Enabled')
-      .setDescription(
-        'Petal is now protecting this server.\n\n' +
-        '**Protected against:**\n' +
-        '• Mass channel deletion\n' +
-        '• Mass role deletion\n\n' +
-        'If anyone deletes **3 or more** channels/roles within **10 seconds**, they will be banned and the items will be restored.'
-      )
-      .setFooter({ text: 'Petal' })
-      .setTimestamp();
-    return message.reply({ embeds: [embed] });
+    return message.reply({ embeds: [new EmbedBuilder().setColor('#FFE0E9').setTitle('Anti-Nuke Enabled')] });
   }
 });
 
