@@ -17,8 +17,7 @@ const {
   createAudioResource,
   AudioPlayerStatus,
   VoiceConnectionStatus,
-  entersState,
-  getVoiceConnection
+  entersState
 } = require('@discordjs/voice');
 const play = require('play-dl');
 const express = require('express');
@@ -65,7 +64,7 @@ function getPrefix(guildId) {
 }
 
 // ==================== MUSIC SYSTEM ====================
-const queues = new Map(); // guildId → { connection, player, songs: [], textChannel }
+const queues = new Map();
 
 function getQueue(guildId) {
   return queues.get(guildId);
@@ -617,30 +616,61 @@ client.on(Events.MessageCreate, async (message) => {
     return message.reply(`Current prefix is \`${prefix}\``);
   }
 
-  // help
+  // ==================== HELP COMMAND (UPDATED) ====================
   if (command === 'help') {
     const helpEmbed = new EmbedBuilder()
       .setColor('#FFE0E9')
-      .setTitle('Petal Help')
-      .setDescription('List of available commands')
+      .setTitle('Petal Help Menu')
+      .setDescription('Here is the full list of available commands:')
       .addFields(
-        { name: 'ping', value: 'Check if the bot is online', inline: true },
-        { name: 'prefix', value: 'Show or change the prefix', inline: true },
-        { name: 'lock', value: 'Lock the current channel', inline: true },
-        { name: 'unlock', value: 'Unlock the current channel', inline: true },
-        { name: 'welcomer', value: 'Set the welcome channel + banner', inline: true },
-        { name: 'testwelcome', value: 'Test the welcome message', inline: true },
-        { name: 'leaver', value: 'Set the leave channel', inline: true },
-        { name: 'dm', value: 'DM a user (Admin only)', inline: true },
-        { name: 'antinuke', value: 'Enable anti-nuke', inline: true },
-        { name: 'hardban', value: 'Ban + delete messages (Admin only)', inline: true },
-        { name: 'play', value: 'Play a song', inline: true },
-        { name: 'stop / skip / pause / resume', value: 'Music controls', inline: true },
-        { name: 'queue / np / leave', value: 'Queue & leave voice', inline: true },
-        { name: '/send', value: 'Make the bot send a message or image', inline: true }
+        {
+          name: 'General Commands',
+          value: 
+            `\`${prefix}ping\` – Check if the bot is online\n` +
+            `\`${prefix}prefix\` – Show the current prefix\n` +
+            `\`${prefix}prefix set <prefix>\` – Change the bot prefix`
+        },
+        {
+          name: 'Moderation',
+          value:
+            `\`${prefix}lock\` – Lock the current channel\n` +
+            `\`${prefix}unlock\` – Unlock the current channel\n` +
+            `\`${prefix}hardban @user [reason]\` – Ban a user + delete all their messages (Admin only)\n` +
+            `\`${prefix}dm @user <message>\` – Send a DM to a user (Admin only)`
+        },
+        {
+          name: 'Welcome & Leave System',
+          value:
+            `\`${prefix}welcomer #channel\` – Set the welcome channel + banner\n` +
+            `\`${prefix}testwelcome\` – Test the welcome message\n` +
+            `\`${prefix}leaver #channel\` – Set the leave channel`
+        },
+        {
+          name: 'Anti-Nuke',
+          value:
+            `\`${prefix}antinuke\` – Enable anti-nuke protection\n` +
+            `\`${prefix}antinuke off\` – Disable anti-nuke (special role only)`
+        },
+        {
+          name: 'Music Commands',
+          value:
+            `\`${prefix}play <song/url>\` – Play a song from YouTube\n` +
+            `\`${prefix}skip\` – Skip the current song\n` +
+            `\`${prefix}stop\` – Stop everything and clear the queue\n` +
+            `\`${prefix}pause\` – Pause the current song\n` +
+            `\`${prefix}resume\` – Resume the paused song\n` +
+            `\`${prefix}queue\` – Show the current music queue\n` +
+            `\`${prefix}np\` – Show what is currently playing\n` +
+            `\`${prefix}leave\` – Make the bot leave the voice channel`
+        },
+        {
+          name: 'Slash Commands',
+          value: `\`/send\` – Make the bot send a message or image`
+        }
       )
-      .setFooter({ text: `Requested by ${message.author.tag}` })
+      .setFooter({ text: `Requested by ${message.author.tag} • Prefix: ${prefix}` })
       .setTimestamp();
+
     return message.reply({ embeds: [helpEmbed] });
   }
 
@@ -780,7 +810,7 @@ client.on(Events.MessageCreate, async (message) => {
       return message.reply('Nothing is playing.');
     }
 
-    queue.player.stop(); // triggers Idle → plays next
+    queue.player.stop();
     return message.reply('Skipped the current song.');
   }
 
