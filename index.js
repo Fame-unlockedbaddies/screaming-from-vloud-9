@@ -11,6 +11,16 @@ const {
   AuditLogEvent,
   ChannelType
 } = require('discord.js');
+const {
+  joinVoiceChannel,
+  createAudioPlayer,
+  createAudioResource,
+  AudioPlayerStatus,
+  VoiceConnectionStatus,
+  entersState,
+  getVoiceConnection
+} = require('@discordjs/voice');
+const play = require('play-dl');
 const express = require('express');
 const fs = require('fs');
 require('dotenv').config();
@@ -28,7 +38,8 @@ const client = new Client({
     GatewayIntentBits.GuildMessages,
     GatewayIntentBits.MessageContent,
     GatewayIntentBits.GuildMembers,
-    GatewayIntentBits.GuildModeration
+    GatewayIntentBits.GuildModeration,
+    GatewayIntentBits.GuildVoiceStates
   ]
 });
 
@@ -37,7 +48,7 @@ const dataPath = './data.json';
 let data = {
   prefixes: {},
   welcome: {},
-  leave: {},      // NEW
+  leave: {},
   antinuke: {}
 };
 
@@ -51,6 +62,53 @@ function saveData() {
 
 function getPrefix(guildId) {
   return data.prefixes[guildId] || ',';
+}
+
+// ==================== MUSIC SYSTEM ====================
+const queues = new Map(); // guildId → { connection, player, songs: [], textChannel }
+
+function getQueue(guildId) {
+  return queues.get(guildId);
+}
+
+async function playSong(guildId) {
+  const queue = getQueue(guildId);
+  if (!queue || queue.songs.length === 0) {
+    if (queue?.connection) {
+      queue.connection.destroy();
+      queues.delete(guildId);
+    }
+    return;
+  }
+
+  const song = queue.songs[0];
+
+  try {
+    const stream = await play.stream(song.url);
+    const resource = createAudioResource(stream.stream, {
+      inputType: stream.type
+    });
+
+    queue.player.play(resource);
+
+    const embed = new EmbedBuilder()
+      .setColor('#FFE0E9')
+      .setTitle('Now Playing')
+      .setDescription(`[${song.title}](${song.url})`)
+      .addFields(
+        { name: 'Duration', value: song.duration || 'Unknown', inline: true },
+        { name: 'Requested by', value: `${song.requestedBy}`, inline: true }
+      )
+      .setThumbnail(song.thumbnail || null)
+      .setFooter({ text: 'Petal Music' })
+      .setTimestamp();
+
+    queue.textChannel.send({ embeds: [embed] }).catch(() => {});
+  } catch (err) {
+    console.error('Error playing song:', err);
+    queue.songs.shift();
+    playSong(guildId);
+  }
 }
 
 // ==================== ANTI-NUKE SYSTEM ====================
@@ -384,8 +442,8 @@ client.once(Events.ClientReady, async () => {
   client.user.setPresence({
     status: 'dnd',
     activities: [{
-      name: 'discord.gg/fameunlocked',
-      type: ActivityType.Custom
+      name: 'Petal by Ariana Grande',
+      type: ActivityType.Listening
     }]
   });
 
@@ -437,7 +495,7 @@ client.on(Events.GuildMemberAdd, async (member) => {
   channel.send({ content: `${member}`, embeds: [welcomeEmbed] }).catch(() => {});
 });
 
-// ==================== LEAVE EVENT ====================
+// Leave event
 client.on(Events.GuildMemberRemove, async (member) => {
   const leaveConfig = data.leave[member.guild.id];
   if (!leaveConfig || !leaveConfig.channelId) return;
@@ -573,13 +631,234 @@ client.on(Events.MessageCreate, async (message) => {
         { name: 'welcomer', value: 'Set the welcome channel + banner', inline: true },
         { name: 'testwelcome', value: 'Test the welcome message', inline: true },
         { name: 'leaver', value: 'Set the leave channel', inline: true },
-        { name: 'antinuke', value: 'Enable anti-nuke (only special role can disable)', inline: true },
-        { name: 'hardban', value: 'Ban a user + delete all their messages (Admin only)', inline: true },
+        { name: 'dm', value: 'DM a user (Admin only)', inline: true },
+        { name: 'antinuke', value: 'Enable anti-nuke', inline: true },
+        { name: 'hardban', value: 'Ban + delete messages (Admin only)', inline: true },
+        { name: 'play', value: 'Play a song', inline: true },
+        { name: 'stop / skip / pause / resume', value: 'Music controls', inline: true },
+        { name: 'queue / np / leave', value: 'Queue & leave voice', inline: true },
         { name: '/send', value: 'Make the bot send a message or image', inline: true }
       )
       .setFooter({ text: `Requested by ${message.author.tag}` })
       .setTimestamp();
     return message.reply({ embeds: [helpEmbed] });
+  }
+
+  // ==================== MUSIC COMMANDS ====================
+
+  // play
+  if (command === 'play') {
+    const query = args.join(' ');
+    if (!query) {
+      return message.reply(`Usage: \`${prefix}play <song name or YouTube URL>\``);
+    }
+
+    const voiceChannel = message.member.voice.channel;
+    if (!voiceChannel) {
+      return message.reply('You need to be in a voice channel to play music.');
+    }
+
+    if (!voiceChannel.joinable || !voiceChannel.speakable) {
+      return message.reply('I cannot join or speak in that voice channel.');
+    }
+
+    let songInfo;
+    try {
+      if (play.yt_validate(query) === 'video') {
+        const info = await play.video_info(query);
+        songInfo = {
+          title: info.video_details.title,
+          url: info.video_details.url,
+          duration: info.video_details.durationRaw,
+          thumbnail: info.video_details.thumbnails[0]?.url,
+          requestedBy: message.author
+        };
+      } else {
+        const results = await play.search(query, { limit: 1 });
+        if (!results || results.length === 0) {
+          return message.reply('No results found.');
+        }
+        const video = results[0];
+        songInfo = {
+          title: video.title,
+          url: video.url,
+          duration: video.durationRaw,
+          thumbnail: video.thumbnails[0]?.url,
+          requestedBy: message.author
+        };
+      }
+    } catch (err) {
+      console.error(err);
+      return message.reply('Failed to find that song.');
+    }
+
+    let queue = getQueue(message.guild.id);
+
+    if (!queue) {
+      const connection = joinVoiceChannel({
+        channelId: voiceChannel.id,
+        guildId: message.guild.id,
+        adapterCreator: message.guild.voiceAdapterCreator,
+        selfDeaf: true
+      });
+
+      const player = createAudioPlayer();
+
+      connection.subscribe(player);
+
+      queue = {
+        connection,
+        player,
+        songs: [],
+        textChannel: message.channel
+      };
+
+      queues.set(message.guild.id, queue);
+
+      player.on(AudioPlayerStatus.Idle, () => {
+        queue.songs.shift();
+        playSong(message.guild.id);
+      });
+
+      player.on('error', (error) => {
+        console.error('Player error:', error);
+        queue.songs.shift();
+        playSong(message.guild.id);
+      });
+
+      connection.on(VoiceConnectionStatus.Disconnected, async () => {
+        try {
+          await Promise.race([
+            entersState(connection, VoiceConnectionStatus.Signalling, 5_000),
+            entersState(connection, VoiceConnectionStatus.Connecting, 5_000)
+          ]);
+        } catch {
+          connection.destroy();
+          queues.delete(message.guild.id);
+        }
+      });
+    }
+
+    queue.songs.push(songInfo);
+
+    if (queue.songs.length === 1) {
+      playSong(message.guild.id);
+    } else {
+      const embed = new EmbedBuilder()
+        .setColor('#FFE0E9')
+        .setTitle('Added to Queue')
+        .setDescription(`[${songInfo.title}](${songInfo.url})`)
+        .addFields(
+          { name: 'Position', value: `${queue.songs.length}`, inline: true },
+          { name: 'Requested by', value: `${message.author}`, inline: true }
+        )
+        .setThumbnail(songInfo.thumbnail || null)
+        .setFooter({ text: 'Petal Music' })
+        .setTimestamp();
+
+      return message.reply({ embeds: [embed] });
+    }
+  }
+
+  // stop
+  if (command === 'stop') {
+    const queue = getQueue(message.guild.id);
+    if (!queue) return message.reply('Nothing is playing.');
+
+    queue.songs = [];
+    queue.player.stop();
+    queue.connection.destroy();
+    queues.delete(message.guild.id);
+
+    return message.reply('Stopped the music and cleared the queue.');
+  }
+
+  // skip
+  if (command === 'skip') {
+    const queue = getQueue(message.guild.id);
+    if (!queue || queue.songs.length === 0) {
+      return message.reply('Nothing is playing.');
+    }
+
+    queue.player.stop(); // triggers Idle → plays next
+    return message.reply('Skipped the current song.');
+  }
+
+  // pause
+  if (command === 'pause') {
+    const queue = getQueue(message.guild.id);
+    if (!queue) return message.reply('Nothing is playing.');
+
+    queue.player.pause();
+    return message.reply('Paused the music.');
+  }
+
+  // resume
+  if (command === 'resume') {
+    const queue = getQueue(message.guild.id);
+    if (!queue) return message.reply('Nothing is playing.');
+
+    queue.player.unpause();
+    return message.reply('Resumed the music.');
+  }
+
+  // queue
+  if (command === 'queue') {
+    const queue = getQueue(message.guild.id);
+    if (!queue || queue.songs.length === 0) {
+      return message.reply('The queue is empty.');
+    }
+
+    const list = queue.songs
+      .slice(0, 10)
+      .map((s, i) => `**${i + 1}.** [${s.title}](${s.url})`)
+      .join('\n');
+
+    const embed = new EmbedBuilder()
+      .setColor('#FFE0E9')
+      .setTitle('Music Queue')
+      .setDescription(list)
+      .setFooter({ text: `Total songs: ${queue.songs.length}` })
+      .setTimestamp();
+
+    return message.reply({ embeds: [embed] });
+  }
+
+  // now playing
+  if (command === 'np' || command === 'nowplaying') {
+    const queue = getQueue(message.guild.id);
+    if (!queue || queue.songs.length === 0) {
+      return message.reply('Nothing is playing right now.');
+    }
+
+    const song = queue.songs[0];
+
+    const embed = new EmbedBuilder()
+      .setColor('#FFE0E9')
+      .setTitle('Now Playing')
+      .setDescription(`[${song.title}](${song.url})`)
+      .addFields(
+        { name: 'Duration', value: song.duration || 'Unknown', inline: true },
+        { name: 'Requested by', value: `${song.requestedBy}`, inline: true }
+      )
+      .setThumbnail(song.thumbnail || null)
+      .setFooter({ text: 'Petal Music' })
+      .setTimestamp();
+
+    return message.reply({ embeds: [embed] });
+  }
+
+  // leave
+  if (command === 'leave') {
+    const queue = getQueue(message.guild.id);
+    if (!queue) return message.reply('I am not in a voice channel.');
+
+    queue.songs = [];
+    queue.player.stop();
+    queue.connection.destroy();
+    queues.delete(message.guild.id);
+
+    return message.reply('Left the voice channel.');
   }
 
   // lock
@@ -733,7 +1012,7 @@ client.on(Events.MessageCreate, async (message) => {
     return message.reply({ content: `${member}`, embeds: [welcomeEmbed] });
   }
 
-  // ==================== LEAVER COMMAND ====================
+  // leaver
   if (command === 'leaver') {
     if (!message.member.permissions.has(PermissionFlagsBits.Administrator)) {
       return message.reply('You need Administrator permission to use this command.');
@@ -759,7 +1038,48 @@ client.on(Events.MessageCreate, async (message) => {
     return message.reply({ embeds: [successEmbed] });
   }
 
-  // ==================== HARDBAN COMMAND ====================
+  // dm
+  if (command === 'dm') {
+    if (!message.member.permissions.has(PermissionFlagsBits.Administrator)) {
+      return message.reply('You need **Administrator** permission to use this command.');
+    }
+
+    const target =
+      message.mentions.users.first() ||
+      (args[0] ? await client.users.fetch(args[0]).catch(() => null) : null);
+
+    if (!target) {
+      return message.reply(`Usage: \`${prefix}dm @user your message here\`\nOr: \`${prefix}dm UserID your message here\``);
+    }
+
+    const dmMessage = args.slice(message.mentions.users.first() ? 1 : 1).join(' ');
+
+    if (!dmMessage) {
+      return message.reply('Please provide a message to send.');
+    }
+
+    try {
+      await target.send(dmMessage);
+
+      const embed = new EmbedBuilder()
+        .setColor('#FFE0E9')
+        .setTitle('Direct Message Sent')
+        .setDescription(`Successfully sent a DM to **${target.tag}**.`)
+        .addFields(
+          { name: 'User', value: `${target.tag} (${target.id})`, inline: true },
+          { name: 'Sent by', value: `${message.author.tag}`, inline: true },
+          { name: 'Message', value: dmMessage.length > 1024 ? dmMessage.slice(0, 1021) + '...' : dmMessage }
+        )
+        .setFooter({ text: 'Petal' })
+        .setTimestamp();
+
+      return message.reply({ embeds: [embed] });
+    } catch (err) {
+      return message.reply(`Failed to DM **${target.tag}**. They may have DMs disabled.`);
+    }
+  }
+
+  // hardban
   if (command === 'hardban') {
     if (!message.member.permissions.has(PermissionFlagsBits.Administrator)) {
       return message.reply('You need **Administrator** permission to use this command.');
@@ -821,7 +1141,7 @@ client.on(Events.MessageCreate, async (message) => {
     }
   }
 
-  // ==================== ANTINUKE COMMAND ====================
+  // antinuke
   if (command === 'antinuke') {
     const sub = args[0]?.toLowerCase();
 
