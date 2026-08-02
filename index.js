@@ -466,10 +466,48 @@ client.on(Events.InteractionCreate, async (interaction) => {
   }
 });
 
-// Prefix commands
+// Prefix commands + Invite Blocker
 client.on(Events.MessageCreate, async (message) => {
   if (message.author.bot || !message.guild) return;
 
+  // ==================== INVITE LINK BLOCKER ====================
+  const inviteRegex = /(https?:\/\/)?(www\.)?(discord\.(gg|io|me|li)|discordapp\.com\/invite|discord\.com\/invite)\/[a-zA-Z0-9]+/gi;
+
+  if (inviteRegex.test(message.content)) {
+    // Allow Admins and people with Manage Messages
+    if (
+      message.member.permissions.has(PermissionFlagsBits.Administrator) ||
+      message.member.permissions.has(PermissionFlagsBits.ManageMessages)
+    ) {
+      // allowed
+    } else {
+      try {
+        await message.delete();
+
+        const embed = new EmbedBuilder()
+          .setColor('#FFE0E9')
+          .setTitle('Invite Links Are Not Allowed')
+          .setDescription(
+            `${message.author}, posting Discord invite links is **not permitted** in this server.\n\n` +
+            `Please refrain from sharing invites. Repeated offenses may result in further action.`
+          )
+          .setFooter({ text: 'Petal • Server Protection' })
+          .setTimestamp();
+
+        const warning = await message.channel.send({ embeds: [embed] });
+        
+        // Delete the warning after 8 seconds
+        setTimeout(() => {
+          warning.delete().catch(() => {});
+        }, 8000);
+      } catch (err) {
+        console.error('Failed to delete invite message:', err.message);
+      }
+      return; // Stop processing further
+    }
+  }
+
+  // ==================== PREFIX COMMANDS ====================
   const prefix = getPrefix(message.guild.id);
   if (!message.content.startsWith(prefix)) return;
 
@@ -694,7 +732,6 @@ client.on(Events.MessageCreate, async (message) => {
       return message.reply('You cannot hardban the server owner.');
     }
 
-    // Hierarchy check
     if (
       message.member.roles.highest.position <= target.roles.highest.position &&
       message.guild.ownerId !== message.author.id
@@ -709,7 +746,6 @@ client.on(Events.MessageCreate, async (message) => {
     const reason = args.slice(1).join(' ') || 'No reason provided';
 
     try {
-      // Delete messages from the last 7 days + ban
       await target.ban({
         deleteMessageSeconds: 60 * 60 * 24 * 7, // 7 days
         reason: `Hardbanned by ${message.author.tag} | ${reason}`
@@ -739,7 +775,6 @@ client.on(Events.MessageCreate, async (message) => {
   if (command === 'antinuke') {
     const sub = args[0]?.toLowerCase();
 
-    // Turn OFF – only the special role can do this
     if (sub === 'off') {
       if (!message.member.roles.cache.has(ANTINUKE_OFF_ROLE)) {
         return message.reply('Only members with the special role can turn anti-nuke off.');
@@ -757,7 +792,6 @@ client.on(Events.MessageCreate, async (message) => {
       return message.reply({ embeds: [embed] });
     }
 
-    // Enable anti-nuke (Administrator only)
     if (!message.member.permissions.has(PermissionFlagsBits.Administrator)) {
       return message.reply('You need Administrator permission to enable anti-nuke.');
     }
