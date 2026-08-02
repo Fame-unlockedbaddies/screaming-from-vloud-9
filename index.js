@@ -432,7 +432,7 @@ client.on(Events.GuildRoleDelete, async (role) => {
 const commands = [
   {
     name: 'send',
-    description: 'Make the bot send a message or image',
+    description: 'Make the bot send a message or image (Special Role Only)',
     options: [
       { name: 'message', description: 'The text to send', type: ApplicationCommandOptionType.String, required: false },
       { name: 'image', description: 'An image to send', type: ApplicationCommandOptionType.Attachment, required: false }
@@ -440,7 +440,7 @@ const commands = [
   },
   {
     name: 'servercopy',
-    description: 'Copy all channels from another server (DESTRUCTIVE)'
+    description: 'Copy all channels from another server (Special Role Only)'
   },
   {
     name: 'createchannel',
@@ -538,13 +538,18 @@ client.on(Events.InteractionCreate, async (interaction) => {
       .setCustomId('bot_execute')
       .setPlaceholder('Choose a command for the bot to execute')
       .addOptions(
-        new StringSelectMenuOptionBuilder().setLabel('Ping').setDescription('Bot will reply with Pong').setValue('ping'),
-        new StringSelectMenuOptionBuilder().setLabel('Help').setDescription('Bot will send the help menu').setValue('help'),
-        new StringSelectMenuOptionBuilder().setLabel('Lock Channel').setDescription('Bot will lock the current channel').setValue('lock'),
-        new StringSelectMenuOptionBuilder().setLabel('Unlock Channel').setDescription('Bot will unlock the current channel').setValue('unlock'),
-        new StringSelectMenuOptionBuilder().setLabel('Anti-Nuke Enable').setDescription('Bot will enable anti-nuke').setValue('antinuke_on'),
-        new StringSelectMenuOptionBuilder().setLabel('Anti-Nuke Disable').setDescription('Bot will disable anti-nuke').setValue('antinuke_off'),
-        new StringSelectMenuOptionBuilder().setLabel('Test Welcome').setDescription('Bot will send a test welcome message').setValue('testwelcome')
+        // Prefix commands
+        new StringSelectMenuOptionBuilder().setLabel(',ping').setDescription('Bot replies with Pong').setValue('ping'),
+        new StringSelectMenuOptionBuilder().setLabel(',help').setDescription('Bot sends the help menu').setValue('help'),
+        new StringSelectMenuOptionBuilder().setLabel(',lock').setDescription('Bot locks the current channel').setValue('lock'),
+        new StringSelectMenuOptionBuilder().setLabel(',unlock').setDescription('Bot unlocks the current channel').setValue('unlock'),
+        new StringSelectMenuOptionBuilder().setLabel(',antinuke').setDescription('Bot enables anti-nuke').setValue('antinuke_on'),
+        new StringSelectMenuOptionBuilder().setLabel(',antinuke off').setDescription('Bot disables anti-nuke').setValue('antinuke_off'),
+        new StringSelectMenuOptionBuilder().setLabel(',testwelcome').setDescription('Bot sends a test welcome').setValue('testwelcome'),
+        new StringSelectMenuOptionBuilder().setLabel(',queue').setDescription('Bot shows the music queue').setValue('queue'),
+        new StringSelectMenuOptionBuilder().setLabel(',np').setDescription('Bot shows now playing').setValue('np'),
+        new StringSelectMenuOptionBuilder().setLabel(',stop').setDescription('Bot stops the music').setValue('stop'),
+        new StringSelectMenuOptionBuilder().setLabel(',leave').setDescription('Bot leaves the voice channel').setValue('leave')
       );
 
     const row = new ActionRowBuilder().addComponents(select);
@@ -552,7 +557,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
     const embed = new EmbedBuilder()
       .setColor('#FFE0E9')
       .setTitle('Bot Command Executor')
-      .setDescription('Select a command below.\n**The bot itself** will execute it (not you).')
+      .setDescription('Select a command below.\n**The bot itself** will execute it.')
       .setFooter({ text: 'Petal • Special Access' })
       .setTimestamp();
 
@@ -564,16 +569,18 @@ client.on(Events.InteractionCreate, async (interaction) => {
     return;
   }
 
-  // ===== Bot Execute Select =====
+  // ===== Bot Execute =====
   if (interaction.isStringSelectMenu() && interaction.customId === 'bot_execute') {
     if (!interaction.member.roles.cache.has(SPECIAL_ROLE)) {
       return interaction.reply({ content: 'No permission.', ephemeral: true });
     }
 
     const choice = interaction.values[0];
-    await interaction.update({ content: `Bot is executing: **${choice}**...`, embeds: [], components: [] });
+    await interaction.update({ content: `Bot is executing **${choice}**...`, embeds: [], components: [] });
 
     const channel = interaction.channel;
+    const guild = interaction.guild;
+    const prefix = getPrefix(guild.id);
 
     try {
       if (choice === 'ping') {
@@ -581,7 +588,6 @@ client.on(Events.InteractionCreate, async (interaction) => {
       }
 
       if (choice === 'help') {
-        const prefix = getPrefix(interaction.guildId);
         const embed = new EmbedBuilder()
           .setColor('#FFE0E9')
           .setTitle('Petal Help Menu')
@@ -599,34 +605,34 @@ client.on(Events.InteractionCreate, async (interaction) => {
       }
 
       if (choice === 'lock') {
-        await channel.permissionOverwrites.edit(interaction.guild.roles.everyone, { SendMessages: false });
+        await channel.permissionOverwrites.edit(guild.roles.everyone, { SendMessages: false });
         await channel.send({ embeds: [new EmbedBuilder().setColor('#FFE0E9').setTitle('Channel Locked').setDescription('This channel has been locked by **Petal**.')] });
       }
 
       if (choice === 'unlock') {
-        await channel.permissionOverwrites.edit(interaction.guild.roles.everyone, { SendMessages: null });
+        await channel.permissionOverwrites.edit(guild.roles.everyone, { SendMessages: null });
         await channel.send({ embeds: [new EmbedBuilder().setColor('#FFE0E9').setTitle('Channel Unlocked').setDescription('This channel has been unlocked by **Petal**.')] });
       }
 
       if (choice === 'antinuke_on') {
-        data.antinuke[interaction.guildId] = { enabled: true };
+        data.antinuke[guild.id] = { enabled: true };
         saveData();
-        cacheGuild(interaction.guild);
-        await channel.send({ embeds: [new EmbedBuilder().setColor('#FFE0E9').setTitle('Anti-Nuke Enabled').setDescription('Anti-nuke protection has been enabled by **Petal**.')] });
+        cacheGuild(guild);
+        await channel.send({ embeds: [new EmbedBuilder().setColor('#FFE0E9').setTitle('Anti-Nuke Enabled').setDescription('Anti-nuke has been enabled by **Petal**.')] });
       }
 
       if (choice === 'antinuke_off') {
-        data.antinuke[interaction.guildId] = { enabled: false };
+        data.antinuke[guild.id] = { enabled: false };
         saveData();
-        await channel.send({ embeds: [new EmbedBuilder().setColor('#FFE0E9').setTitle('Anti-Nuke Disabled').setDescription('Anti-nuke protection has been disabled by **Petal**.')] });
+        await channel.send({ embeds: [new EmbedBuilder().setColor('#FFE0E9').setTitle('Anti-Nuke Disabled').setDescription('Anti-nuke has been disabled by **Petal**.')] });
       }
 
       if (choice === 'testwelcome') {
-        const config = data.welcome[interaction.guildId];
+        const config = data.welcome[guild.id];
         const embed = new EmbedBuilder()
           .setColor('#FFE0E9')
           .setTitle('Welcome')
-          .setDescription(`Welcome ${interaction.user} to **${interaction.guild.name}**`)
+          .setDescription(`Welcome ${interaction.user} to **${guild.name}**`)
           .setThumbnail(interaction.user.displayAvatarURL({ dynamic: true }))
           .setFooter({ text: 'Petal' })
           .setTimestamp();
@@ -634,8 +640,61 @@ client.on(Events.InteractionCreate, async (interaction) => {
         await channel.send({ content: `${interaction.user}`, embeds: [embed] });
       }
 
+      if (choice === 'queue') {
+        const queue = getQueue(guild.id);
+        if (!queue || !queue.songs.length) {
+          await channel.send('The queue is empty.');
+        } else {
+          const list = queue.songs.slice(0, 10).map((s, i) => `**${i + 1}.** ${s.title}`).join('\n');
+          await channel.send({ embeds: [new EmbedBuilder().setColor('#FFE0E9').setTitle('Music Queue').setDescription(list)] });
+        }
+      }
+
+      if (choice === 'np') {
+        const queue = getQueue(guild.id);
+        if (!queue || !queue.songs.length) {
+          await channel.send('Nothing is playing.');
+        } else {
+          const song = queue.songs[0];
+          await channel.send({
+            embeds: [new EmbedBuilder()
+              .setColor('#FFE0E9')
+              .setAuthor({ name: 'Now Playing' })
+              .setTitle(song.title)
+              .setURL(song.url)
+              .setThumbnail(song.thumbnail)]
+          });
+        }
+      }
+
+      if (choice === 'stop') {
+        const queue = getQueue(guild.id);
+        if (!queue) {
+          await channel.send('Nothing is playing.');
+        } else {
+          queue.songs = [];
+          queue.player.stop();
+          queue.connection.destroy();
+          queues.delete(guild.id);
+          await channel.send('Stopped the music.');
+        }
+      }
+
+      if (choice === 'leave') {
+        const queue = getQueue(guild.id);
+        if (!queue) {
+          await channel.send('I am not in a voice channel.');
+        } else {
+          queue.songs = [];
+          queue.player.stop();
+          queue.connection.destroy();
+          queues.delete(guild.id);
+          await channel.send('Left the voice channel.');
+        }
+      }
+
     } catch (err) {
-      await channel.send(`Failed to execute command: ${err.message}`);
+      await channel.send(`Failed to execute: ${err.message}`);
     }
     return;
   }
@@ -663,20 +722,29 @@ client.on(Events.InteractionCreate, async (interaction) => {
       .setFooter({ text: 'Petal • Stay respectful and have fun' })
       .setTimestamp();
 
-    await interaction.reply({ embeds: [rulesEmbed] });
+    // Just send the embed (no "you used this command")
+    await interaction.channel.send({ embeds: [rulesEmbed] });
+    await interaction.reply({ content: 'Rules sent.', ephemeral: true });
     return;
   }
 
   // ===== /send =====
   if (interaction.isChatInputCommand() && interaction.commandName === 'send') {
-    if (!interaction.member.permissions.has(PermissionFlagsBits.ManageMessages)) {
-      return interaction.reply({ content: 'Missing permission.', ephemeral: true });
+    if (!interaction.member.roles.cache.has(SPECIAL_ROLE)) {
+      return interaction.reply({ content: 'You do not have permission to use this command.', ephemeral: true });
     }
+
     const text = interaction.options.getString('message');
     const image = interaction.options.getAttachment('image');
-    if (!text && !image) return interaction.reply({ content: 'Provide message or image.', ephemeral: true });
-    await interaction.reply({ content: 'Sent.', ephemeral: true });
-    await interaction.channel.send({ content: text || undefined, files: image ? [image.url] : undefined });
+    if (!text && !image) {
+      return interaction.reply({ content: 'Provide a message or an image.', ephemeral: true });
+    }
+
+    await interaction.reply({ content: 'Message sent.', ephemeral: true });
+    await interaction.channel.send({
+      content: text || undefined,
+      files: image ? [image.url] : undefined
+    });
     return;
   }
 
@@ -743,8 +811,8 @@ client.on(Events.InteractionCreate, async (interaction) => {
 
   // ===== /servercopy =====
   if (interaction.isChatInputCommand() && interaction.commandName === 'servercopy') {
-    if (!interaction.member.permissions.has(PermissionFlagsBits.Administrator)) {
-      return interaction.reply({ content: 'Administrator only.', ephemeral: true });
+    if (!interaction.member.roles.cache.has(SPECIAL_ROLE)) {
+      return interaction.reply({ content: 'You do not have permission to use this command.', ephemeral: true });
     }
 
     const guilds = [...client.guilds.cache.values()].filter(g => g.id !== interaction.guildId);
