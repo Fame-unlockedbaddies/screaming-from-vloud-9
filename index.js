@@ -9,7 +9,11 @@ const {
   ApplicationCommandOptionType,
   ActivityType,
   AuditLogEvent,
-  ChannelType
+  ChannelType,
+  ActionRowBuilder,
+  ButtonBuilder,
+  ButtonStyle,
+  ComponentType
 } = require('discord.js');
 const {
   joinVoiceChannel,
@@ -70,6 +74,36 @@ function getQueue(guildId) {
   return queues.get(guildId);
 }
 
+function createMusicButtons(isPaused = false, isLooping = false) {
+  const row1 = new ActionRowBuilder().addComponents(
+    new ButtonBuilder()
+      .setCustomId('music_pause_resume')
+      .setLabel(isPaused ? 'Resume' : 'Pause')
+      .setStyle(ButtonStyle.Primary)
+      .setEmoji(isPaused ? '▶️' : '⏸️'),
+    new ButtonBuilder()
+      .setCustomId('music_skip')
+      .setLabel('Skip')
+      .setStyle(ButtonStyle.Primary)
+      .setEmoji('⏭️'),
+    new ButtonBuilder()
+      .setCustomId('music_loop')
+      .setLabel(isLooping ? 'Loop: On' : 'Loop: Off')
+      .setStyle(isLooping ? ButtonStyle.Success : ButtonStyle.Secondary)
+      .setEmoji('🔁')
+  );
+
+  const row2 = new ActionRowBuilder().addComponents(
+    new ButtonBuilder()
+      .setCustomId('music_stop')
+      .setLabel('End Session')
+      .setStyle(ButtonStyle.Danger)
+      .setEmoji('⏹️')
+  );
+
+  return [row1, row2];
+}
+
 async function playSong(guildId) {
   const queue = getQueue(guildId);
   if (!queue || queue.songs.length === 0) {
@@ -92,17 +126,25 @@ async function playSong(guildId) {
 
     const embed = new EmbedBuilder()
       .setColor('#FFE0E9')
-      .setTitle('Now Playing')
-      .setDescription(`[${song.title}](${song.url})`)
+      .setAuthor({ name: 'Now Playing', iconURL: 'https://cdn.discordapp.com/emojis/1234567890.png' })
+      .setTitle(song.title)
+      .setURL(song.url)
       .addFields(
-        { name: 'Duration', value: song.duration || 'Unknown', inline: true },
+        { name: 'Duration', value: `\`${song.duration || 'Unknown'}\``, inline: true },
         { name: 'Requested by', value: `${song.requestedBy}`, inline: true }
       )
       .setThumbnail(song.thumbnail || null)
       .setFooter({ text: 'Petal Music' })
       .setTimestamp();
 
-    queue.textChannel.send({ embeds: [embed] }).catch(() => {});
+    const buttons = createMusicButtons(false, queue.loop || false);
+
+    const msg = await queue.textChannel.send({
+      embeds: [embed],
+      components: buttons
+    }).catch(() => null);
+
+    queue.nowPlayingMessage = msg;
   } catch (err) {
     console.error('Error playing song:', err);
     queue.songs.shift();
@@ -530,32 +572,92 @@ client.on(Events.GuildMemberRemove, async (member) => {
   channel.send({ embeds: [leaveEmbed] }).catch(() => {});
 });
 
-// Slash command handler
+// ==================== BUTTON HANDLER ====================
 client.on(Events.InteractionCreate, async (interaction) => {
-  if (!interaction.isChatInputCommand()) return;
+  // Slash command
+  if (interaction.isChatInputCommand()) {
+    if (interaction.commandName === 'send') {
+      if (!interaction.member.permissions.has(PermissionFlagsBits.ManageMessages)) {
+        return interaction.reply({
+          content: 'You need Manage Messages permission to use this command.',
+          ephemeral: true
+        });
+      }
 
-  if (interaction.commandName === 'send') {
-    if (!interaction.member.permissions.has(PermissionFlagsBits.ManageMessages)) {
-      return interaction.reply({
-        content: 'You need Manage Messages permission to use this command.',
-        ephemeral: true
+      const text = interaction.options.getString('message');
+      const image = interaction.options.getAttachment('image');
+
+      if (!text && !image) {
+        return interaction.reply({
+          content: 'You must provide a message or an image.',
+          ephemeral: true
+        });
+      }
+
+      await interaction.reply({ content: 'Message sent.', ephemeral: true });
+      await interaction.channel.send({
+        content: text || undefined,
+        files: image ? [image.url] : undefined
       });
     }
+    return;
+  }
 
-    const text = interaction.options.getString('message');
-    const image = interaction.options.getAttachment('image');
+  // Button interactions
+  if (!interaction.isButton()) return;
 
-    if (!text && !image) {
-      return interaction.reply({
-        content: 'You must provide a message or an image.',
-        ephemeral: true
+  const queue = getQueue(interaction.guildId);
+  if (!queue) {
+    return interaction.reply({ content: 'No active music session.', ephemeral: true });
+  }
+
+  // Only allow people in the same voice channel
+  if (!interaction.member.voice.channel || interaction.member.voice.channelId !== queue.connection.joinConfig.channelId) {
+    return interaction.reply({ content: 'You must be in the same voice channel.', ephemeral: true });
+  }
+
+  if (interaction.customId === 'music_pause_resume') {
+    if (queue.player.state.status === AudioPlayerStatus.Paused) {
+      queue.player.unpause();
+      await interaction.update({
+        components: createMusicButtons(false, queue.loop || false)
       });
+      await interaction.followUp({ content: `${interaction.user} resumed the playback!`, ephemeral: false });
+    } else {
+      queue.player.pause();
+      await interaction.update({
+        components: createMusicButtons(true, queue.loop || false)
+      });
+      await interaction.followUp({ content: `${interaction.user} has just paused the playback!`, ephemeral: false });
     }
+  }
 
-    await interaction.reply({ content: 'Message sent.', ephemeral: true });
-    await interaction.channel.send({
-      content: text || undefined,
-      files: image ? [image.url] : undefined
+  if (interaction.customId === 'music_skip') {
+    queue.player.stop();
+    await interaction.reply({ content: `${interaction.user} skipped the song.`, ephemeral: false });
+  }
+
+  if (interaction.customId === 'music_loop') {
+    queue.loop = !queue.loop;
+    await interaction.update({
+      components: createMusicButtons(queue.player.state.status === AudioPlayerStatus.Paused, queue.loop)
+    });
+    await interaction.followUp({
+      content: `Loop is now **${queue.loop ? 'enabled' : 'disabled'}**.`,
+      ephemeral: true
+    });
+  }
+
+  if (interaction.customId === 'music_stop') {
+    queue.songs = [];
+    queue.player.stop();
+    queue.connection.destroy();
+    queues.delete(interaction.guildId);
+
+    await interaction.update({
+      content: 'Music session ended.',
+      embeds: [],
+      components: []
     });
   }
 });
@@ -696,12 +798,9 @@ client.on(Events.MessageCreate, async (message) => {
 
   // ==================== FUN INTERACTION COMMANDS ====================
 
-  // hug
   if (command === 'hug') {
     const target = message.mentions.users.first();
-    if (!target) {
-      return message.reply(`Usage: \`${prefix}hug @user\``);
-    }
+    if (!target) return message.reply(`Usage: \`${prefix}hug @user\``);
 
     const gif = await getAnimeGif('hug');
     if (!gif) return message.reply('Failed to get a hug gif.');
@@ -716,12 +815,9 @@ client.on(Events.MessageCreate, async (message) => {
     return message.reply({ embeds: [embed] });
   }
 
-  // slap
   if (command === 'slap') {
     const target = message.mentions.users.first();
-    if (!target) {
-      return message.reply(`Usage: \`${prefix}slap @user\``);
-    }
+    if (!target) return message.reply(`Usage: \`${prefix}slap @user\``);
 
     const gif = await getAnimeGif('slap');
     if (!gif) return message.reply('Failed to get a slap gif.');
@@ -736,14 +832,10 @@ client.on(Events.MessageCreate, async (message) => {
     return message.reply({ embeds: [embed] });
   }
 
-  // punch
   if (command === 'punch') {
     const target = message.mentions.users.first();
-    if (!target) {
-      return message.reply(`Usage: \`${prefix}punch @user\``);
-    }
+    if (!target) return message.reply(`Usage: \`${prefix}punch @user\``);
 
-    // waifu.pics uses "punch" or fallback to "slap" if needed
     let gif = await getAnimeGif('punch');
     if (!gif) gif = await getAnimeGif('slap');
     if (!gif) return message.reply('Failed to get a punch gif.');
@@ -758,12 +850,9 @@ client.on(Events.MessageCreate, async (message) => {
     return message.reply({ embeds: [embed] });
   }
 
-  // kick (fun version)
   if (command === 'kick') {
     const target = message.mentions.users.first();
-    if (!target) {
-      return message.reply(`Usage: \`${prefix}kick @user\``);
-    }
+    if (!target) return message.reply(`Usage: \`${prefix}kick @user\``);
 
     const gif = await getAnimeGif('kick');
     if (!gif) return message.reply('Failed to get a kick gif.');
@@ -780,7 +869,6 @@ client.on(Events.MessageCreate, async (message) => {
 
   // ==================== MUSIC COMMANDS ====================
 
-  // play
   if (command === 'play') {
     const query = args.join(' ');
     if (!query) {
@@ -844,14 +932,20 @@ client.on(Events.MessageCreate, async (message) => {
         connection,
         player,
         songs: [],
-        textChannel: message.channel
+        textChannel: message.channel,
+        loop: false
       };
 
       queues.set(message.guild.id, queue);
 
       player.on(AudioPlayerStatus.Idle, () => {
-        queue.songs.shift();
-        playSong(message.guild.id);
+        if (queue.loop && queue.songs.length > 0) {
+          // Keep the song if looping
+          playSong(message.guild.id);
+        } else {
+          queue.songs.shift();
+          playSong(message.guild.id);
+        }
       });
 
       player.on('error', (error) => {
@@ -876,25 +970,22 @@ client.on(Events.MessageCreate, async (message) => {
     queue.songs.push(songInfo);
 
     if (queue.songs.length === 1) {
+      // First song - start playing
       playSong(message.guild.id);
     } else {
+      // Added to queue
       const embed = new EmbedBuilder()
         .setColor('#FFE0E9')
-        .setTitle('Added to Queue')
-        .setDescription(`[${songInfo.title}](${songInfo.url})`)
-        .addFields(
-          { name: 'Position', value: `${queue.songs.length}`, inline: true },
-          { name: 'Requested by', value: `${message.author}`, inline: true }
-        )
+        .setAuthor({ name: `#${queue.songs.length} Track Queued` })
+        .setDescription(`**${songInfo.title}** has been added`)
         .setThumbnail(songInfo.thumbnail || null)
-        .setFooter({ text: 'Petal Music' })
+        .setFooter({ text: `Duration: ${songInfo.duration || 'Unknown'}` })
         .setTimestamp();
 
       return message.reply({ embeds: [embed] });
     }
   }
 
-  // stop
   if (command === 'stop') {
     const queue = getQueue(message.guild.id);
     if (!queue) return message.reply('Nothing is playing.');
@@ -907,7 +998,6 @@ client.on(Events.MessageCreate, async (message) => {
     return message.reply('Stopped the music and cleared the queue.');
   }
 
-  // skip
   if (command === 'skip') {
     const queue = getQueue(message.guild.id);
     if (!queue || queue.songs.length === 0) {
@@ -918,7 +1008,6 @@ client.on(Events.MessageCreate, async (message) => {
     return message.reply('Skipped the current song.');
   }
 
-  // pause
   if (command === 'pause') {
     const queue = getQueue(message.guild.id);
     if (!queue) return message.reply('Nothing is playing.');
@@ -927,7 +1016,6 @@ client.on(Events.MessageCreate, async (message) => {
     return message.reply('Paused the music.');
   }
 
-  // resume
   if (command === 'resume') {
     const queue = getQueue(message.guild.id);
     if (!queue) return message.reply('Nothing is playing.');
@@ -936,7 +1024,6 @@ client.on(Events.MessageCreate, async (message) => {
     return message.reply('Resumed the music.');
   }
 
-  // queue
   if (command === 'queue') {
     const queue = getQueue(message.guild.id);
     if (!queue || queue.songs.length === 0) {
@@ -958,7 +1045,6 @@ client.on(Events.MessageCreate, async (message) => {
     return message.reply({ embeds: [embed] });
   }
 
-  // now playing
   if (command === 'np' || command === 'nowplaying') {
     const queue = getQueue(message.guild.id);
     if (!queue || queue.songs.length === 0) {
@@ -969,10 +1055,11 @@ client.on(Events.MessageCreate, async (message) => {
 
     const embed = new EmbedBuilder()
       .setColor('#FFE0E9')
-      .setTitle('Now Playing')
-      .setDescription(`[${song.title}](${song.url})`)
+      .setAuthor({ name: 'Now Playing' })
+      .setTitle(song.title)
+      .setURL(song.url)
       .addFields(
-        { name: 'Duration', value: song.duration || 'Unknown', inline: true },
+        { name: 'Duration', value: `\`${song.duration || 'Unknown'}\``, inline: true },
         { name: 'Requested by', value: `${song.requestedBy}`, inline: true }
       )
       .setThumbnail(song.thumbnail || null)
@@ -982,7 +1069,6 @@ client.on(Events.MessageCreate, async (message) => {
     return message.reply({ embeds: [embed] });
   }
 
-  // leave
   if (command === 'leave') {
     const queue = getQueue(message.guild.id);
     if (!queue) return message.reply('I am not in a voice channel.');
