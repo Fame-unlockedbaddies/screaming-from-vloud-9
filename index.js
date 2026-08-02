@@ -37,6 +37,7 @@ const dataPath = './data.json';
 let data = {
   prefixes: {},
   welcome: {},
+  leave: {},      // NEW
   antinuke: {}
 };
 
@@ -436,6 +437,30 @@ client.on(Events.GuildMemberAdd, async (member) => {
   channel.send({ content: `${member}`, embeds: [welcomeEmbed] }).catch(() => {});
 });
 
+// ==================== LEAVE EVENT ====================
+client.on(Events.GuildMemberRemove, async (member) => {
+  const leaveConfig = data.leave[member.guild.id];
+  if (!leaveConfig || !leaveConfig.channelId) return;
+
+  const channel = member.guild.channels.cache.get(leaveConfig.channelId);
+  if (!channel) return;
+
+  const leaveEmbed = new EmbedBuilder()
+    .setColor('#FFE0E9')
+    .setTitle('Member Left')
+    .setDescription(`**${member.user.tag}** has left the server.`)
+    .setThumbnail(member.user.displayAvatarURL({ dynamic: true, size: 512 }))
+    .addFields(
+      { name: 'User', value: `${member.user.tag}`, inline: true },
+      { name: 'ID', value: `${member.user.id}`, inline: true },
+      { name: 'Member Count', value: `${member.guild.memberCount}`, inline: true }
+    )
+    .setFooter({ text: 'Petal' })
+    .setTimestamp();
+
+  channel.send({ embeds: [leaveEmbed] }).catch(() => {});
+});
+
 // Slash command handler
 client.on(Events.InteractionCreate, async (interaction) => {
   if (!interaction.isChatInputCommand()) return;
@@ -474,7 +499,6 @@ client.on(Events.MessageCreate, async (message) => {
   const inviteRegex = /(https?:\/\/)?(www\.)?(discord\.(gg|io|me|li)|discordapp\.com\/invite|discord\.com\/invite)\/[a-zA-Z0-9]+/gi;
 
   if (inviteRegex.test(message.content)) {
-    // Allow Admins and people with Manage Messages
     if (
       message.member.permissions.has(PermissionFlagsBits.Administrator) ||
       message.member.permissions.has(PermissionFlagsBits.ManageMessages)
@@ -496,14 +520,13 @@ client.on(Events.MessageCreate, async (message) => {
 
         const warning = await message.channel.send({ embeds: [embed] });
         
-        // Delete the warning after 8 seconds
         setTimeout(() => {
           warning.delete().catch(() => {});
         }, 8000);
       } catch (err) {
         console.error('Failed to delete invite message:', err.message);
       }
-      return; // Stop processing further
+      return;
     }
   }
 
@@ -549,6 +572,7 @@ client.on(Events.MessageCreate, async (message) => {
         { name: 'unlock', value: 'Unlock the current channel', inline: true },
         { name: 'welcomer', value: 'Set the welcome channel + banner', inline: true },
         { name: 'testwelcome', value: 'Test the welcome message', inline: true },
+        { name: 'leaver', value: 'Set the leave channel', inline: true },
         { name: 'antinuke', value: 'Enable anti-nuke (only special role can disable)', inline: true },
         { name: 'hardban', value: 'Ban a user + delete all their messages (Admin only)', inline: true },
         { name: '/send', value: 'Make the bot send a message or image', inline: true }
@@ -709,6 +733,32 @@ client.on(Events.MessageCreate, async (message) => {
     return message.reply({ content: `${member}`, embeds: [welcomeEmbed] });
   }
 
+  // ==================== LEAVER COMMAND ====================
+  if (command === 'leaver') {
+    if (!message.member.permissions.has(PermissionFlagsBits.Administrator)) {
+      return message.reply('You need Administrator permission to use this command.');
+    }
+
+    const channel = message.mentions.channels.first();
+    if (!channel) {
+      return message.reply(`Usage: \`${prefix}leaver #channel\``);
+    }
+
+    data.leave[message.guild.id] = {
+      channelId: channel.id
+    };
+    saveData();
+
+    const successEmbed = new EmbedBuilder()
+      .setColor('#FFE0E9')
+      .setTitle('Leave Channel Set')
+      .setDescription(`Leave messages will now be sent in ${channel}.`)
+      .setFooter({ text: 'Petal' })
+      .setTimestamp();
+
+    return message.reply({ embeds: [successEmbed] });
+  }
+
   // ==================== HARDBAN COMMAND ====================
   if (command === 'hardban') {
     if (!message.member.permissions.has(PermissionFlagsBits.Administrator)) {
@@ -747,7 +797,7 @@ client.on(Events.MessageCreate, async (message) => {
 
     try {
       await target.ban({
-        deleteMessageSeconds: 60 * 60 * 24 * 7, // 7 days
+        deleteMessageSeconds: 60 * 60 * 24 * 7,
         reason: `Hardbanned by ${message.author.tag} | ${reason}`
       });
 
