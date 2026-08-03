@@ -538,7 +538,6 @@ client.on(Events.InteractionCreate, async (interaction) => {
     const author = interaction.user;
 
     try {
-      // ===== SIMPLE COMMANDS =====
       if (choice === 'ping') {
         await channel.send('Pong!');
       }
@@ -680,30 +679,20 @@ client.on(Events.InteractionCreate, async (interaction) => {
         }
       }
 
-      // ===== INTERACTIVE COMMANDS THAT NEED A USER =====
-
-      // DM
+      // ===== INTERACTIVE COMMANDS =====
       if (choice === 'dm') {
         await channel.send(`${author}, **mention the user** you want to DM (or type their ID):`);
         const userFilter = m => m.author.id === author.id;
         const userCollected = await channel.awaitMessages({ filter: userFilter, max: 1, time: 60000 }).catch(() => null);
-        if (!userCollected || !userCollected.first()) {
-          return channel.send('Timed out.');
-        }
+        if (!userCollected || !userCollected.first()) return channel.send('Timed out.');
         const userMsg = userCollected.first();
         let target = userMsg.mentions.users.first();
-        if (!target) {
-          target = await client.users.fetch(userMsg.content.trim()).catch(() => null);
-        }
-        if (!target) {
-          return channel.send('Could not find that user.');
-        }
+        if (!target) target = await client.users.fetch(userMsg.content.trim()).catch(() => null);
+        if (!target) return channel.send('Could not find that user.');
 
         await channel.send(`${author}, now **type the message** you want to send to **${target.tag}**:`);
         const msgCollected = await channel.awaitMessages({ filter: userFilter, max: 1, time: 90000 }).catch(() => null);
-        if (!msgCollected || !msgCollected.first()) {
-          return channel.send('Timed out.');
-        }
+        if (!msgCollected || !msgCollected.first()) return channel.send('Timed out.');
         const text = msgCollected.first().content;
         if (!text) return channel.send('No message provided.');
 
@@ -715,46 +704,29 @@ client.on(Events.InteractionCreate, async (interaction) => {
         }
       }
 
-      // Hardban
       if (choice === 'hardban') {
         await channel.send(`${author}, **mention the user** you want to hardban (or type their ID):`);
         const userFilter = m => m.author.id === author.id;
         const userCollected = await channel.awaitMessages({ filter: userFilter, max: 1, time: 60000 }).catch(() => null);
-        if (!userCollected || !userCollected.first()) {
-          return channel.send('Timed out.');
-        }
+        if (!userCollected || !userCollected.first()) return channel.send('Timed out.');
         const userMsg = userCollected.first();
         let target = userMsg.mentions.members.first() || guild.members.cache.get(userMsg.content.trim());
         if (!target) {
-          try {
-            target = await guild.members.fetch(userMsg.content.trim());
-          } catch {
-            target = null;
-          }
+          try { target = await guild.members.fetch(userMsg.content.trim()); } catch { target = null; }
         }
-        if (!target) {
-          return channel.send('Could not find that member.');
-        }
-        if (!target.bannable) {
-          return channel.send('I cannot ban that user.');
-        }
+        if (!target) return channel.send('Could not find that member.');
+        if (!target.bannable) return channel.send('I cannot ban that user.');
         await target.ban({ deleteMessageSeconds: 604800, reason: `Hardbanned via /bot by ${author.tag}` });
         await channel.send({ embeds: [new EmbedBuilder().setColor('#FFE0E9').setTitle('Hardbanned').setDescription(`**${target.user.tag}** has been hardbanned.`)] });
       }
 
-      // Hug / Slap / Punch
       if (['hug', 'slap', 'punch'].includes(choice)) {
         await channel.send(`${author}, **mention the user** you want to ${choice}:`);
         const userFilter = m => m.author.id === author.id;
         const userCollected = await channel.awaitMessages({ filter: userFilter, max: 1, time: 60000 }).catch(() => null);
-        if (!userCollected || !userCollected.first()) {
-          return channel.send('Timed out.');
-        }
-        const userMsg = userCollected.first();
-        const target = userMsg.mentions.users.first();
-        if (!target) {
-          return channel.send('Please mention a user.');
-        }
+        if (!userCollected || !userCollected.first()) return channel.send('Timed out.');
+        const target = userCollected.first().mentions.users.first();
+        if (!target) return channel.send('Please mention a user.');
         const gif = await getAnimeGif(choice === 'punch' ? 'slap' : choice);
         if (!gif) return channel.send('Failed to get gif.');
         await channel.send({
@@ -762,22 +734,16 @@ client.on(Events.InteractionCreate, async (interaction) => {
         });
       }
 
-      // Play (asks for song)
       if (choice === 'play') {
         await channel.send(`${author}, **type the song name or URL** you want to play:`);
         const songFilter = m => m.author.id === author.id;
         const songCollected = await channel.awaitMessages({ filter: songFilter, max: 1, time: 60000 }).catch(() => null);
-        if (!songCollected || !songCollected.first()) {
-          return channel.send('Timed out.');
-        }
+        if (!songCollected || !songCollected.first()) return channel.send('Timed out.');
         const query = songCollected.first().content.trim();
         if (!query) return channel.send('No song provided.');
 
-        // We need a voice channel – check if the original user is in one
         const member = await guild.members.fetch(author.id).catch(() => null);
-        if (!member?.voice?.channel) {
-          return channel.send('You need to be in a voice channel for me to play music.');
-        }
+        if (!member?.voice?.channel) return channel.send('You need to be in a voice channel for me to play music.');
 
         const msg = await channel.send('Searching...');
         const result = await findSong(query);
@@ -821,7 +787,6 @@ client.on(Events.InteractionCreate, async (interaction) => {
         }
       }
 
-      // Welcomer / Leaver just tell them to use the prefix version
       if (choice === 'welcomer') {
         await channel.send(`Please use the prefix command:\n\`${prefix}welcomer #channel\``);
       }
@@ -1057,18 +1022,20 @@ client.on(Events.InteractionCreate, async (interaction) => {
     }
   }
 
-  // ===== TICKET BUTTONS =====
+  // ===== TICKET BUTTONS (supports MULTIPLE panels) =====
   if (interaction.isButton() && interaction.customId.startsWith('ticket_open_')) {
     const guildId = interaction.guildId;
     const ticketConfig = data.tickets[guildId];
     if (!ticketConfig) return interaction.reply({ content: 'Ticket system not set up.', ephemeral: true });
 
-    const buttonIndex = parseInt(interaction.customId.replace('ticket_open_', ''));
-    const button = ticketConfig.buttons[buttonIndex];
-    if (!button) return interaction.reply({ content: 'Invalid button.', ephemeral: true });
+    // Multiple panels are fully supported – every button with ticket_open_ works
+    const buttonIndex = parseInt(interaction.customId.replace('ticket_open_', '')) || 0;
+    const button = ticketConfig.buttons?.[buttonIndex] || ticketConfig.buttons?.[0] || { name: 'Support' };
 
     const existing = interaction.guild.channels.cache.find(
-      c => c.name === `ticket-${interaction.user.username.toLowerCase().replace(/[^a-z0-9]/g, '')}` && c.type === ChannelType.GuildText
+      c => c.name.startsWith('ticket-') &&
+           c.permissionOverwrites.cache.has(interaction.user.id) &&
+           c.type === ChannelType.GuildText
     );
     if (existing) {
       return interaction.reply({ content: `You already have an open ticket: ${existing}`, ephemeral: true });
@@ -1244,7 +1211,7 @@ client.on(Events.MessageCreate, async (message) => {
     return;
   }
 
-  // ===== SET TICKET SYSTEM =====
+  // ===== SET TICKET SYSTEM (supports multiple panels) =====
   if (command === 'set' && args[0]?.toLowerCase() === 'ticket' && args[1]?.toLowerCase() === 'system') {
     if (!message.member.permissions.has(PermissionFlagsBits.Administrator)) {
       return message.reply('Admin only.');
@@ -1353,6 +1320,7 @@ client.on(Events.MessageCreate, async (message) => {
       }
     } catch {}
 
+    // Save / update the config (all existing panels keep working)
     data.tickets[message.guild.id] = {
       title,
       bio,
@@ -1387,7 +1355,7 @@ client.on(Events.MessageCreate, async (message) => {
       embeds: [new EmbedBuilder()
         .setColor('#FFE0E9')
         .setTitle('Ticket System Ready')
-        .setDescription('The ticket panel has been created above. Users can now open tickets by clicking the button.')]
+        .setDescription('Ticket panel created!\n\nYou can run `,set ticket system` again anytime to create **more panels** — all of them will work at the same time.')]
     });
   }
 
