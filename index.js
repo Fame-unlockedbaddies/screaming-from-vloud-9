@@ -52,6 +52,9 @@ const client = new Client({
   ]
 });
 
+// ==================== CONSTANTS ====================
+const SPECIAL_ROLE = '1531850051771568128';
+
 // Data storage
 const dataPath = './data.json';
 let data = {
@@ -463,7 +466,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
     return;
   }
 
-  // ===== Bot Execute (all original commands) =====
+  // ===== Bot Execute =====
   if (interaction.isStringSelectMenu() && interaction.customId === 'bot_execute') {
     if (!interaction.member.roles.cache.has(SPECIAL_ROLE)) {
       return interaction.reply({ content: 'No permission.', ephemeral: true });
@@ -593,8 +596,8 @@ client.on(Events.InteractionCreate, async (interaction) => {
         }
       }
 
-      // All original interactive commands (dm, hardban, hug, slap, punch, play, welcomer, leaver)
-      if (choice === 'dm') { /* original code - unchanged */ 
+      // Interactive commands (dm, hardban, hug, slap, punch, play, welcomer, leaver)
+      if (choice === 'dm') {
         await channel.send(`${author}, **mention the user** you want to DM (or type their ID):`);
         const userFilter = m => m.author.id === author.id;
         const userCollected = await channel.awaitMessages({ filter: userFilter, max: 1, time: 60000 }).catch(() => null);
@@ -616,7 +619,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
           await channel.send('Could not DM that user (they may have DMs closed).');
         }
       }
-      if (choice === 'hardban') { /* original code */ 
+      if (choice === 'hardban') {
         await channel.send(`${author}, **mention the user** you want to hardban (or type their ID):`);
         const userFilter = m => m.author.id === author.id;
         const userCollected = await channel.awaitMessages({ filter: userFilter, max: 1, time: 60000 }).catch(() => null);
@@ -914,7 +917,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
     }
   }
 
-  // ===== TICKET BUTTONS (supports MULTIPLE panels) =====
+  // ===== TICKET BUTTONS =====
   if (interaction.isButton() && interaction.customId.startsWith('ticket_open_')) {
     const guildId = interaction.guildId;
     const ticketConfig = data.tickets[guildId];
