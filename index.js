@@ -79,28 +79,12 @@ function getQueue(guildId) {
 }
 function createMusicButtons(isPaused = false, isLooping = false) {
   const row1 = new ActionRowBuilder().addComponents(
-    new ButtonBuilder()
-      .setCustomId('music_pause_resume')
-      .setLabel(isPaused ? 'Resume' : 'Pause')
-      .setStyle(ButtonStyle.Primary)
-      .setEmoji(isPaused ? '▶️' : '⏸️'),
-    new ButtonBuilder()
-      .setCustomId('music_skip')
-      .setLabel('Skip')
-      .setStyle(ButtonStyle.Primary)
-      .setEmoji('⏭️'),
-    new ButtonBuilder()
-      .setCustomId('music_loop')
-      .setLabel(isLooping ? 'Loop: On' : 'Loop: Off')
-      .setStyle(isLooping ? ButtonStyle.Success : ButtonStyle.Secondary)
-      .setEmoji('🔁')
+    new ButtonBuilder().setCustomId('music_pause_resume').setLabel(isPaused ? 'Resume' : 'Pause').setStyle(ButtonStyle.Primary).setEmoji(isPaused ? '▶️' : '⏸️'),
+    new ButtonBuilder().setCustomId('music_skip').setLabel('Skip').setStyle(ButtonStyle.Primary).setEmoji('⏭️'),
+    new ButtonBuilder().setCustomId('music_loop').setLabel(isLooping ? 'Loop: On' : 'Loop: Off').setStyle(isLooping ? ButtonStyle.Success : ButtonStyle.Secondary).setEmoji('🔁')
   );
   const row2 = new ActionRowBuilder().addComponents(
-    new ButtonBuilder()
-      .setCustomId('music_stop')
-      .setLabel('End Session')
-      .setStyle(ButtonStyle.Danger)
-      .setEmoji('⏹️')
+    new ButtonBuilder().setCustomId('music_stop').setLabel('End Session').setStyle(ButtonStyle.Danger).setEmoji('⏹️')
   );
   return [row1, row2];
 }
@@ -143,14 +127,8 @@ async function playSong(guildId) {
   }
   const song = queue.songs[0];
   try {
-    const stream = ytdl(song.url, {
-      filter: 'audioonly',
-      highWaterMark: 1 << 25,
-      quality: 'highestaudio'
-    });
-    const resource = createAudioResource(stream, {
-      inputType: StreamType.Arbitrary
-    });
+    const stream = ytdl(song.url, { filter: 'audioonly', highWaterMark: 1 << 25, quality: 'highestaudio' });
+    const resource = createAudioResource(stream, { inputType: StreamType.Arbitrary });
     queue.player.play(resource);
     const embed = new EmbedBuilder()
       .setColor('#FFE0E9')
@@ -165,10 +143,7 @@ async function playSong(guildId) {
       .setFooter({ text: 'Petal Music' })
       .setTimestamp();
     const buttons = createMusicButtons(false, queue.loop || false);
-    const msg = await queue.textChannel.send({
-      embeds: [embed],
-      components: buttons
-    }).catch(() => null);
+    const msg = await queue.textChannel.send({ embeds: [embed], components: buttons }).catch(() => null);
     queue.nowPlayingMessage = msg;
   } catch (err) {
     console.error('Error playing song:', err.message);
@@ -259,19 +234,13 @@ async function restoreChannels(guild, deletedChannels) {
         position: old.position,
         reason: 'Petal Anti-Nuke'
       };
-      if (old.parentId && idMap.has(old.parentId)) {
-        options.parent = idMap.get(old.parentId).id;
-      } else if (old.parentId && guild.channels.cache.has(old.parentId)) {
-        options.parent = old.parentId;
-      }
+      if (old.parentId && idMap.has(old.parentId)) options.parent = idMap.get(old.parentId).id;
+      else if (old.parentId && guild.channels.cache.has(old.parentId)) options.parent = old.parentId;
       const newChannel = await guild.channels.create(options);
       idMap.set(old.id, newChannel);
       for (const ow of old.permissionOverwrites) {
         try {
-          await newChannel.permissionOverwrites.edit(ow.id, {
-            allow: BigInt(ow.allow),
-            deny: BigInt(ow.deny)
-          });
+          await newChannel.permissionOverwrites.edit(ow.id, { allow: BigInt(ow.allow), deny: BigInt(ow.deny) });
         } catch {}
       }
     } catch {}
@@ -375,34 +344,15 @@ client.on(Events.GuildRoleDelete, async (role) => {
 
 // ==================== SLASH COMMANDS ====================
 const commands = [
-  {
-    name: 'send',
-    description: 'Make the bot send a message or image (Special Role Only)',
-    options: [
-      { name: 'message', description: 'The text to send', type: ApplicationCommandOptionType.String, required: false },
-      { name: 'image', description: 'An image to send', type: ApplicationCommandOptionType.Attachment, required: false }
-    ]
-  },
-  {
-    name: 'servercopy',
-    description: 'Copy all channels from another server (Special Role Only)'
-  },
-  {
-    name: 'createchannel',
-    description: 'Create a new channel of any type'
-  },
-  {
-    name: 'bot',
-    description: 'Make the bot execute one of its own commands (Special Role Only)'
-  },
-  {
-    name: 'rules',
-    description: 'Send the professional server rules embed (Special Role Only)'
-  },
-  {
-    name: 'pfps',
-    description: 'Showcase your profile picture, banner, and a third custom image (Special Role Only)'
-  }
+  { name: 'send', description: 'Make the bot send a message or image (Special Role Only)', options: [
+    { name: 'message', description: 'The text to send', type: ApplicationCommandOptionType.String, required: false },
+    { name: 'image', description: 'An image to send', type: ApplicationCommandOptionType.Attachment, required: false }
+  ]},
+  { name: 'servercopy', description: 'Copy all channels from another server (Special Role Only)' },
+  { name: 'createchannel', description: 'Create a new channel of any type' },
+  { name: 'bot', description: 'Make the bot execute one of its own commands (Special Role Only)' },
+  { name: 'rules', description: 'Send the professional server rules embed (Special Role Only)' },
+  { name: 'pfps', description: 'Showcase your profile picture, banner, and a third custom image (Special Role Only)' }
 ];
 
 client.once(Events.ClientReady, async () => {
@@ -509,11 +459,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
       .setDescription('Select a command below.\n**The bot itself** will execute it.\n\nCommands that need a user will ask you interactively.')
       .setFooter({ text: 'Petal • Special Access' })
       .setTimestamp();
-    await interaction.reply({
-      embeds: [embed],
-      components: [row],
-      ephemeral: true
-    });
+    await interaction.reply({ embeds: [embed], components: [row], ephemeral: true });
     return;
   }
 
@@ -530,9 +476,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
     const author = interaction.user;
 
     try {
-      if (choice === 'ping') {
-        await channel.send('Pong!');
-      }
+      if (choice === 'ping') await channel.send('Pong!');
       if (choice === 'help') {
         const embed = new EmbedBuilder()
           .setColor('#FFE0E9')
@@ -550,9 +494,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
           .setFooter({ text: 'Executed by Petal' });
         await channel.send({ embeds: [embed] });
       }
-      if (choice === 'prefix') {
-        await channel.send(`Current prefix: \`${prefix}\``);
-      }
+      if (choice === 'prefix') await channel.send(`Current prefix: \`${prefix}\``);
       if (choice === 'lock') {
         await channel.permissionOverwrites.edit(guild.roles.everyone, { SendMessages: false });
         await channel.send({ embeds: [new EmbedBuilder().setColor('#FFE0E9').setTitle('Channel Locked').setDescription('This channel has been locked by **Petal**.')] });
@@ -596,16 +538,11 @@ client.on(Events.InteractionCreate, async (interaction) => {
         saveData();
         await channel.send({ embeds: [new EmbedBuilder().setColor('#FFE0E9').setTitle('Anti-Nuke Disabled').setDescription('Anti-nuke has been disabled by **Petal**.')] });
       }
-      if (choice === 'set_ticket') {
-        await channel.send(`Run \`${prefix}set ticket system\` to start the interactive setup.`);
-      }
+      if (choice === 'set_ticket') await channel.send(`Run \`${prefix}set ticket system\` to start the interactive setup.`);
       if (choice === 'skip') {
         const queue = getQueue(guild.id);
         if (!queue) await channel.send('Nothing is playing.');
-        else {
-          queue.player.stop();
-          await channel.send('Skipped.');
-        }
+        else { queue.player.stop(); await channel.send('Skipped.'); }
       }
       if (choice === 'stop') {
         const queue = getQueue(guild.id);
@@ -621,42 +558,27 @@ client.on(Events.InteractionCreate, async (interaction) => {
       if (choice === 'pause') {
         const queue = getQueue(guild.id);
         if (!queue) await channel.send('Nothing is playing.');
-        else {
-          queue.player.pause();
-          await channel.send('Paused.');
-        }
+        else { queue.player.pause(); await channel.send('Paused.'); }
       }
       if (choice === 'resume') {
         const queue = getQueue(guild.id);
         if (!queue) await channel.send('Nothing is playing.');
-        else {
-          queue.player.unpause();
-          await channel.send('Resumed.');
-        }
+        else { queue.player.unpause(); await channel.send('Resumed.'); }
       }
       if (choice === 'queue') {
         const queue = getQueue(guild.id);
-        if (!queue || !queue.songs.length) {
-          await channel.send('The queue is empty.');
-        } else {
+        if (!queue || !queue.songs.length) await channel.send('The queue is empty.');
+        else {
           const list = queue.songs.slice(0, 10).map((s, i) => `**${i + 1}.** ${s.title}`).join('\n');
           await channel.send({ embeds: [new EmbedBuilder().setColor('#FFE0E9').setTitle('Music Queue').setDescription(list)] });
         }
       }
       if (choice === 'np') {
         const queue = getQueue(guild.id);
-        if (!queue || !queue.songs.length) {
-          await channel.send('Nothing is playing.');
-        } else {
+        if (!queue || !queue.songs.length) await channel.send('Nothing is playing.');
+        else {
           const song = queue.songs[0];
-          await channel.send({
-            embeds: [new EmbedBuilder()
-              .setColor('#FFE0E9')
-              .setAuthor({ name: 'Now Playing' })
-              .setTitle(song.title)
-              .setURL(song.url)
-              .setThumbnail(song.thumbnail)]
-          });
+          await channel.send({ embeds: [new EmbedBuilder().setColor('#FFE0E9').setAuthor({ name: 'Now Playing' }).setTitle(song.title).setURL(song.url).setThumbnail(song.thumbnail)] });
         }
       }
       if (choice === 'leave') {
@@ -671,15 +593,14 @@ client.on(Events.InteractionCreate, async (interaction) => {
         }
       }
 
-      // ===== INTERACTIVE COMMANDS =====
+      // Interactive commands
       if (choice === 'dm') {
         await channel.send(`${author}, **mention the user** you want to DM (or type their ID):`);
         const userFilter = m => m.author.id === author.id;
         const userCollected = await channel.awaitMessages({ filter: userFilter, max: 1, time: 60000 }).catch(() => null);
         if (!userCollected || !userCollected.first()) return channel.send('Timed out.');
         const userMsg = userCollected.first();
-        let target = userMsg.mentions.users.first();
-        if (!target) target = await client.users.fetch(userMsg.content.trim()).catch(() => null);
+        let target = userMsg.mentions.users.first() || await client.users.fetch(userMsg.content.trim()).catch(() => null);
         if (!target) return channel.send('Could not find that user.');
 
         await channel.send(`${author}, now **type the message** you want to send to **${target.tag}**:`);
@@ -741,13 +662,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
         const result = await findSong(query);
         if (!result.success) return msg.edit(result.error);
 
-        const song = {
-          title: result.title,
-          url: result.url,
-          duration: result.duration,
-          thumbnail: result.thumbnail,
-          requestedBy: author
-        };
+        const song = { title: result.title, url: result.url, duration: result.duration, thumbnail: result.thumbnail, requestedBy: author };
 
         let queue = getQueue(guild.id);
         if (!queue) {
@@ -779,12 +694,8 @@ client.on(Events.InteractionCreate, async (interaction) => {
         }
       }
 
-      if (choice === 'welcomer') {
-        await channel.send(`Please use the prefix command:\n\`${prefix}welcomer #channel\``);
-      }
-      if (choice === 'leaver') {
-        await channel.send(`Please use the prefix command:\n\`${prefix}leaver #channel\``);
-      }
+      if (choice === 'welcomer') await channel.send(`Please use the prefix command:\n\`${prefix}welcomer #channel\``);
+      if (choice === 'leaver') await channel.send(`Please use the prefix command:\n\`${prefix}leaver #channel\``);
 
     } catch (err) {
       await channel.send(`Failed to execute: ${err.message}`);
@@ -829,10 +740,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
       return interaction.reply({ content: 'Provide a message or an image.', ephemeral: true });
     }
     await interaction.reply({ content: 'Message sent.', ephemeral: true });
-    await interaction.channel.send({
-      content: text || undefined,
-      files: image ? [image.url] : undefined
-    });
+    await interaction.channel.send({ content: text || undefined, files: image ? [image.url] : undefined });
     return;
   }
 
@@ -861,15 +769,8 @@ client.on(Events.InteractionCreate, async (interaction) => {
   }
   if (interaction.isStringSelectMenu() && interaction.customId === 'createchannel_type') {
     const type = parseInt(interaction.values[0]);
-    const modal = new ModalBuilder()
-      .setCustomId(`createchannel_modal_${type}`)
-      .setTitle('Create Channel');
-    const nameInput = new TextInputBuilder()
-      .setCustomId('channel_name')
-      .setLabel('Channel Name')
-      .setStyle(TextInputStyle.Short)
-      .setRequired(true)
-      .setMaxLength(100);
+    const modal = new ModalBuilder().setCustomId(`createchannel_modal_${type}`).setTitle('Create Channel');
+    const nameInput = new TextInputBuilder().setCustomId('channel_name').setLabel('Channel Name').setStyle(TextInputStyle.Short).setRequired(true).setMaxLength(100);
     modal.addComponents(new ActionRowBuilder().addComponents(nameInput));
     await interaction.showModal(modal);
     return;
@@ -878,11 +779,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
     const type = parseInt(interaction.customId.replace('createchannel_modal_', ''));
     const name = interaction.fields.getTextInputValue('channel_name');
     try {
-      const channel = await interaction.guild.channels.create({
-        name,
-        type,
-        reason: `Created by ${interaction.user.tag}`
-      });
+      const channel = await interaction.guild.channels.create({ name, type, reason: `Created by ${interaction.user.tag}` });
       await interaction.reply({ content: `Successfully created ${channel}`, ephemeral: true });
     } catch (err) {
       await interaction.reply({ content: `Failed: ${err.message}`, ephemeral: true });
@@ -900,10 +797,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
       return interaction.reply({ content: 'Bot is not in any other servers.', ephemeral: true });
     }
     const options = guilds.slice(0, 25).map(g =>
-      new StringSelectMenuOptionBuilder()
-        .setLabel(g.name.substring(0, 100))
-        .setDescription(`${g.memberCount} members`)
-        .setValue(g.id)
+      new StringSelectMenuOptionBuilder().setLabel(g.name.substring(0, 100)).setDescription(`${g.memberCount} members`).setValue(g.id)
     );
     const select = new StringSelectMenuBuilder()
       .setCustomId('servercopy_select')
@@ -937,9 +831,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
     const targetGuild = interaction.guild;
     await interaction.update({ content: 'Copying... This may take a while.', components: [] });
     try {
-      for (const ch of [...targetGuild.channels.cache.values()]) {
-        try { await ch.delete(); } catch {}
-      }
+      for (const ch of [...targetGuild.channels.cache.values()]) try { await ch.delete(); } catch {}
       const sourceChannels = [...sourceGuild.channels.cache.values()]
         .filter(c => [0, 2, 4, 5, 13, 15].includes(c.type))
         .sort((a, b) => {
@@ -959,9 +851,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
             position: old.position,
             reason: `Copied from ${sourceGuild.name}`
           };
-          if (old.parentId && idMap.has(old.parentId)) {
-            options.parent = idMap.get(old.parentId).id;
-          }
+          if (old.parentId && idMap.has(old.parentId)) options.parent = idMap.get(old.parentId).id;
           const newCh = await targetGuild.channels.create(options);
           idMap.set(old.id, newCh);
           for (const ow of old.permissionOverwrites.cache.values()) {
@@ -1020,7 +910,6 @@ client.on(Events.InteractionCreate, async (interaction) => {
     const ticketConfig = data.tickets[guildId];
     if (!ticketConfig) return interaction.reply({ content: 'Ticket system not set up.', ephemeral: true });
 
-    // Multiple panels are fully supported – every button with ticket_open_ works
     const buttonIndex = parseInt(interaction.customId.replace('ticket_open_', '')) || 0;
     const button = ticketConfig.buttons?.[buttonIndex] || ticketConfig.buttons?.[0] || { name: 'Support' };
 
@@ -1041,18 +930,9 @@ client.on(Events.InteractionCreate, async (interaction) => {
         type: ChannelType.GuildText,
         parent: ticketConfig.categoryId || null,
         permissionOverwrites: [
-          {
-            id: interaction.guild.roles.everyone.id,
-            deny: [PermissionFlagsBits.ViewChannel]
-          },
-          {
-            id: interaction.user.id,
-            allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages, PermissionFlagsBits.ReadMessageHistory, PermissionFlagsBits.AttachFiles]
-          },
-          {
-            id: client.user.id,
-            allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages, PermissionFlagsBits.ManageChannels]
-          }
+          { id: interaction.guild.roles.everyone.id, deny: [PermissionFlagsBits.ViewChannel] },
+          { id: interaction.user.id, allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages, PermissionFlagsBits.ReadMessageHistory, PermissionFlagsBits.AttachFiles] },
+          { id: client.user.id, allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages, PermissionFlagsBits.ManageChannels] }
         ],
         reason: `Ticket opened by ${interaction.user.tag}`
       });
@@ -1070,19 +950,10 @@ client.on(Events.InteractionCreate, async (interaction) => {
       if (ticketConfig.banner) ticketEmbed.setImage(ticketConfig.banner);
 
       const closeRow = new ActionRowBuilder().addComponents(
-        new ButtonBuilder()
-          .setCustomId('ticket_close')
-          .setLabel('Close Ticket')
-          .setStyle(ButtonStyle.Danger)
-          .setEmoji('🔒')
+        new ButtonBuilder().setCustomId('ticket_close').setLabel('Close Ticket').setStyle(ButtonStyle.Danger).setEmoji('🔒')
       );
 
-      await channel.send({
-        content: `${interaction.user}`,
-        embeds: [ticketEmbed],
-        components: [closeRow]
-      });
-
+      await channel.send({ content: `${interaction.user}`, embeds: [ticketEmbed], components: [closeRow] });
       await interaction.editReply({ content: `Ticket created: ${channel}` });
     } catch (err) {
       await interaction.editReply({ content: `Failed to create ticket: ${err.message}` });
@@ -1096,9 +967,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
     }
     await interaction.reply({ content: 'Closing ticket in 5 seconds...' });
     setTimeout(async () => {
-      try {
-        await interaction.channel.delete('Ticket closed');
-      } catch {}
+      try { await interaction.channel.delete('Ticket closed'); } catch {}
     }, 5000);
     return;
   }
@@ -1110,7 +979,6 @@ client.on(Events.InteractionCreate, async (interaction) => {
     }
 
     await interaction.deferReply({ ephemeral: true });
-
     const user = interaction.user;
 
     // Profile picture
@@ -1121,32 +989,20 @@ client.on(Events.InteractionCreate, async (interaction) => {
       .setImage(avatarUrl)
       .setFooter({ text: 'Petal • Showcasing' })
       .setTimestamp();
-
-    await interaction.followUp({ embeds: [profileEmbed] });
+    await interaction.editReply({ embeds: [profileEmbed] });
 
     // Banner image
-    await interaction.followUp({
-      content: `${user}, **now upload your banner image** (or type \`skip\` to skip):`
-    });
+    await interaction.followUp({ content: `${user}, **now upload your banner image** (or type \`skip\` to skip):` });
     const bannerFilter = m => m.author.id === user.id;
-    const bannerCol = await interaction.channel.awaitMessages({
-      filter: bannerFilter,
-      max: 1,
-      time: 60000
-    }).catch(() => null);
+    const bannerCol = await interaction.channel.awaitMessages({ filter: bannerFilter, max: 1, time: 60000 }).catch(() => null);
 
     let bannerUrl = null;
     if (bannerCol?.first()) {
       const bannerMsg = bannerCol.first();
       if (bannerMsg.content.toLowerCase() !== 'skip') {
-        if (bannerMsg.attachments.size > 0) {
-          bannerUrl = bannerMsg.attachments.first().url;
-        } else {
-          bannerUrl = bannerMsg.content.trim();
-        }
+        bannerUrl = bannerMsg.attachments.size > 0 ? bannerMsg.attachments.first().url : bannerMsg.content.trim();
       }
     }
-
     if (bannerUrl) {
       const bannerEmbed = new EmbedBuilder()
         .setColor('#FFE0E9')
@@ -1158,28 +1014,17 @@ client.on(Events.InteractionCreate, async (interaction) => {
     }
 
     // Third custom image
-    await interaction.followUp({
-      content: `${user}, **now upload a third custom image** (or type \`skip\` to skip):`
-    });
+    await interaction.followUp({ content: `${user}, **now upload a third custom image** (or type \`skip\` to skip):` });
     const thirdFilter = m => m.author.id === user.id;
-    const thirdCol = await interaction.channel.awaitMessages({
-      filter: thirdFilter,
-      max: 1,
-      time: 60000
-    }).catch(() => null);
+    const thirdCol = await interaction.channel.awaitMessages({ filter: thirdFilter, max: 1, time: 60000 }).catch(() => null);
 
     let thirdUrl = null;
     if (thirdCol?.first()) {
       const thirdMsg = thirdCol.first();
       if (thirdMsg.content.toLowerCase() !== 'skip') {
-        if (thirdMsg.attachments.size > 0) {
-          thirdUrl = thirdMsg.attachments.first().url;
-        } else {
-          thirdUrl = thirdMsg.content.trim();
-        }
+        thirdUrl = thirdMsg.attachments.size > 0 ? thirdMsg.attachments.first().url : thirdMsg.content.trim();
       }
     }
-
     if (thirdUrl) {
       const thirdEmbed = new EmbedBuilder()
         .setColor('#FFE0E9')
@@ -1190,10 +1035,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
       await interaction.followUp({ embeds: [thirdEmbed] });
     }
 
-    await interaction.followUp({
-      content: `✅ **Showcase complete** for **${user.username}**! Profile picture, banner, and third image (if provided) have been sent.`
-    });
-
+    await interaction.followUp({ content: `✅ **Showcase complete** for **${user.username}**! Profile picture, banner, and third image (if provided) have been sent.` });
     return;
   }
 });
@@ -1209,9 +1051,7 @@ client.on(Events.MessageCreate, async (message) => {
     if (hasBannedWord) {
       if (!message.member.permissions.has(PermissionFlagsBits.Administrator) &&
           !message.member.permissions.has(PermissionFlagsBits.ManageMessages)) {
-        try {
-          await message.delete();
-        } catch {}
+        try { await message.delete(); } catch {}
         return;
       }
     }
@@ -1271,20 +1111,14 @@ client.on(Events.MessageCreate, async (message) => {
     return message.reply({ embeds: [embed] });
   }
 
-  // ===== SET AUTOMOD =====
   if (command === 'set' && args[0]?.toLowerCase() === 'automod') {
-    if (!message.member.permissions.has(PermissionFlagsBits.Administrator)) {
-      return message.reply('Admin only.');
-    }
+    if (!message.member.permissions.has(PermissionFlagsBits.Administrator)) return message.reply('Admin only.');
     data.automod[message.guild.id] = { enabled: true };
     saveData();
     const embed = new EmbedBuilder()
       .setColor('#FFE0E9')
       .setTitle('Automod Enabled')
-      .setDescription(
-        'Messages containing these words will be **immediately deleted**:\n\n' +
-        AUTOMOD_WORDS.map(w => `\`${w}\``).join(', ')
-      )
+      .setDescription('Messages containing these words will be **immediately deleted**:\n\n' + AUTOMOD_WORDS.map(w => `\`${w}\``).join(', '))
       .setFooter({ text: 'Petal Automod • This message will disappear in 8 seconds' })
       .setTimestamp();
     const msg = await message.reply({ embeds: [embed] });
@@ -1292,18 +1126,13 @@ client.on(Events.MessageCreate, async (message) => {
     return;
   }
 
-  // ===== SET TICKET SYSTEM (supports multiple panels) =====
   if (command === 'set' && args[0]?.toLowerCase() === 'ticket' && args[1]?.toLowerCase() === 'system') {
-    if (!message.member.permissions.has(PermissionFlagsBits.Administrator)) {
-      return message.reply('Admin only.');
-    }
+    if (!message.member.permissions.has(PermissionFlagsBits.Administrator)) return message.reply('Admin only.');
 
-    await message.reply({
-      embeds: [new EmbedBuilder()
-        .setColor('#FFE0E9')
-        .setTitle('Ticket System Setup')
-        .setDescription('Please answer the following questions one by one.\n\n**1.** Send the **banner image** URL (or upload an image).\nType `skip` to skip the banner.')]
-    });
+    await message.reply({ embeds: [new EmbedBuilder()
+      .setColor('#FFE0E9')
+      .setTitle('Ticket System Setup')
+      .setDescription('Please answer the following questions one by one.\n\n**1.** Send the **banner image** URL (or upload an image).\nType `skip` to skip the banner.')] });
 
     const filter = m => m.author.id === message.author.id;
 
@@ -1312,64 +1141,45 @@ client.on(Events.MessageCreate, async (message) => {
       const bannerCol = await message.channel.awaitMessages({ filter, max: 1, time: 60000 });
       const bannerMsg = bannerCol.first();
       if (bannerMsg) {
-        if (bannerMsg.attachments.size > 0) {
-          banner = bannerMsg.attachments.first().url;
-        } else if (bannerMsg.content.toLowerCase() !== 'skip') {
-          banner = bannerMsg.content.trim();
-        }
+        if (bannerMsg.attachments.size > 0) banner = bannerMsg.attachments.first().url;
+        else if (bannerMsg.content.toLowerCase() !== 'skip') banner = bannerMsg.content.trim();
       }
-    } catch {
-      return message.channel.send('Setup timed out.');
-    }
+    } catch { return message.channel.send('Setup timed out.'); }
 
-    await message.channel.send({
-      embeds: [new EmbedBuilder()
-        .setColor('#FFE0E9')
-        .setTitle('Ticket System Setup')
-        .setDescription('**2.** What should the **ticket title** be?\n(Example: `Support Ticket`)')]
-    });
+    await message.channel.send({ embeds: [new EmbedBuilder()
+      .setColor('#FFE0E9')
+      .setTitle('Ticket System Setup')
+      .setDescription('**2.** What should the **ticket title** be?\n(Example: `Support Ticket`)')] });
     let title = 'Support Ticket';
     try {
       const titleCol = await message.channel.awaitMessages({ filter, max: 1, time: 60000 });
       if (titleCol.first()) title = titleCol.first().content.trim() || 'Support Ticket';
-    } catch {
-      return message.channel.send('Setup timed out.');
-    }
+    } catch { return message.channel.send('Setup timed out.'); }
 
-    await message.channel.send({
-      embeds: [new EmbedBuilder()
-        .setColor('#FFE0E9')
-        .setTitle('Ticket System Setup')
-        .setDescription('**3.** What should the **ticket bio / description** be?\n(This appears inside every new ticket)')]
-    });
+    await message.channel.send({ embeds: [new EmbedBuilder()
+      .setColor('#FFE0E9')
+      .setTitle('Ticket System Setup')
+      .setDescription('**3.** What should the **ticket bio / description** be?\n(This appears inside every new ticket)')] });
     let bio = 'A staff member will assist you shortly. Please describe your issue.';
     try {
       const bioCol = await message.channel.awaitMessages({ filter, max: 1, time: 90000 });
       if (bioCol.first()) bio = bioCol.first().content.trim() || bio;
-    } catch {
-      return message.channel.send('Setup timed out.');
-    }
+    } catch { return message.channel.send('Setup timed out.'); }
 
-    await message.channel.send({
-      embeds: [new EmbedBuilder()
-        .setColor('#FFE0E9')
-        .setTitle('Ticket System Setup')
-        .setDescription('**4.** What should the **button name** be?\n(Example: `Open Ticket` or `Support`)')]
-    });
+    await message.channel.send({ embeds: [new EmbedBuilder()
+      .setColor('#FFE0E9')
+      .setTitle('Ticket System Setup')
+      .setDescription('**4.** What should the **button name** be?\n(Example: `Open Ticket` or `Support`)')] });
     let buttonName = 'Open Ticket';
     try {
       const btnCol = await message.channel.awaitMessages({ filter, max: 1, time: 60000 });
       if (btnCol.first()) buttonName = btnCol.first().content.trim() || 'Open Ticket';
-    } catch {
-      return message.channel.send('Setup timed out.');
-    }
+    } catch { return message.channel.send('Setup timed out.'); }
 
-    await message.channel.send({
-      embeds: [new EmbedBuilder()
-        .setColor('#FFE0E9')
-        .setTitle('Ticket System Setup')
-        .setDescription('**5.** What **emoji** should the button use?\n(Example: 🎫 or 📩)\nType `none` for no emoji.')]
-    });
+    await message.channel.send({ embeds: [new EmbedBuilder()
+      .setColor('#FFE0E9')
+      .setTitle('Ticket System Setup')
+      .setDescription('**5.** What **emoji** should the button use?\n(Example: 🎫 or 📩)\nType `none` for no emoji.')] });
     let buttonEmoji = '🎫';
     try {
       const emojiCol = await message.channel.awaitMessages({ filter, max: 1, time: 60000 });
@@ -1377,16 +1187,12 @@ client.on(Events.MessageCreate, async (message) => {
         const e = emojiCol.first().content.trim();
         buttonEmoji = e.toLowerCase() === 'none' ? null : e;
       }
-    } catch {
-      return message.channel.send('Setup timed out.');
-    }
+    } catch { return message.channel.send('Setup timed out.'); }
 
-    await message.channel.send({
-      embeds: [new EmbedBuilder()
-        .setColor('#FFE0E9')
-        .setTitle('Ticket System Setup')
-        .setDescription('**6.** (Optional) Mention a **category** where tickets should be created.\nType `skip` to put them at the top level.')]
-    });
+    await message.channel.send({ embeds: [new EmbedBuilder()
+      .setColor('#FFE0E9')
+      .setTitle('Ticket System Setup')
+      .setDescription('**6.** (Optional) Mention a **category** where tickets should be created.\nType `skip` to put them at the top level.')] });
     let categoryId = null;
     try {
       const catCol = await message.channel.awaitMessages({ filter, max: 1, time: 60000 });
@@ -1394,21 +1200,12 @@ client.on(Events.MessageCreate, async (message) => {
         const catMsg = catCol.first();
         if (catMsg.content.toLowerCase() !== 'skip') {
           const cat = catMsg.mentions.channels.first() || message.guild.channels.cache.get(catMsg.content);
-          if (cat && cat.type === ChannelType.GuildCategory) {
-            categoryId = cat.id;
-          }
+          if (cat && cat.type === ChannelType.GuildCategory) categoryId = cat.id;
         }
       }
     } catch {}
 
-    // Save / update the config (all existing panels keep working)
-    data.tickets[message.guild.id] = {
-      title,
-      bio,
-      banner,
-      categoryId,
-      buttons: [{ name: buttonName, emoji: buttonEmoji }]
-    };
+    data.tickets[message.guild.id] = { title, bio, banner, categoryId, buttons: [{ name: buttonName, emoji: buttonEmoji }] };
     saveData();
 
     const panelEmbed = new EmbedBuilder()
@@ -1420,40 +1217,24 @@ client.on(Events.MessageCreate, async (message) => {
     if (banner) panelEmbed.setImage(banner);
 
     const row = new ActionRowBuilder().addComponents(
-      new ButtonBuilder()
-        .setCustomId('ticket_open_0')
-        .setLabel(buttonName)
-        .setStyle(ButtonStyle.Primary)
-        .setEmoji(buttonEmoji || undefined)
+      new ButtonBuilder().setCustomId('ticket_open_0').setLabel(buttonName).setStyle(ButtonStyle.Primary).setEmoji(buttonEmoji || undefined)
     );
 
-    await message.channel.send({
-      embeds: [panelEmbed],
-      components: [row]
-    });
-
-    return message.channel.send({
-      embeds: [new EmbedBuilder()
-        .setColor('#FFE0E9')
-        .setTitle('Ticket System Ready')
-        .setDescription('Ticket panel created!\n\nYou can run `,set ticket system` again anytime to create **more panels** — all of them will work at the same time.')]
-    });
+    await message.channel.send({ embeds: [panelEmbed], components: [row] });
+    return message.channel.send({ embeds: [new EmbedBuilder()
+      .setColor('#FFE0E9')
+      .setTitle('Ticket System Ready')
+      .setDescription('Ticket panel created!\n\nYou can run `,set ticket system` again anytime to create **more panels** — all of them will work at the same time.')] });
   }
 
-  // Fun
   if (['hug', 'slap', 'punch', 'kick'].includes(command)) {
     const target = message.mentions.users.first();
-    if (!target) {
-      return message.reply(`Please mention the user you want to ${command}.\nExample: \`${prefix}${command} @user\``);
-    }
+    if (!target) return message.reply(`Please mention the user you want to ${command}.\nExample: \`${prefix}${command} @user\``);
     const gif = await getAnimeGif(command === 'punch' ? 'slap' : command);
     if (!gif) return message.reply('Failed to get gif.');
-    return message.reply({
-      embeds: [new EmbedBuilder().setColor('#FFE0E9').setDescription(`**${message.author}** ${command}ed **${target}**!`).setImage(gif)]
-    });
+    return message.reply({ embeds: [new EmbedBuilder().setColor('#FFE0E9').setDescription(`**${message.author}** ${command}ed **${target}**!`).setImage(gif)] });
   }
 
-  // Music
   if (command === 'play') {
     const query = args.join(' ');
     if (!query) return message.reply(`Please type the song name or URL.\nExample: \`${prefix}play never gonna give you up\``);
@@ -1462,13 +1243,8 @@ client.on(Events.MessageCreate, async (message) => {
     const msg = await message.reply('Searching...');
     const result = await findSong(query);
     if (!result.success) return msg.edit(result.error);
-    const song = {
-      title: result.title,
-      url: result.url,
-      duration: result.duration,
-      thumbnail: result.thumbnail,
-      requestedBy: message.author
-    };
+    const song = { title: result.title, url: result.url, duration: result.duration, thumbnail: result.thumbnail, requestedBy: message.author };
+
     let queue = getQueue(message.guild.id);
     if (!queue) {
       const connection = joinVoiceChannel({
@@ -1535,9 +1311,7 @@ client.on(Events.MessageCreate, async (message) => {
     const queue = getQueue(message.guild.id);
     if (!queue?.songs.length) return message.reply('Nothing playing.');
     const song = queue.songs[0];
-    return message.reply({
-      embeds: [new EmbedBuilder().setColor('#FFE0E9').setAuthor({ name: 'Now Playing' }).setTitle(song.title).setURL(song.url).setThumbnail(song.thumbnail)]
-    });
+    return message.reply({ embeds: [new EmbedBuilder().setColor('#FFE0E9').setAuthor({ name: 'Now Playing' }).setTitle(song.title).setURL(song.url).setThumbnail(song.thumbnail)] });
   }
   if (command === 'leave') {
     const queue = getQueue(message.guild.id);
@@ -1549,7 +1323,6 @@ client.on(Events.MessageCreate, async (message) => {
     return message.reply('Left.');
   }
 
-  // lock / unlock
   if (command === 'lock') {
     if (!message.member.permissions.has(PermissionFlagsBits.ManageChannels)) return message.reply('Missing permission.');
     await message.channel.permissionOverwrites.edit(message.guild.roles.everyone, { SendMessages: false });
@@ -1561,7 +1334,6 @@ client.on(Events.MessageCreate, async (message) => {
     return message.reply({ embeds: [new EmbedBuilder().setColor('#FFE0E9').setTitle('Unlocked')] });
   }
 
-  // welcomer
   if (command === 'welcomer') {
     if (!message.member.permissions.has(PermissionFlagsBits.Administrator)) return message.reply('Admin only.');
     const channel = message.mentions.channels.first();
