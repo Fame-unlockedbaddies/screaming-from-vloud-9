@@ -463,7 +463,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
     return;
   }
 
-  // ===== Bot Execute =====
+  // ===== Bot Execute (all original commands) =====
   if (interaction.isStringSelectMenu() && interaction.customId === 'bot_execute') {
     if (!interaction.member.roles.cache.has(SPECIAL_ROLE)) {
       return interaction.reply({ content: 'No permission.', ephemeral: true });
@@ -593,8 +593,8 @@ client.on(Events.InteractionCreate, async (interaction) => {
         }
       }
 
-      // Interactive commands
-      if (choice === 'dm') {
+      // All original interactive commands (dm, hardban, hug, slap, punch, play, welcomer, leaver)
+      if (choice === 'dm') { /* original code - unchanged */ 
         await channel.send(`${author}, **mention the user** you want to DM (or type their ID):`);
         const userFilter = m => m.author.id === author.id;
         const userCollected = await channel.awaitMessages({ filter: userFilter, max: 1, time: 60000 }).catch(() => null);
@@ -616,8 +616,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
           await channel.send('Could not DM that user (they may have DMs closed).');
         }
       }
-
-      if (choice === 'hardban') {
+      if (choice === 'hardban') { /* original code */ 
         await channel.send(`${author}, **mention the user** you want to hardban (or type their ID):`);
         const userFilter = m => m.author.id === author.id;
         const userCollected = await channel.awaitMessages({ filter: userFilter, max: 1, time: 60000 }).catch(() => null);
@@ -632,7 +631,6 @@ client.on(Events.InteractionCreate, async (interaction) => {
         await target.ban({ deleteMessageSeconds: 604800, reason: `Hardbanned via /bot by ${author.tag}` });
         await channel.send({ embeds: [new EmbedBuilder().setColor('#FFE0E9').setTitle('Hardbanned').setDescription(`**${target.user.tag}** has been hardbanned.`)] });
       }
-
       if (['hug', 'slap', 'punch'].includes(choice)) {
         await channel.send(`${author}, **mention the user** you want to ${choice}:`);
         const userFilter = m => m.author.id === author.id;
@@ -646,7 +644,6 @@ client.on(Events.InteractionCreate, async (interaction) => {
           embeds: [new EmbedBuilder().setColor('#FFE0E9').setDescription(`**${author}** ${choice}ed **${target}**!`).setImage(gif)]
         });
       }
-
       if (choice === 'play') {
         await channel.send(`${author}, **type the song name or URL** you want to play:`);
         const songFilter = m => m.author.id === author.id;
@@ -693,7 +690,6 @@ client.on(Events.InteractionCreate, async (interaction) => {
           });
         }
       }
-
       if (choice === 'welcomer') await channel.send(`Please use the prefix command:\n\`${prefix}welcomer #channel\``);
       if (choice === 'leaver') await channel.send(`Please use the prefix command:\n\`${prefix}leaver #channel\``);
 
@@ -769,8 +765,15 @@ client.on(Events.InteractionCreate, async (interaction) => {
   }
   if (interaction.isStringSelectMenu() && interaction.customId === 'createchannel_type') {
     const type = parseInt(interaction.values[0]);
-    const modal = new ModalBuilder().setCustomId(`createchannel_modal_${type}`).setTitle('Create Channel');
-    const nameInput = new TextInputBuilder().setCustomId('channel_name').setLabel('Channel Name').setStyle(TextInputStyle.Short).setRequired(true).setMaxLength(100);
+    const modal = new ModalBuilder()
+      .setCustomId(`createchannel_modal_${type}`)
+      .setTitle('Create Channel');
+    const nameInput = new TextInputBuilder()
+      .setCustomId('channel_name')
+      .setLabel('Channel Name')
+      .setStyle(TextInputStyle.Short)
+      .setRequired(true)
+      .setMaxLength(100);
     modal.addComponents(new ActionRowBuilder().addComponents(nameInput));
     await interaction.showModal(modal);
     return;
@@ -779,7 +782,11 @@ client.on(Events.InteractionCreate, async (interaction) => {
     const type = parseInt(interaction.customId.replace('createchannel_modal_', ''));
     const name = interaction.fields.getTextInputValue('channel_name');
     try {
-      const channel = await interaction.guild.channels.create({ name, type, reason: `Created by ${interaction.user.tag}` });
+      const channel = await interaction.guild.channels.create({
+        name,
+        type,
+        reason: `Created by ${interaction.user.tag}`
+      });
       await interaction.reply({ content: `Successfully created ${channel}`, ephemeral: true });
     } catch (err) {
       await interaction.reply({ content: `Failed: ${err.message}`, ephemeral: true });
@@ -797,7 +804,10 @@ client.on(Events.InteractionCreate, async (interaction) => {
       return interaction.reply({ content: 'Bot is not in any other servers.', ephemeral: true });
     }
     const options = guilds.slice(0, 25).map(g =>
-      new StringSelectMenuOptionBuilder().setLabel(g.name.substring(0, 100)).setDescription(`${g.memberCount} members`).setValue(g.id)
+      new StringSelectMenuOptionBuilder()
+        .setLabel(g.name.substring(0, 100))
+        .setDescription(`${g.memberCount} members`)
+        .setValue(g.id)
     );
     const select = new StringSelectMenuBuilder()
       .setCustomId('servercopy_select')
@@ -995,7 +1005,6 @@ client.on(Events.InteractionCreate, async (interaction) => {
     await interaction.followUp({ content: `${user}, **now upload your banner image** (or type \`skip\` to skip):` });
     const bannerFilter = m => m.author.id === user.id;
     const bannerCol = await interaction.channel.awaitMessages({ filter: bannerFilter, max: 1, time: 60000 }).catch(() => null);
-
     let bannerUrl = null;
     if (bannerCol?.first()) {
       const bannerMsg = bannerCol.first();
@@ -1013,11 +1022,10 @@ client.on(Events.InteractionCreate, async (interaction) => {
       await interaction.followUp({ embeds: [bannerEmbed] });
     }
 
-    // Third custom image
+    // Third image
     await interaction.followUp({ content: `${user}, **now upload a third custom image** (or type \`skip\` to skip):` });
     const thirdFilter = m => m.author.id === user.id;
     const thirdCol = await interaction.channel.awaitMessages({ filter: thirdFilter, max: 1, time: 60000 }).catch(() => null);
-
     let thirdUrl = null;
     if (thirdCol?.first()) {
       const thirdMsg = thirdCol.first();
@@ -1129,10 +1137,12 @@ client.on(Events.MessageCreate, async (message) => {
   if (command === 'set' && args[0]?.toLowerCase() === 'ticket' && args[1]?.toLowerCase() === 'system') {
     if (!message.member.permissions.has(PermissionFlagsBits.Administrator)) return message.reply('Admin only.');
 
-    await message.reply({ embeds: [new EmbedBuilder()
-      .setColor('#FFE0E9')
-      .setTitle('Ticket System Setup')
-      .setDescription('Please answer the following questions one by one.\n\n**1.** Send the **banner image** URL (or upload an image).\nType `skip` to skip the banner.')] });
+    await message.reply({
+      embeds: [new EmbedBuilder()
+        .setColor('#FFE0E9')
+        .setTitle('Ticket System Setup')
+        .setDescription('Please answer the following questions one by one.\n\n**1.** Send the **banner image** URL (or upload an image).\nType `skip` to skip the banner.')]
+    });
 
     const filter = m => m.author.id === message.author.id;
 
@@ -1144,42 +1154,58 @@ client.on(Events.MessageCreate, async (message) => {
         if (bannerMsg.attachments.size > 0) banner = bannerMsg.attachments.first().url;
         else if (bannerMsg.content.toLowerCase() !== 'skip') banner = bannerMsg.content.trim();
       }
-    } catch { return message.channel.send('Setup timed out.'); }
+    } catch {
+      return message.channel.send('Setup timed out.');
+    }
 
-    await message.channel.send({ embeds: [new EmbedBuilder()
-      .setColor('#FFE0E9')
-      .setTitle('Ticket System Setup')
-      .setDescription('**2.** What should the **ticket title** be?\n(Example: `Support Ticket`)')] });
+    await message.channel.send({
+      embeds: [new EmbedBuilder()
+        .setColor('#FFE0E9')
+        .setTitle('Ticket System Setup')
+        .setDescription('**2.** What should the **ticket title** be?\n(Example: `Support Ticket`)')]
+    });
     let title = 'Support Ticket';
     try {
       const titleCol = await message.channel.awaitMessages({ filter, max: 1, time: 60000 });
       if (titleCol.first()) title = titleCol.first().content.trim() || 'Support Ticket';
-    } catch { return message.channel.send('Setup timed out.'); }
+    } catch {
+      return message.channel.send('Setup timed out.');
+    }
 
-    await message.channel.send({ embeds: [new EmbedBuilder()
-      .setColor('#FFE0E9')
-      .setTitle('Ticket System Setup')
-      .setDescription('**3.** What should the **ticket bio / description** be?\n(This appears inside every new ticket)')] });
+    await message.channel.send({
+      embeds: [new EmbedBuilder()
+        .setColor('#FFE0E9')
+        .setTitle('Ticket System Setup')
+        .setDescription('**3.** What should the **ticket bio / description** be?\n(This appears inside every new ticket)')]
+    });
     let bio = 'A staff member will assist you shortly. Please describe your issue.';
     try {
       const bioCol = await message.channel.awaitMessages({ filter, max: 1, time: 90000 });
       if (bioCol.first()) bio = bioCol.first().content.trim() || bio;
-    } catch { return message.channel.send('Setup timed out.'); }
+    } catch {
+      return message.channel.send('Setup timed out.');
+    }
 
-    await message.channel.send({ embeds: [new EmbedBuilder()
-      .setColor('#FFE0E9')
-      .setTitle('Ticket System Setup')
-      .setDescription('**4.** What should the **button name** be?\n(Example: `Open Ticket` or `Support`)')] });
+    await message.channel.send({
+      embeds: [new EmbedBuilder()
+        .setColor('#FFE0E9')
+        .setTitle('Ticket System Setup')
+        .setDescription('**4.** What should the **button name** be?\n(Example: `Open Ticket` or `Support`)')]
+    });
     let buttonName = 'Open Ticket';
     try {
       const btnCol = await message.channel.awaitMessages({ filter, max: 1, time: 60000 });
       if (btnCol.first()) buttonName = btnCol.first().content.trim() || 'Open Ticket';
-    } catch { return message.channel.send('Setup timed out.'); }
+    } catch {
+      return message.channel.send('Setup timed out.');
+    }
 
-    await message.channel.send({ embeds: [new EmbedBuilder()
-      .setColor('#FFE0E9')
-      .setTitle('Ticket System Setup')
-      .setDescription('**5.** What **emoji** should the button use?\n(Example: 🎫 or 📩)\nType `none` for no emoji.')] });
+    await message.channel.send({
+      embeds: [new EmbedBuilder()
+        .setColor('#FFE0E9')
+        .setTitle('Ticket System Setup')
+        .setDescription('**5.** What **emoji** should the button use?\n(Example: 🎫 or 📩)\nType `none` for no emoji.')]
+    });
     let buttonEmoji = '🎫';
     try {
       const emojiCol = await message.channel.awaitMessages({ filter, max: 1, time: 60000 });
@@ -1187,12 +1213,16 @@ client.on(Events.MessageCreate, async (message) => {
         const e = emojiCol.first().content.trim();
         buttonEmoji = e.toLowerCase() === 'none' ? null : e;
       }
-    } catch { return message.channel.send('Setup timed out.'); }
+    } catch {
+      return message.channel.send('Setup timed out.');
+    }
 
-    await message.channel.send({ embeds: [new EmbedBuilder()
-      .setColor('#FFE0E9')
-      .setTitle('Ticket System Setup')
-      .setDescription('**6.** (Optional) Mention a **category** where tickets should be created.\nType `skip` to put them at the top level.')] });
+    await message.channel.send({
+      embeds: [new EmbedBuilder()
+        .setColor('#FFE0E9')
+        .setTitle('Ticket System Setup')
+        .setDescription('**6.** (Optional) Mention a **category** where tickets should be created.\nType `skip` to put them at the top level.')]
+    });
     let categoryId = null;
     try {
       const catCol = await message.channel.awaitMessages({ filter, max: 1, time: 60000 });
@@ -1205,7 +1235,13 @@ client.on(Events.MessageCreate, async (message) => {
       }
     } catch {}
 
-    data.tickets[message.guild.id] = { title, bio, banner, categoryId, buttons: [{ name: buttonName, emoji: buttonEmoji }] };
+    data.tickets[message.guild.id] = {
+      title,
+      bio,
+      banner,
+      categoryId,
+      buttons: [{ name: buttonName, emoji: buttonEmoji }]
+    };
     saveData();
 
     const panelEmbed = new EmbedBuilder()
@@ -1217,14 +1253,24 @@ client.on(Events.MessageCreate, async (message) => {
     if (banner) panelEmbed.setImage(banner);
 
     const row = new ActionRowBuilder().addComponents(
-      new ButtonBuilder().setCustomId('ticket_open_0').setLabel(buttonName).setStyle(ButtonStyle.Primary).setEmoji(buttonEmoji || undefined)
+      new ButtonBuilder()
+        .setCustomId('ticket_open_0')
+        .setLabel(buttonName)
+        .setStyle(ButtonStyle.Primary)
+        .setEmoji(buttonEmoji || undefined)
     );
 
-    await message.channel.send({ embeds: [panelEmbed], components: [row] });
-    return message.channel.send({ embeds: [new EmbedBuilder()
-      .setColor('#FFE0E9')
-      .setTitle('Ticket System Ready')
-      .setDescription('Ticket panel created!\n\nYou can run `,set ticket system` again anytime to create **more panels** — all of them will work at the same time.')] });
+    await message.channel.send({
+      embeds: [panelEmbed],
+      components: [row]
+    });
+
+    return message.channel.send({
+      embeds: [new EmbedBuilder()
+        .setColor('#FFE0E9')
+        .setTitle('Ticket System Ready')
+        .setDescription('Ticket panel created!\n\nYou can run `,set ticket system` again anytime to create **more panels** — all of them will work at the same time.')]
+    });
   }
 
   if (['hug', 'slap', 'punch', 'kick'].includes(command)) {
@@ -1243,8 +1289,13 @@ client.on(Events.MessageCreate, async (message) => {
     const msg = await message.reply('Searching...');
     const result = await findSong(query);
     if (!result.success) return msg.edit(result.error);
-    const song = { title: result.title, url: result.url, duration: result.duration, thumbnail: result.thumbnail, requestedBy: message.author };
-
+    const song = {
+      title: result.title,
+      url: result.url,
+      duration: result.duration,
+      thumbnail: result.thumbnail,
+      requestedBy: message.author
+    };
     let queue = getQueue(message.guild.id);
     if (!queue) {
       const connection = joinVoiceChannel({
