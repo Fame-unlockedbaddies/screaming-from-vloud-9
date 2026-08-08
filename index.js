@@ -72,10 +72,6 @@ function getPrefix(guildId) {
   return data.prefixes[guildId] || ',';
 }
 
-const SPECIAL_ROLE = '1531850051771568128';
-const VEYNETTA_ID = '1497846804480524298';
-const AUTOMOD_WORDS = ['dog', 'zoophile', 'porn', 'nsfw', '18+', 'charlie', 'dainty'];
-
 // ==================== MUSIC SYSTEM ====================
 const queues = new Map();
 function getQueue(guildId) {
@@ -335,10 +331,6 @@ client.on(Events.ChannelDelete, async (channel) => {
   const byUser = filtered.filter(e => e.executorId === executor.id);
   if (byUser.length >= ANTINUKE_THRESHOLD) {
     try { await guild.members.ban(executor.id, { reason: 'Petal Anti-Nuke' }); } catch {}
-    try {
-      const user = await client.users.fetch(executor.id);
-      await user.send('kicked by petal');
-    } catch {}
     await restoreChannels(guild, byUser.map(e => e.data));
     recentChannelDeletes.set(guild.id, filtered.filter(e => e.executorId !== executor.id));
   }
@@ -376,10 +368,6 @@ client.on(Events.GuildRoleDelete, async (role) => {
   const byUser = filtered.filter(e => e.executorId === executor.id);
   if (byUser.length >= ANTINUKE_THRESHOLD) {
     try { await guild.members.ban(executor.id, { reason: 'Petal Anti-Nuke' }); } catch {}
-    try {
-      const user = await client.users.fetch(executor.id);
-      await user.send('kicked by petal');
-    } catch {}
     await restoreRoles(guild, byUser.map(e => e.data));
     recentRoleDeletes.set(guild.id, filtered.filter(e => e.executorId !== executor.id));
   }
@@ -410,6 +398,10 @@ const commands = [
   {
     name: 'rules',
     description: 'Send the professional server rules embed (Special Role Only)'
+  },
+  {
+    name: 'pfps',
+    description: 'Showcase your profile picture, banner, and a third custom image (Special Role Only)'
   }
 ];
 
@@ -553,7 +545,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
             { name: 'Tickets', value: `\`${prefix}set ticket system\`` },
             { name: 'Music', value: `\`${prefix}play\`\n\`${prefix}skip\`\n\`${prefix}stop\`\n\`${prefix}pause\`\n\`${prefix}resume\`\n\`${prefix}queue\`\n\`${prefix}np\`\n\`${prefix}leave\`` },
             { name: 'Fun', value: `\`${prefix}hug\`\n\`${prefix}slap\`\n\`${prefix}punch\`\n\`${prefix}kick\`` },
-            { name: 'Slash Commands', value: '`/send`\n`/servercopy`\n`/createchannel`\n`/bot`\n`/rules`' }
+            { name: 'Slash Commands', value: '`/send`\n`/servercopy`\n`/createchannel`\n`/bot`\n`/rules`\n`/pfps`' }
           )
           .setFooter({ text: 'Executed by Petal' });
         await channel.send({ embeds: [embed] });
@@ -1110,16 +1102,105 @@ client.on(Events.InteractionCreate, async (interaction) => {
     }, 5000);
     return;
   }
+
+  // ===== /pfps =====
+  if (interaction.isChatInputCommand() && interaction.commandName === 'pfps') {
+    if (!interaction.member.roles.cache.has(SPECIAL_ROLE)) {
+      return interaction.reply({ content: 'You do not have permission to use this command.', ephemeral: true });
+    }
+
+    await interaction.deferReply({ ephemeral: true });
+
+    const user = interaction.user;
+
+    // Profile picture
+    const avatarUrl = user.displayAvatarURL({ dynamic: true, size: 1024 });
+    const profileEmbed = new EmbedBuilder()
+      .setColor('#FFE0E9')
+      .setTitle(`**${user.username}** Profile Picture`)
+      .setImage(avatarUrl)
+      .setFooter({ text: 'Petal • Showcasing' })
+      .setTimestamp();
+
+    await interaction.followUp({ embeds: [profileEmbed] });
+
+    // Banner image
+    await interaction.followUp({
+      content: `${user}, **now upload your banner image** (or type \`skip\` to skip):`
+    });
+    const bannerFilter = m => m.author.id === user.id;
+    const bannerCol = await interaction.channel.awaitMessages({
+      filter: bannerFilter,
+      max: 1,
+      time: 60000
+    }).catch(() => null);
+
+    let bannerUrl = null;
+    if (bannerCol?.first()) {
+      const bannerMsg = bannerCol.first();
+      if (bannerMsg.content.toLowerCase() !== 'skip') {
+        if (bannerMsg.attachments.size > 0) {
+          bannerUrl = bannerMsg.attachments.first().url;
+        } else {
+          bannerUrl = bannerMsg.content.trim();
+        }
+      }
+    }
+
+    if (bannerUrl) {
+      const bannerEmbed = new EmbedBuilder()
+        .setColor('#FFE0E9')
+        .setTitle(`**${user.username}** Banner`)
+        .setImage(bannerUrl)
+        .setFooter({ text: 'Petal • Showcasing' })
+        .setTimestamp();
+      await interaction.followUp({ embeds: [bannerEmbed] });
+    }
+
+    // Third custom image
+    await interaction.followUp({
+      content: `${user}, **now upload a third custom image** (or type \`skip\` to skip):`
+    });
+    const thirdFilter = m => m.author.id === user.id;
+    const thirdCol = await interaction.channel.awaitMessages({
+      filter: thirdFilter,
+      max: 1,
+      time: 60000
+    }).catch(() => null);
+
+    let thirdUrl = null;
+    if (thirdCol?.first()) {
+      const thirdMsg = thirdCol.first();
+      if (thirdMsg.content.toLowerCase() !== 'skip') {
+        if (thirdMsg.attachments.size > 0) {
+          thirdUrl = thirdMsg.attachments.first().url;
+        } else {
+          thirdUrl = thirdMsg.content.trim();
+        }
+      }
+    }
+
+    if (thirdUrl) {
+      const thirdEmbed = new EmbedBuilder()
+        .setColor('#FFE0E9')
+        .setTitle(`**${user.username}** Third Image`)
+        .setImage(thirdUrl)
+        .setFooter({ text: 'Petal • Showcasing' })
+        .setTimestamp();
+      await interaction.followUp({ embeds: [thirdEmbed] });
+    }
+
+    await interaction.followUp({
+      content: `✅ **Showcase complete** for **${user.username}**! Profile picture, banner, and third image (if provided) have been sent.`
+    });
+
+    return;
+  }
 });
 
 // ==================== PREFIX COMMANDS ====================
 client.on(Events.MessageCreate, async (message) => {
   if (message.author.bot || !message.guild) return;
-
-  // ===== VEYNETTA MENTION PROTECTION =====
-  if (message.mentions.users.has(VEYNETTA_ID)) {
-    return message.reply('Veynetta is busy please wait');
-  }
 
   // ===== AUTOMOD =====
   if (data.automod[message.guild.id]?.enabled) {
@@ -1185,7 +1266,7 @@ client.on(Events.MessageCreate, async (message) => {
         { name: 'Tickets', value: `\`${prefix}set ticket system\`` },
         { name: 'Music', value: `\`${prefix}play\`\n\`${prefix}skip\`\n\`${prefix}stop\`\n\`${prefix}pause\`\n\`${prefix}resume\`\n\`${prefix}queue\`\n\`${prefix}np\`\n\`${prefix}leave\`` },
         { name: 'Fun', value: `\`${prefix}hug\`\n\`${prefix}slap\`\n\`${prefix}punch\`\n\`${prefix}kick\`` },
-        { name: 'Slash Commands', value: '`/send`\n`/servercopy`\n`/createchannel`\n`/bot`\n`/rules`' }
+        { name: 'Slash Commands', value: '`/send`\n`/servercopy`\n`/createchannel`\n`/bot`\n`/rules`\n`/pfps`' }
       );
     return message.reply({ embeds: [embed] });
   }
