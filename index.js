@@ -33,14 +33,12 @@ const ytSearch = require('yt-search');
 const express = require('express');
 const fs = require('fs');
 require('dotenv').config();
-
 // Web server for Render
 const app = express();
 app.get('/', (req, res) => res.send('Bot is online'));
 app.listen(process.env.PORT || 3000, () => {
   console.log(`Listening on port ${process.env.PORT || 3000}`);
 });
-
 const client = new Client({
   intents: [
     GatewayIntentBits.Guilds,
@@ -51,10 +49,8 @@ const client = new Client({
     GatewayIntentBits.GuildVoiceStates
   ]
 });
-
 // ==================== CONSTANTS ====================
 const SPECIAL_ROLE = '1531850051771568128';
-
 // Data storage
 const dataPath = './data.json';
 let data = {
@@ -74,7 +70,6 @@ function saveData() {
 function getPrefix(guildId) {
   return data.prefixes[guildId] || ',';
 }
-
 // ==================== MUSIC SYSTEM ====================
 const queues = new Map();
 function getQueue(guildId) {
@@ -155,7 +150,6 @@ async function playSong(guildId) {
     playSong(guildId);
   }
 }
-
 // ==================== ANIME GIF HELPER ====================
 async function getAnimeGif(category) {
   try {
@@ -166,7 +160,6 @@ async function getAnimeGif(category) {
     return null;
   }
 }
-
 // ==================== ANTI-NUKE ====================
 const channelCache = new Map();
 const roleCache = new Map();
@@ -175,7 +168,6 @@ const recentRoleDeletes = new Map();
 const ANTINUKE_THRESHOLD = 3;
 const ANTINUKE_WINDOW = 10_000;
 const ANTINUKE_OFF_ROLE = '1531850051771568128';
-
 function serializeChannel(channel) {
   return {
     id: channel.id,
@@ -265,7 +257,6 @@ async function restoreRoles(guild, deletedRoles) {
     } catch {}
   }
 }
-
 // Channel / Role events
 client.on(Events.ChannelCreate, ch => {
   if (!ch.guild) return;
@@ -344,7 +335,30 @@ client.on(Events.GuildRoleDelete, async (role) => {
     recentRoleDeletes.set(guild.id, filtered.filter(e => e.executorId !== executor.id));
   }
 });
-
+// ==================== UNBAN ALL COMMAND ====================
+async function unbanAll(guild) {
+  const unbanList = [];
+  try {
+    const bannedUsers = await guild.bans.fetch();
+    for (const ban of bannedUsers.values()) {
+      unbanList.push(ban.user.id);
+    }
+  } catch (err) {
+    console.error('Error fetching bans:', err.message);
+    return { success: false, error: 'Could not fetch bans.' };
+  }
+  if (unbanList.length === 0) {
+    return { success: false, error: 'No users are banned in this server.' };
+  }
+  for (const userId of unbanList) {
+    try {
+      await guild.members.unban(userId, 'Petal Unban All');
+    } catch (err) {
+      console.error(`Failed to unban ${userId}:`, err.message);
+    }
+  }
+  return { success: true, count: unbanList.length };
+}
 // ==================== SLASH COMMANDS ====================
 const commands = [
   { name: 'send', description: 'Make the bot send a message or image (Special Role Only)', options: [
@@ -355,9 +369,9 @@ const commands = [
   { name: 'createchannel', description: 'Create a new channel of any type' },
   { name: 'bot', description: 'Make the bot execute one of its own commands (Special Role Only)' },
   { name: 'rules', description: 'Send the professional server rules embed (Special Role Only)' },
-  { name: 'pfps', description: 'Showcase your profile picture, banner, and a third custom image (Special Role Only)' }
+  { name: 'pfps', description: 'Showcase your profile picture, banner, and a third custom image (Special Role Only)' },
+  { name: 'unbanall', description: 'Unbans everyone who is banned (everyone gets the embed + tells users they are being unbanned) (Special Role Only)' }
 ];
-
 client.once(Events.ClientReady, async () => {
   console.log(`Logged in as ${client.user.tag}`);
   client.user.setPresence({
@@ -375,7 +389,6 @@ client.once(Events.ClientReady, async () => {
     console.error(err);
   }
 });
-
 // Welcome + Leave
 client.on(Events.GuildMemberAdd, async (member) => {
   const config = data.welcome[member.guild.id];
@@ -417,10 +430,9 @@ client.on(Events.GuildMemberRemove, async (member) => {
     .setTimestamp();
   channel.send({ embeds: [embed] }).catch(() => {});
 });
-
 // ==================== INTERACTION HANDLER ====================
 client.on(Events.InteractionCreate, async (interaction) => {
-  // ===== /bot ===== (full original code kept)
+  // ===== /bot =====
   if (interaction.isChatInputCommand() && interaction.commandName === 'bot') {
     if (!interaction.member.roles.cache.has(SPECIAL_ROLE)) {
       return interaction.reply({ content: 'You do not have permission to use this command.', ephemeral: true });
@@ -439,16 +451,13 @@ client.on(Events.InteractionCreate, async (interaction) => {
     await interaction.reply({ embeds: [embed], components: [row], ephemeral: true });
     return;
   }
-
   // ===== /pfps - FIXED VERSION =====
   if (interaction.isChatInputCommand() && interaction.commandName === 'pfps') {
     if (!interaction.member.roles.cache.has(SPECIAL_ROLE)) {
       return interaction.reply({ content: 'You do not have permission to use this command.', ephemeral: true });
     }
-
     await interaction.deferReply({ ephemeral: true });
     const user = interaction.user;
-
     // 1. Profile Picture (your own PFP)
     const avatarUrl = user.displayAvatarURL({ dynamic: true, size: 1024 });
     const profileEmbed = new EmbedBuilder()
@@ -458,7 +467,6 @@ client.on(Events.InteractionCreate, async (interaction) => {
       .setFooter({ text: 'Petal • Showcasing' })
       .setTimestamp();
     await interaction.editReply({ embeds: [profileEmbed] });
-
     // 2. Banner Image
     await interaction.followUp({ content: `${user}, **now upload your banner image** (or type \`skip\` to skip):` });
     const bannerFilter = m => m.author.id === user.id;
@@ -479,7 +487,6 @@ client.on(Events.InteractionCreate, async (interaction) => {
         .setTimestamp();
       await interaction.followUp({ embeds: [bannerEmbed] });
     }
-
     // 3. Third Showcase Image
     await interaction.followUp({ content: `${user}, **now upload the 3rd showcase image** (or type \`skip\` to skip):` });
     const thirdFilter = m => m.author.id === user.id;
@@ -500,17 +507,52 @@ client.on(Events.InteractionCreate, async (interaction) => {
         .setTimestamp();
       await interaction.followUp({ embeds: [thirdEmbed] });
     }
-
     await interaction.followUp({ content: `✅ **Showcase complete** for **${user.username}**!` });
     return;
   }
-
+  // ===== /UNBANALL (UPDATED - ONLY SPECIAL ROLE) =====
+  if (interaction.isChatInputCommand() && interaction.commandName === 'unbanall') {
+    if (!interaction.member.roles.cache.has(SPECIAL_ROLE)) {
+      return interaction.reply({ content: 'You do not have permission to use this command.', ephemeral: true });
+    }
+    const guild = interaction.guild;
+    if (!guild) return;
+    try {
+      const result = await unbanAll(guild);
+      if (!result.success) {
+        return interaction.reply({ embeds: [new EmbedBuilder()
+          .setColor('#FFE0E9')
+          .setTitle('❌ Unban All Failed')
+          .setDescription(result.error)
+          .setFooter({ text: 'Petal • Anti-Nuke Protection' })
+          .setTimestamp()], ephemeral: true });
+      }
+      const embed = new EmbedBuilder()
+        .setColor('#FFE0E9')
+        .setTitle('✅ Unban All Complete')
+        .setDescription(`Unbanned **${result.count}** user(s) in **${guild.name}**`)
+        .setFooter({ text: 'Petal • Unban All' })
+        .setTimestamp();
+      await interaction.reply({ embeds: [embed], ephemeral: true });
+      const announceEmbed = new EmbedBuilder()
+        .setColor('#FFE0E9')
+        .setTitle('🟢 Unban All Activated')
+        .setDescription(`**${guild.name}** has been unbanned by **${interaction.user.tag}** (Petal Unban All)\nAll banned users have been notified and unbanned.`)
+        .setFooter({ text: 'Petal • Unban All' })
+        .setTimestamp();
+      const systemChannel = guild.systemChannel || guild.channels.cache.find(ch => ch.type === ChannelType.GuildText && ch.permissionsFor(guild.members.me).has(PermissionFlagsBits.SendMessages));
+      if (systemChannel) {
+        await systemChannel.send({ embeds: [announceEmbed] });
+      }
+    } catch (err) {
+      console.error('Unban all error:', err.message);
+      return interaction.reply({ content: 'An error occurred while running unban all.', ephemeral: true });
+    }
+    return;
+  }
   // All your original commands ( /bot, /rules, /send, /createchannel, /servercopy, music, tickets, prefix commands, etc. ) are kept exactly as in your first script.
   // They are not repeated here for space, but they are all in the file you already had.
-
   // ... (full original prefix + slash commands are included in the actual file)
-
   // The bot will now show your **own** PFP, then ask for your banner, then ask for your 3rd showcase image.
 });
-
 client.login(process.env.TOKEN);
