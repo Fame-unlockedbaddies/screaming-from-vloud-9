@@ -360,7 +360,6 @@ async function unbanAll(guild) {
   return { success: true, count: unbanList.length };
 }
 // ==================== SLASH COMMANDS ====================
-// FIXED: All descriptions shortened to <100 characters so the Discord API accepts them
 const commands = [
   { name: 'send', description: 'Make bot send message or image (Special Only)', options: [
     { name: 'message', description: 'The text to send', type: ApplicationCommandOptionType.String, required: false },
@@ -371,7 +370,8 @@ const commands = [
   { name: 'bot', description: 'Make the bot execute one of its own commands (Special Only)' },
   { name: 'rules', description: 'Send the professional server rules embed (Special Only)' },
   { name: 'pfps', description: 'Showcase your profile picture, banner, and 3rd image (Special Only)' },
-  { name: 'unbanall', description: 'Unbans everyone who is banned (Special Only)' }
+  { name: 'unbanall', description: 'Unbans everyone who is banned (Special Only)' },
+  { name: 'weaponvote', description: 'Vote on a weapon (requires image + name + desc)' }
 ];
 client.once(Events.ClientReady, async () => {
   console.log(`Logged in as ${client.user.tag}`);
@@ -433,7 +433,7 @@ client.on(Events.GuildMemberRemove, async (member) => {
 });
 // ==================== INTERACTION HANDLER ====================
 client.on(Events.InteractionCreate, async (interaction) => {
-  // ===== /bot ===== (full original code kept)
+  // ===== /bot =====
   if (interaction.isChatInputCommand() && interaction.commandName === 'bot') {
     if (!interaction.member.roles.cache.has(SPECIAL_ROLE)) {
       return interaction.reply({ content: 'You do not have permission to use this command.', ephemeral: true });
@@ -459,7 +459,6 @@ client.on(Events.InteractionCreate, async (interaction) => {
     }
     await interaction.deferReply({ ephemeral: true });
     const user = interaction.user;
-    // 1. Profile Picture (your own PFP)
     const avatarUrl = user.displayAvatarURL({ dynamic: true, size: 1024 });
     const profileEmbed = new EmbedBuilder()
       .setColor('#FFE0E9')
@@ -468,7 +467,6 @@ client.on(Events.InteractionCreate, async (interaction) => {
       .setFooter({ text: 'Petal • Showcasing' })
       .setTimestamp();
     await interaction.editReply({ embeds: [profileEmbed] });
-    // 2. Banner Image
     await interaction.followUp({ content: `${user}, **now upload your banner image** (or type \`skip\` to skip):` });
     const bannerFilter = m => m.author.id === user.id;
     const bannerCol = await interaction.channel.awaitMessages({ filter: bannerFilter, max: 1, time: 60000 }).catch(() => null);
@@ -488,7 +486,6 @@ client.on(Events.InteractionCreate, async (interaction) => {
         .setTimestamp();
       await interaction.followUp({ embeds: [bannerEmbed] });
     }
-    // 3. Third Showcase Image
     await interaction.followUp({ content: `${user}, **now upload the 3rd showcase image** (or type \`skip\` to skip):` });
     const thirdFilter = m => m.author.id === user.id;
     const thirdCol = await interaction.channel.awaitMessages({ filter: thirdFilter, max: 1, time: 60000 }).catch(() => null);
@@ -511,7 +508,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
     await interaction.followUp({ content: `✅ **Showcase complete** for **${user.username}**!` });
     return;
   }
-  // ===== /UNBANALL (only SPECIAL ROLE) =====
+  // ===== /UNBANALL =====
   if (interaction.isChatInputCommand() && interaction.commandName === 'unbanall') {
     if (!interaction.member.roles.cache.has(SPECIAL_ROLE)) {
       return interaction.reply({ content: 'You do not have permission to use this command.', ephemeral: true });
@@ -551,9 +548,141 @@ client.on(Events.InteractionCreate, async (interaction) => {
     }
     return;
   }
+
+  // ==================== WEAPON VOTE COMMAND (NEW) ====================
+  if (interaction.isChatInputCommand() && interaction.commandName === 'weaponvote') {
+    if (!interaction.member.roles.cache.has(SPECIAL_ROLE)) {
+      return interaction.reply({ content: 'You do not have permission to use this command.', ephemeral: true });
+    }
+
+    await interaction.deferReply({ ephemeral: true });
+
+    const nameInput = interaction.options.getString('name');
+    const descInput = interaction.options.getString('description');
+    const imageInput = interaction.options.getAttachment('image');
+
+    if (!nameInput || !descInput || !imageInput) {
+      return interaction.editReply({ 
+        content: '❌ Please provide **name**, **description**, and **image**.',
+        ephemeral: true 
+      });
+    }
+
+    const name = nameInput.trim();
+    const description = descInput.trim();
+
+    if (!name || !description) {
+      return interaction.editReply({ 
+        content: '❌ Name and description cannot be empty.',
+        ephemeral: true 
+      });
+    }
+
+    const embed = new EmbedBuilder()
+      .setColor('#FFE0E9')
+      .setTitle(`🔫 **${name} Vote**`)
+      .setDescription(`**${description}**`)
+      .setImage(imageInput.url)
+      .setFooter({ text: `Posted by ${interaction.user.tag} • Vote using the buttons below!` })
+      .setTimestamp();
+
+    const row = new ActionRowBuilder().addComponents(
+      new ButtonBuilder()
+        .setCustomId('vote_yes')
+        .setLabel('✅ Yes')
+        .setStyle(ButtonStyle.Success),
+      new ButtonBuilder()
+        .setCustomId('vote_no')
+        .setLabel('❌ No')
+        .setStyle(ButtonStyle.Danger)
+    );
+
+    const sentMessage = await interaction.editReply({ 
+      embeds: [embed], 
+      components: [row] 
+    });
+
+    // Track votes
+    const voteYes = new Map();
+    const voteNo = new Map();
+
+    // Button collector
+    const collector = sentMessage.createMessageComponentCollector({ 
+      time: 300000 // 5 minutes
+    });
+
+    collector.on('collect', async i => {
+      if (!['vote_yes', 'vote_no'].includes(i.customId)) return;
+
+      // Remove from other vote
+      if (i.customId === 'vote_yes' && voteNo.has(i.user.id)) {
+        voteNo.delete(i.user.id);
+      } else if (i.customId === 'vote_no' && voteYes.has(i.user.id)) {
+        voteYes.delete(i.user.id);
+      }
+
+      // Toggle vote
+      if (i.customId === 'vote_yes') {
+        voteYes.set(i.user.id, true);
+        voteNo.delete(i.user.id);
+      } else {
+        voteNo.set(i.user.id, true);
+        voteYes.delete(i.user.id);
+      }
+
+      // Update message
+      const yesCount = voteYes.size;
+      const noCount = voteNo.size;
+      const total = yesCount + noCount;
+
+      const updatedEmbed = new EmbedBuilder()
+        .setColor('#FFE0E9')
+        .setTitle(`🔫 **${name} Vote**`)
+        .setDescription(`**${description}**\n\n**Votes:**\n✅ Yes: **${yesCount}**\n❌ No: **${noCount}**`)
+        .setImage(imageInput.url)
+        .setFooter({ text: `Posted by ${interaction.user.tag} • Vote using the buttons below!` })
+        .setTimestamp();
+
+      await i.update({ embeds: [updatedEmbed], components: [row] });
+    });
+
+    collector.on('end', async () => {
+      const finalEmbed = new EmbedBuilder()
+        .setColor('#FFE0E9')
+        .setTitle(`🔫 **${name} Vote Results**`)
+        .setDescription(`**${description}**\n\n**Final Votes:**\n✅ Yes: **${voteYes.size}**\n❌ No: **${voteNo.size}**`)
+        .setImage(imageInput.url)
+        .setFooter({ text: 'Voting closed!' })
+        .setTimestamp();
+
+      await interaction.editReply({ embeds: [finalEmbed], components: [] });
+
+      // Tell everyone
+      const everyoneEmbed = new EmbedBuilder()
+        .setColor('#FFE0E9')
+        .setTitle(`🔫 **${name} Weapon Vote**`)
+        .setDescription(`**${description}**\n\n**Final Results:**\n✅ Yes: **${voteYes.size}**\n❌ No: **${voteNo.size}**\n\n**Voting is now closed.**`)
+        .setImage(imageInput.url)
+        .setFooter({ text: 'Weapon vote complete' })
+        .setTimestamp();
+
+      const systemChannel = interaction.guild.systemChannel || interaction.guild.channels.cache.find(ch => ch.type === ChannelType.GuildText && ch.permissionsFor(client.user).has(PermissionFlagsBits.SendMessages));
+      if (systemChannel) {
+        await systemChannel.send({ embeds: [everyoneEmbed] });
+      }
+
+      // Add self reaction
+      try {
+        await sentMessage.react('✅');
+        await sentMessage.react('❌');
+      } catch (e) {}
+    });
+
+    return;
+  }
+
   // All your original commands ( /bot, /rules, /send, /createchannel, /servercopy, music, tickets, prefix commands, etc. ) are kept exactly as in your first script.
   // They are not repeated here for space, but they are all in the file you already had.
   // ... (full original prefix + slash commands are included in the actual file)
-  // The bot will now show your **own** PFP, then ask for your banner, then ask for your 3rd showcase image.
 });
 client.login(process.env.TOKEN);
