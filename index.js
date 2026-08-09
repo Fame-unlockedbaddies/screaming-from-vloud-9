@@ -360,17 +360,18 @@ async function unbanAll(guild) {
   return { success: true, count: unbanList.length };
 }
 // ==================== SLASH COMMANDS ====================
+// FIXED: All descriptions shortened to <100 characters so the Discord API accepts them
 const commands = [
-  { name: 'send', description: 'Make the bot send a message or image (Special Role Only)', options: [
+  { name: 'send', description: 'Make bot send message or image (Special Only)', options: [
     { name: 'message', description: 'The text to send', type: ApplicationCommandOptionType.String, required: false },
     { name: 'image', description: 'An image to send', type: ApplicationCommandOptionType.Attachment, required: false }
   ]},
-  { name: 'servercopy', description: 'Copy all channels from another server (Special Role Only)' },
+  { name: 'servercopy', description: 'Copy all channels from another server (Special Only)' },
   { name: 'createchannel', description: 'Create a new channel of any type' },
-  { name: 'bot', description: 'Make the bot execute one of its own commands (Special Role Only)' },
-  { name: 'rules', description: 'Send the professional server rules embed (Special Role Only)' },
-  { name: 'pfps', description: 'Showcase your profile picture, banner, and a third custom image (Special Role Only)' },
-  { name: 'unbanall', description: 'Unbans everyone who is banned (everyone gets the embed + tells users they are being unbanned) (Special Role Only)' }
+  { name: 'bot', description: 'Make the bot execute one of its own commands (Special Only)' },
+  { name: 'rules', description: 'Send the professional server rules embed (Special Only)' },
+  { name: 'pfps', description: 'Showcase your profile picture, banner, and 3rd image (Special Only)' },
+  { name: 'unbanall', description: 'Unbans everyone who is banned (Special Only)' }
 ];
 client.once(Events.ClientReady, async () => {
   console.log(`Logged in as ${client.user.tag}`);
@@ -432,7 +433,7 @@ client.on(Events.GuildMemberRemove, async (member) => {
 });
 // ==================== INTERACTION HANDLER ====================
 client.on(Events.InteractionCreate, async (interaction) => {
-  // ===== /bot =====
+  // ===== /bot ===== (full original code kept)
   if (interaction.isChatInputCommand() && interaction.commandName === 'bot') {
     if (!interaction.member.roles.cache.has(SPECIAL_ROLE)) {
       return interaction.reply({ content: 'You do not have permission to use this command.', ephemeral: true });
@@ -510,7 +511,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
     await interaction.followUp({ content: `✅ **Showcase complete** for **${user.username}**!` });
     return;
   }
-  // ===== /UNBANALL (UPDATED - ONLY SPECIAL ROLE) =====
+  // ===== /UNBANALL (only SPECIAL ROLE) =====
   if (interaction.isChatInputCommand() && interaction.commandName === 'unbanall') {
     if (!interaction.member.roles.cache.has(SPECIAL_ROLE)) {
       return interaction.reply({ content: 'You do not have permission to use this command.', ephemeral: true });
