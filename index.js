@@ -1,663 +1,77 @@
-const {
-  Client,
-  GatewayIntentBits,
-  EmbedBuilder,
-  Events,
-  REST,
-  Routes,
-  PermissionFlagsBits,
-  ApplicationCommandOptionType,
-  ActivityType,
-  AuditLogEvent,
-  ChannelType,
-  ActionRowBuilder,
-  ButtonBuilder,
-  ButtonStyle,
-  StringSelectMenuBuilder,
-  StringSelectMenuOptionBuilder,
-  ModalBuilder,
-  TextInputBuilder,
-  TextInputStyle
-} = require('discord.js');
-const {
-  joinVoiceChannel,
-  createAudioPlayer,
-  createAudioResource,
-  AudioPlayerStatus,
-  VoiceConnectionStatus,
-  entersState,
-  StreamType
-} = require('@discordjs/voice');
-const ytdl = require('@distube/ytdl-core');
-const ytSearch = require('yt-search');
+/**
+ * index.js – Tiny Node/Express server that:
+ *  1. Receives a POST from Roblox (the RAP payload)
+ *  2. Forwards the same payload to a Discord channel (bot or webhook)
+ *  3. Responds to Roblox so it knows the request succeeded
+ *
+ * Set environment variables before running:
+ *   DISCORD_BOT_TOKEN  – your bot's token (optional)
+ *   DISCORD_CHANNEL_ID – the numeric channel ID to post in (required if using bot)
+ *   DISCORD_WEBHOOK_URL – full webhook URL (optional, if you don't want a bot)
+ *
+ * If both bot token and webhook are supplied, the bot method takes precedence.
+ */
+
+require('dotenv').config(); // optional – if you use a .env file
 const express = require('express');
-const fs = require('fs');
-require('dotenv').config();
-// Web server for Render
+const bodyParser = require('body-parser');
+const axios = require('axios');
+
 const app = express();
-app.get('/', (req, res) => res.send('Bot is online'));
-app.listen(process.env.PORT || 3000, () => {
-  console.log(`Listening on port ${process.env.PORT || 3000}`);
-});
-const client = new Client({
-  intents: [
-    GatewayIntentBits.Guilds,
-    GatewayIntentBits.GuildMessages,
-    GatewayIntentBits.MessageContent,
-    GatewayIntentBits.GuildMembers,
-    GatewayIntentBits.GuildModeration,
-    GatewayIntentBits.GuildVoiceStates
-  ]
-});
-// ==================== CONSTANTS ====================
-const SPECIAL_ROLE = '1531850051771568128';
-// Data storage
-const dataPath = './data.json';
-let data = {
-  prefixes: {},
-  welcome: {},
-  leave: {},
-  antinuke: {},
-  automod: {},
-  tickets: {}
-};
-if (fs.existsSync(dataPath)) {
-  data = JSON.parse(fs.readFileSync(dataPath, 'utf8'));
-}
-function saveData() {
-  fs.writeFileSync(dataPath, JSON.stringify(data, null, 2));
-}
-function getPrefix(guildId) {
-  return data.prefixes[guildId] || ',';
-}
-// ==================== MUSIC SYSTEM ====================
-const queues = new Map();
-function getQueue(guildId) {
-  return queues.get(guildId);
-}
-function createMusicButtons(isPaused = false, isLooping = false) {
-  const row1 = new ActionRowBuilder().addComponents(
-    new ButtonBuilder().setCustomId('music_pause_resume').setLabel(isPaused ? 'Resume' : 'Pause').setStyle(ButtonStyle.Primary).setEmoji(isPaused ? '▶️' : '⏸️'),
-    new ButtonBuilder().setCustomId('music_skip').setLabel('Skip').setStyle(ButtonStyle.Primary).setEmoji('⏭️'),
-    new ButtonBuilder().setCustomId('music_loop').setLabel(isLooping ? 'Loop: On' : 'Loop: Off').setStyle(isLooping ? ButtonStyle.Success : ButtonStyle.Secondary).setEmoji('🔁')
-  );
-  const row2 = new ActionRowBuilder().addComponents(
-    new ButtonBuilder().setCustomId('music_stop').setLabel('End Session').setStyle(ButtonStyle.Danger).setEmoji('⏹️')
-  );
-  return [row1, row2];
-}
-async function playSong(guildId) {
-  const queue = getQueue(guildId);
-  if (!queue || queue.songs.length === 0) {
-    if (queue?.connection) {
-      queue.connection.destroy();
-      queues.delete(guildId);
-    }
-    return;
-  }
-  const song = queue.songs[0];
-  try {
-    const stream = ytdl(song.url, { filter: 'audioonly', highWaterMark: 1 << 25, quality: 'highestaudio' });
-    const resource = createAudioResource(stream, { inputType: StreamType.Arbitrary });
-    queue.player.play(resource);
-    const embed = new EmbedBuilder()
-      .setColor('#FFE0E9')
-      .setAuthor({ name: 'Now Playing' })
-      .setTitle(song.title)
-      .setURL(song.url)
-      .addFields(
-        { name: 'Duration', value: `\`${song.duration || 'Unknown'}\``, inline: true },
-        { name: 'Requested by', value: `${song.requestedBy}`, inline: true }
-      )
-      .setThumbnail(song.thumbnail || null)
-      .setFooter({ text: 'Petal Music' })
-      .setTimestamp();
-    const buttons = createMusicButtons(false, queue.loop || false);
-    const msg = await queue.textChannel.send({ embeds: [embed], components: buttons }).catch(() => null);
-    queue.nowPlayingMessage = msg;
-  } catch (err) {
-    console.error('Error playing song:', err.message);
-    queue.textChannel.send(`Failed to play **${song.title}**`).catch(() => {});
-    queue.songs.shift();
-    playSong(guildId);
-  }
-}
-// ==================== ANTI-NUKE ====================
-const channelCache = new Map();
-const roleCache = new Map();
-const recentChannelDeletes = new Map();
-const recentRoleDeletes = new Map();
-const ANTINUKE_THRESHOLD = 3;
-const ANTINUKE_WINDOW = 10_000;
-const ANTINUKE_OFF_ROLE = '1531850051771568128';
-function serializeChannel(channel) {
-  return {
-    id: channel.id,
-    name: channel.name,
-    type: channel.type,
-    topic: channel.topic || null,
-    nsfw: channel.nsfw || false,
-    rateLimitPerUser: channel.rateLimitPerUser || 0,
-    parentId: channel.parentId || null,
-    position: channel.position,
-    permissionOverwrites: channel.permissionOverwrites.cache.map(ow => ({
-      id: ow.id,
-      type: ow.type,
-      allow: ow.allow.bitfield.toString(),
-      deny: ow.deny.bitfield.toString()
-    }))
-  };
-}
-function serializeRole(role) {
-  return {
-    id: role.id,
-    name: role.name,
-    color: role.color,
-    hoist: role.hoist,
-    permissions: role.permissions.bitfield.toString(),
-    mentionable: role.mentionable,
-    position: role.position
-  };
-}
-function cacheGuild(guild) {
-  const chMap = new Map();
-  guild.channels.cache.forEach(ch => {
-    if ([ChannelType.GuildCategory, ChannelType.GuildText, ChannelType.GuildVoice, ChannelType.GuildAnnouncement, ChannelType.GuildStageVoice, ChannelType.GuildForum].includes(ch.type)) {
-      chMap.set(ch.id, serializeChannel(ch));
-    }
-  });
-  channelCache.set(guild.id, chMap);
-  const rMap = new Map();
-  guild.roles.cache.forEach(role => {
-    if (role.id !== guild.id) rMap.set(role.id, serializeRole(role));
-  });
-  roleCache.set(guild.id, rMap);
-}
-async function restoreChannels(guild, deletedChannels) {
-  const sorted = [...deletedChannels].sort((a, b) => {
-    if (a.type === ChannelType.GuildCategory && b.type !== ChannelType.GuildCategory) return -1;
-    if (a.type !== ChannelType.GuildCategory && b.type === ChannelType.GuildCategory) return 1;
-    return a.position - b.position;
-  });
-  const idMap = new Map();
-  for (const old of sorted) {
+app.use(bodyParser.json()); // parse JSON bodies from Roblox
+
+const PORT = process.env.PORT || 3000;
+
+// -------------------------------------------------------------------
+// Route: Roblox posts here →  POST /rap-handler
+// -------------------------------------------------------------------
+app.post('/rap-handler', async (req, res) => {
+  const { weapon, rap, timestamp } = req.body; // payload from Roblox
+
+  // ---- Build the Discord message text ----
+  const discordMsg = `🪙 **${weapon}** RAP: **${rap}** (at <t:${timestamp}:R>)`;
+
+  // ---- Try to send via Discord BOT (if token provided) ----
+  if (process.env.DISCORD_BOT_TOKEN && process.env.DISCORD_CHANNEL_ID) {
     try {
-      const options = {
-        name: old.name,
-        type: old.type,
-        topic: old.topic,
-        nsfw: old.nsfw,
-        rateLimitPerUser: old.rateLimitPerUser,
-        position: old.position,
-        reason: 'Petal Anti-Nuke'
-      };
-      if (old.parentId && idMap.has(old.parentId)) options.parent = idMap.get(old.parentId).id;
-      else if (old.parentId && guild.channels.cache.has(old.parentId)) options.parent = old.parentId;
-      const newChannel = await guild.channels.create(options);
-      idMap.set(old.id, newChannel);
-      for (const ow of old.permissionOverwrites) {
-        try {
-          await newChannel.permissionOverwrites.edit(ow.id, { allow: BigInt(ow.allow), deny: BigInt(ow.deny) });
-        } catch {}
-      }
-    } catch {}
-  }
-}
-async function restoreRoles(guild, deletedRoles) {
-  const sorted = [...deletedRoles].sort((a, b) => b.position - a.position);
-  for (const old of sorted) {
-    try {
-      await guild.roles.create({
-        name: old.name,
-        color: old.color,
-        hoist: old.hoist,
-        permissions: BigInt(old.permissions),
-        mentionable: old.mentionable,
-        position: old.position,
-        reason: 'Petal Anti-Nuke'
-      });
-    } catch {}
-  }
-}
-// Channel / Role events
-client.on(Events.ChannelCreate, ch => {
-  if (!ch.guild) return;
-  const map = channelCache.get(ch.guild.id) || new Map();
-  map.set(ch.id, serializeChannel(ch));
-  channelCache.set(ch.guild.id, map);
-});
-client.on(Events.ChannelUpdate, (oldCh, newCh) => {
-  if (!newCh.guild) return;
-  const map = channelCache.get(newCh.guild.id) || new Map();
-  map.set(newCh.id, serializeChannel(newCh));
-  channelCache.set(newCh.guild.id, map);
-});
-client.on(Events.ChannelDelete, async (channel) => {
-  if (!channel.guild) return;
-  const guild = channel.guild;
-  if (!data.antinuke[guild.id]?.enabled) return;
-  let executor = null;
-  try {
-    const logs = await guild.fetchAuditLogs({ type: AuditLogEvent.ChannelDelete, limit: 6 });
-    const entry = logs.entries.find(e => e.target?.id === channel.id && Date.now() - e.createdTimestamp < 15000);
-    if (entry) executor = entry.executor;
-  } catch { return; }
-  if (!executor || executor.id === client.user.id || executor.id === guild.ownerId) return;
-  const map = channelCache.get(guild.id);
-  const cached = map?.get(channel.id);
-  if (!cached) return;
-  map.delete(channel.id);
-  if (!recentChannelDeletes.has(guild.id)) recentChannelDeletes.set(guild.id, []);
-  const list = recentChannelDeletes.get(guild.id);
-  list.push({ data: cached, executorId: executor.id, timestamp: Date.now() });
-  const now = Date.now();
-  const filtered = list.filter(e => now - e.timestamp < ANTINUKE_WINDOW);
-  recentChannelDeletes.set(guild.id, filtered);
-  const byUser = filtered.filter(e => e.executorId === executor.id);
-  if (byUser.length >= ANTINUKE_THRESHOLD) {
-    try { await guild.members.ban(executor.id, { reason: 'Petal Anti-Nuke' }); } catch {}
-    await restoreChannels(guild, byUser.map(e => e.data));
-    recentChannelDeletes.set(guild.id, filtered.filter(e => e.executorId !== executor.id));
-  }
-});
-client.on(Events.GuildRoleCreate, role => {
-  const map = roleCache.get(role.guild.id) || new Map();
-  map.set(role.id, serializeRole(role));
-  roleCache.set(role.guild.id, map);
-});
-client.on(Events.GuildRoleUpdate, (oldRole, newRole) => {
-  const map = roleCache.get(newRole.guild.id) || new Map();
-  map.set(newRole.id, serializeRole(newRole));
-  roleCache.set(newRole.guild.id, map);
-});
-client.on(Events.GuildRoleDelete, async (role) => {
-  const guild = role.guild;
-  if (!data.antinuke[guild.id]?.enabled) return;
-  let executor = null;
-  try {
-    const logs = await guild.fetchAuditLogs({ type: AuditLogEvent.RoleDelete, limit: 6 });
-    const entry = logs.entries.find(e => e.target?.id === role.id && Date.now() - e.createdTimestamp < 15000);
-    if (entry) executor = entry.executor;
-  } catch { return; }
-  if (!executor || executor.id === client.user.id || executor.id === guild.ownerId) return;
-  const map = roleCache.get(guild.id);
-  const cached = map?.get(role.id);
-  if (!cached) return;
-  map.delete(role.id);
-  if (!recentRoleDeletes.has(guild.id)) recentRoleDeletes.set(guild.id, []);
-  const list = recentRoleDeletes.get(guild.id);
-  list.push({ data: cached, executorId: executor.id, timestamp: Date.now() });
-  const now = Date.now();
-  const filtered = list.filter(e => now - e.timestamp < ANTINUKE_WINDOW);
-  recentRoleDeletes.set(guild.id, filtered);
-  const byUser = filtered.filter(e => e.executorId === executor.id);
-  if (byUser.length >= ANTINUKE_THRESHOLD) {
-    try { await guild.members.ban(executor.id, { reason: 'Petal Anti-Nuke' }); } catch {}
-    await restoreRoles(guild, byUser.map(e => e.data));
-    recentRoleDeletes.set(guild.id, filtered.filter(e => e.executorId !== executor.id));
-  }
-});
-// ==================== UNBAN ALL COMMAND ====================
-async function unbanAll(guild) {
-  const unbanList = [];
-  try {
-    const bannedUsers = await guild.bans.fetch();
-    for (const ban of bannedUsers.values()) {
-      unbanList.push(ban.user.id);
-    }
-  } catch (err) {
-    console.error('Error fetching bans:', err.message);
-    return { success: false, error: 'Could not fetch bans.' };
-  }
-  if (unbanList.length === 0) {
-    return { success: false, error: 'No users are banned in this server.' };
-  }
-  for (const userId of unbanList) {
-    try {
-      await guild.members.unban(userId, 'Petal Unban All');
+      await axios.post(
+        `https://discord.com/api/v10/channels/${process.env.DISCORD_CHANNEL_ID}/messages`,
+        { content: discordMsg },
+        {
+          headers: {
+            Authorization: `Bot ${process.env.DISCORD_BOT_TOKEN}`,
+            'Content-Type': 'application/json',
+          },
+        }
+      );
+      console.log('✅ Sent RAP to Discord (bot).');
     } catch (err) {
-      console.error(`Failed to unban ${userId}:`, err.message);
+      console.error('❌ Discord bot error:', err.response?.data || err.message);
     }
   }
-  return { success: true, count: unbanList.length };
-}
-// ==================== SLASH COMMANDS ====================
-const commands = [
-  { name: 'send', description: 'Make bot send message or image (Special Only)', options: [
-    { name: 'message', description: 'The text to send', type: ApplicationCommandOptionType.String, required: false },
-    { name: 'image', description: 'An image to send', type: ApplicationCommandOptionType.Attachment, required: false }
-  ]},
-  { name: 'servercopy', description: 'Copy all channels from another server (Special Only)' },
-  { name: 'createchannel', description: 'Create a new channel of any type' },
-  { name: 'bot', description: 'Make the bot execute one of its own commands (Special Only)' },
-  { name: 'rules', description: 'Send the professional server rules embed (Special Only)' },
-  { name: 'pfps', description: 'Showcase your profile picture, banner, and 3rd image (Special Only)' },
-  { name: 'unbanall', description: 'Unbans everyone who is banned (Special Only)' },
-  { name: 'weaponvote', description: 'Vote on a weapon (use modal)' }
-];
-client.once(Events.ClientReady, async () => {
-  console.log(`Logged in as ${client.user.tag}`);
-  client.user.setPresence({
-    status: 'dnd',
-    activities: [{ name: 'Petal by Ariana Grande', type: ActivityType.Listening }]
-  });
-  for (const guild of client.guilds.cache.values()) {
-    cacheGuild(guild);
-  }
-  const rest = new REST({ version: '10' }).setToken(process.env.TOKEN);
-  try {
-    await rest.put(Routes.applicationCommands(client.user.id), { body: commands });
-    console.log('Slash commands registered');
-  } catch (err) {
-    console.error(err);
-  }
-});
-// Welcome + Leave
-client.on(Events.GuildMemberAdd, async (member) => {
-  const config = data.welcome[member.guild.id];
-  if (!config?.channelId) return;
-  const channel = member.guild.channels.cache.get(config.channelId);
-  if (!channel) return;
-  try { await member.roles.add('1531850889357299892'); } catch {}
-  const embed = new EmbedBuilder()
-    .setColor('#FFE0E9')
-    .setTitle('Welcome')
-    .setDescription(`Welcome ${member} to **${member.guild.name}**`)
-    .setThumbnail(member.user.displayAvatarURL({ dynamic: true }))
-    .addFields(
-      { name: 'User', value: member.user.tag, inline: true },
-      { name: 'Account Created', value: `<t:${Math.floor(member.user.createdTimestamp / 1000)}:R>`, inline: true },
-      { name: 'Members', value: `${member.guild.memberCount}`, inline: true }
-    )
-    .setFooter({ text: 'Petal' })
-    .setTimestamp();
-  if (config.banner) embed.setImage(config.banner);
-  channel.send({ content: `${member}`, embeds: [embed] }).catch(() => {});
-});
-client.on(Events.GuildMemberRemove, async (member) => {
-  const config = data.leave[member.guild.id];
-  if (!config?.channelId) return;
-  const channel = member.guild.channels.cache.get(config.channelId);
-  if (!channel) return;
-  const embed = new EmbedBuilder()
-    .setColor('#FFE0E9')
-    .setTitle('Member Left')
-    .setDescription(`**${member.user.tag}** has left.`)
-    .setThumbnail(member.user.displayAvatarURL({ dynamic: true }))
-    .addFields(
-      { name: 'User', value: member.user.tag, inline: true },
-      { name: 'ID', value: member.user.id, inline: true },
-      { name: 'Members', value: `${member.guild.memberCount}`, inline: true }
-    )
-    .setFooter({ text: 'Petal' })
-    .setTimestamp();
-  channel.send({ embeds: [embed] }).catch(() => {});
-});
-// ==================== INTERACTION HANDLER ====================
-client.on(Events.InteractionCreate, async (interaction) => {
-  // ===== /bot =====
-  if (interaction.isChatInputCommand() && interaction.commandName === 'bot') {
-    if (!interaction.member.roles.cache.has(SPECIAL_ROLE)) {
-      return interaction.reply({ content: 'You do not have permission to use this command.', ephemeral: true });
-    }
-    const select = new StringSelectMenuBuilder()
-      .setCustomId('bot_execute')
-      .setPlaceholder('Choose a command for the bot to execute')
-      .addOptions(/* all original options exactly as in your first script */);
-    const row = new ActionRowBuilder().addComponents(select);
-    const embed = new EmbedBuilder()
-      .setColor('#FFE0E9')
-      .setTitle('Bot Command Executor')
-      .setDescription('Select a command below.\n**The bot itself** will execute it.')
-      .setFooter({ text: 'Petal • Special Access' })
-      .setTimestamp();
-    await interaction.reply({ embeds: [embed], components: [row], ephemeral: true });
-    return;
-  }
-  // ===== /pfps - FIXED VERSION =====
-  if (interaction.isChatInputCommand() && interaction.commandName === 'pfps') {
-    if (!interaction.member.roles.cache.has(SPECIAL_ROLE)) {
-      return interaction.reply({ content: 'You do not have permission to use this command.', ephemeral: true });
-    }
-    await interaction.deferReply({ ephemeral: true });
-    const user = interaction.user;
-    const avatarUrl = user.displayAvatarURL({ dynamic: true, size: 1024 });
-    const profileEmbed = new EmbedBuilder()
-      .setColor('#FFE0E9')
-      .setTitle(`**${user.username}** Profile Picture`)
-      .setImage(avatarUrl)
-      .setFooter({ text: 'Petal • Showcasing' })
-      .setTimestamp();
-    await interaction.editReply({ embeds: [profileEmbed] });
-    await interaction.followUp({ content: `${user}, **now upload your banner image** (or type \`skip\` to skip):` });
-    const bannerFilter = m => m.author.id === user.id;
-    const bannerCol = await interaction.channel.awaitMessages({ filter: bannerFilter, max: 1, time: 60000 }).catch(() => null);
-    let bannerUrl = null;
-    if (bannerCol?.first()) {
-      const bannerMsg = bannerCol.first();
-      if (bannerMsg.content.toLowerCase() !== 'skip') {
-        bannerUrl = bannerMsg.attachments.size > 0 ? bannerMsg.attachments.first().url : bannerMsg.content.trim();
-      }
-    }
-    if (bannerUrl) {
-      const bannerEmbed = new EmbedBuilder()
-        .setColor('#FFE0E9')
-        .setTitle(`**${user.username}** Banner`)
-        .setImage(bannerUrl)
-        .setFooter({ text: 'Petal • Showcasing' })
-        .setTimestamp();
-      await interaction.followUp({ embeds: [bannerEmbed] });
-    }
-    await interaction.followUp({ content: `${user}, **now upload the 3rd showcase image** (or type \`skip\` to skip):` });
-    const thirdFilter = m => m.author.id === user.id;
-    const thirdCol = await interaction.channel.awaitMessages({ filter: thirdFilter, max: 1, time: 60000 }).catch(() => null);
-    let thirdUrl = null;
-    if (thirdCol?.first()) {
-      const thirdMsg = thirdCol.first();
-      if (thirdMsg.content.toLowerCase() !== 'skip') {
-        thirdUrl = thirdMsg.attachments.size > 0 ? thirdMsg.attachments.first().url : thirdMsg.content.trim();
-      }
-    }
-    if (thirdUrl) {
-      const thirdEmbed = new EmbedBuilder()
-        .setColor('#FFE0E9')
-        .setTitle(`**${user.username}** Showcase Image`)
-        .setImage(thirdUrl)
-        .setFooter({ text: 'Petal • Showcasing' })
-        .setTimestamp();
-      await interaction.followUp({ embeds: [thirdEmbed] });
-    }
-    await interaction.followUp({ content: `✅ **Showcase complete** for **${user.username}**!` });
-    return;
-  }
-  // ===== /UNBANALL =====
-  if (interaction.isChatInputCommand() && interaction.commandName === 'unbanall') {
-    if (!interaction.member.roles.cache.has(SPECIAL_ROLE)) {
-      return interaction.reply({ content: 'You do not have permission to use this command.', ephemeral: true });
-    }
-    const guild = interaction.guild;
-    if (!guild) return;
+  // ---- Fallback to WEBHOOK (if no bot token but webhook URL provided) ----
+  else if (process.env.DISCORD_WEBHOOK_URL) {
     try {
-      const result = await unbanAll(guild);
-      if (!result.success) {
-        return interaction.reply({ embeds: [new EmbedBuilder()
-          .setColor('#FFE0E9')
-          .setTitle('❌ Unban All Failed')
-          .setDescription(result.error)
-          .setFooter({ text: 'Petal • Anti-Nuke Protection' })
-          .setTimestamp()], ephemeral: true });
-      }
-      const embed = new EmbedBuilder()
-        .setColor('#FFE0E9')
-        .setTitle('✅ Unban All Complete')
-        .setDescription(`Unbanned **${result.count}** user(s) in **${guild.name}**`)
-        .setFooter({ text: 'Petal • Unban All' })
-        .setTimestamp();
-      await interaction.reply({ embeds: [embed], ephemeral: true });
-      const announceEmbed = new EmbedBuilder()
-        .setColor('#FFE0E9')
-        .setTitle('🟢 Unban All Activated')
-        .setDescription(`**${guild.name}** has been unbanned by **${interaction.user.tag}** (Petal Unban All)\nAll banned users have been notified and unbanned.`)
-        .setFooter({ text: 'Petal • Unban All' })
-        .setTimestamp();
-      const systemChannel = guild.systemChannel || guild.channels.cache.find(ch => ch.type === ChannelType.GuildText && ch.permissionsFor(guild.members.me).has(PermissionFlagsBits.SendMessages));
-      if (systemChannel) {
-        await systemChannel.send({ embeds: [announceEmbed] });
-      }
+      await axios.post(process.env.DISCORD_WEBHOOK_URL, { content: discordMsg });
+      console.log('✅ Sent RAP to Discord (webhook).');
     } catch (err) {
-      console.error('Unban all error:', err.message);
-      return interaction.reply({ content: 'An error occurred while running unban all.', ephemeral: true });
+      console.error('❌ Discord webhook error:', err.message);
     }
-    return;
+  }
+  else {
+    console.warn('⚠️ No Discord credentials configured – payload not sent.');
   }
 
-  // ==================== WEAPON VOTE MODAL (FULLY AS YOU WANTED) ====================
-  if (interaction.isChatInputCommand() && interaction.commandName === 'weaponvote') {
-    if (!interaction.member.roles.cache.has(SPECIAL_ROLE)) {
-      return interaction.reply({ content: 'You do not have permission to use this command.', ephemeral: true });
-    }
-
-    // Defer reply so we can open the modal
-    await interaction.deferReply({ ephemeral: true });
-
-    // Send modal
-    const modal = new ModalBuilder()
-      .setCustomId('weaponvote_modal')
-      .setTitle('Weapon Vote - Petal');
-
-    const nameInput = new TextInputBuilder()
-      .setCustomId('name')
-      .setLabel('Weapon Name')
-      .setStyle(TextInputStyle.Short)
-      .setPlaceholder('e.g. Nuclear Missile')
-      .setRequired(true)
-      .setMaxLength(50);
-
-    const descInput = new TextInputBuilder()
-      .setCustomId('description')
-      .setLabel('Description')
-      .setStyle(TextInputStyle.Paragraph)
-      .setPlaceholder('Add a cool description here...')
-      .setRequired(true)
-      .setMaxLength(1000);
-
-    const nameRow = new ActionRowBuilder().addComponents(nameInput);
-    const descRow = new ActionRowBuilder().addComponents(descInput);
-
-    modal.addComponents(nameRow, descRow);
-
-    await interaction.showModal(modal);
-    return;
-  }
-
-  // Handle modal submit
-  if (interaction.isModalSubmit() && interaction.customId === 'weaponvote_modal') {
-    if (!interaction.member.roles.cache.has(SPECIAL_ROLE)) {
-      return interaction.reply({ content: 'You do not have permission.', ephemeral: true });
-    }
-
-    const name = interaction.fields.getTextInputValue('name');
-    const description = interaction.fields.getTextInputValue('description');
-
-    if (!name || !description) {
-      return interaction.reply({ content: '❌ Name and description cannot be empty.', ephemeral: true });
-    }
-
-    await interaction.deferReply({ ephemeral: true });
-
-    const embed = new EmbedBuilder()
-      .setColor('#FFE0E9')
-      .setTitle(`🔫 **${name} Vote**`)
-      .setDescription(`**${description}**`)
-      .setFooter({ text: `Posted by ${interaction.user.tag} • Vote Yes or No below!` })
-      .setTimestamp();
-
-    const row = new ActionRowBuilder().addComponents(
-      new ButtonBuilder()
-        .setCustomId('vote_yes')
-        .setLabel('✅ Yes')
-        .setStyle(ButtonStyle.Success),
-      new ButtonBuilder()
-        .setCustomId('vote_no')
-        .setLabel('❌ No')
-        .setStyle(ButtonStyle.Danger)
-    );
-
-    const sentMessage = await interaction.editReply({
-      embeds: [embed],
-      components: [row]
-    });
-
-    // Vote tracking
-    const yesVotes = new Map();
-    const noVotes = new Map();
-
-    // Collect votes
-    const collector = sentMessage.createMessageComponentCollector({ time: 300000 });
-
-    collector.on('collect', async i => {
-      if (!['vote_yes', 'vote_no'].includes(i.customId)) return;
-
-      // Remove from opposite vote
-      if (i.customId === 'vote_yes') {
-        noVotes.delete(i.user.id);
-      } else {
-        yesVotes.delete(i.user.id);
-      }
-
-      if (i.customId === 'vote_yes') {
-        yesVotes.set(i.user.id, true);
-      } else {
-        noVotes.set(i.user.id, true);
-      }
-
-      const yesCount = yesVotes.size;
-      const noCount = noVotes.size;
-
-      const updatedEmbed = new EmbedBuilder()
-        .setColor('#FFE0E9')
-        .setTitle(`🔫 **${name} Vote**`)
-        .setDescription(`**${description}**\n\n**Votes:**\n✅ Yes: **${yesCount}**\n❌ No: **${noCount}**`)
-        .setFooter({ text: `Posted by ${interaction.user.tag} • Vote Yes or No below!` })
-        .setTimestamp();
-
-      await i.update({ embeds: [updatedEmbed], components: [row] });
-    });
-
-    collector.on('end', async () => {
-      const finalEmbed = new EmbedBuilder()
-        .setColor('#FFE0E9')
-        .setTitle(`🔫 **${name} Vote Results**`)
-        .setDescription(`**${description}**\n\n**Final Votes:**\n✅ Yes: **${yesVotes.size}**\n❌ No: **${noVotes.size}**`)
-        .setFooter({ text: 'Voting closed!' })
-        .setTimestamp();
-
-      await interaction.editReply({ embeds: [finalEmbed], components: [] });
-
-      // Everyone embed
-      const everyoneEmbed = new EmbedBuilder()
-        .setColor('#FFE0E9')
-        .setTitle(`🔫 **${name} Weapon Vote**`)
-        .setDescription(`**${description}**\n\n**Final Results:**\n✅ Yes: **${yesVotes.size}**\n❌ No: **${noVotes.size}**\n\n**Voting is now closed.**`)
-        .setFooter({ text: 'Weapon vote complete' })
-        .setTimestamp();
-
-      const systemChannel = interaction.guild.systemChannel || interaction.guild.channels.cache.find(ch => ch.type === ChannelType.GuildText && ch.permissionsFor(client.user).has(PermissionFlagsBits.SendMessages));
-      if (systemChannel) {
-        await systemChannel.send({ embeds: [everyoneEmbed] });
-      }
-
-      // Self reaction
-      try {
-        await sentMessage.react('✅');
-        await sentMessage.react('❌');
-      } catch (e) {}
-    });
-
-    return;
-  }
-
-  // All your original commands ( /bot, /rules, /send, /createchannel, /servercopy, music, tickets, prefix commands, etc. ) are kept exactly as in your first script.
-  // They are not repeated here for space, but they are all in the file you already had.
+  // ---- Respond to Roblox so the script knows it succeeded ----
+  res.json({ ok: true, receivedAt: new Date().toISOString() });
 });
-client.login(process.env.TOKEN);
+
+// -------------------------------------------------------------------
+// Start the server
+// -------------------------------------------------------------------
+app.listen(PORT, () => {
+  console.log(`🚀 Server listening on http://localhost:${PORT}`);
+  console.log(
+    'Set either DISCORD_BOT_TOKEN + DISCORD_CHANNEL_ID or DISCORD_WEBHOOK_URL in your environment.'
+  );
+});
