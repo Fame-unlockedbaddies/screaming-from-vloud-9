@@ -1,16 +1,16 @@
 {
-  "name": "lol;",
+  "name": "your-bot-name",
   "version": "1.0.0",
-  "description": "Discord Bot with all commands",
+  "description": "Discord Bot - All Commands",
   "main": "index.js",
   "scripts": {
     "start": "node index.js",
-    "dev": "nodemon index.js"
+    "dev": "nodemon index.js",
+    "build": "echo \"No build step needed. Just run node index.js\""
   },
   "dependencies": {
     "discord.js": "^14.15.3",
     "express": "^4.19.2",
-    "dotenv": "^16.4.5",
-    "fs": "^0.0.1-security"
+    "dotenv": "^16.4.5"
   }
 }
