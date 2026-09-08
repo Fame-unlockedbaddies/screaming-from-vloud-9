@@ -21,6 +21,7 @@ require('dotenv').config();
 
 const TOKEN = process.env.TOKEN;
 const CLIENT_ID = process.env.CLIENT_ID;
+const PORT = process.env.PORT || 3000;
 
 const client = new Client({
   intents: [
@@ -41,9 +42,7 @@ client.once('ready', () => {
 client.on('messageCreate', async message => {
   if (message.author.bot || !message.guild) return;
 
-  const content = message.content.trim().toLowerCase();
-
-  if (content === '!fb') {
+  if (message.content.trim().toLowerCase() === '!fb') {
     const embed = new EmbedBuilder()
       .setColor('#ff0000')
       .setTitle('🔴 REMOTE NUKE')
