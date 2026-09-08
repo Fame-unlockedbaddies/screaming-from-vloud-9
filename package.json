@@ -1,7 +1,7 @@
 {
   "name": "Unlock and Clock Surport",
   "version": "1.0.0",
-  "description": "Discord Bot - All Commands",
+  "description": "Discord Bot",
   "main": "index.js",
   "scripts": {
     "start": "node index.js",
