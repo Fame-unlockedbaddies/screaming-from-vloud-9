@@ -1,13 +1,13 @@
 {
   "name": "tor-una-discord-bot",
   "version": "1.0.0",
-  "description": "Tor-UNA Discord Bot - Fully working example with render.com deployment",
+  "description": "Tor-UNA Discord Bot - Fixed for Render (dotenv included)",
   "main": "index.js",
   "scripts": {
     "start": "node index.js"
   },
   "dependencies": {
-    "discord.js": "14.15.3",
+    "discord.js": "14.27.0",
     "dotenv": "16.4.7"
   },
   "engines": {
