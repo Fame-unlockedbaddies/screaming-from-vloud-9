@@ -3,9 +3,9 @@
 // ===============================================
 
 const { Client, GatewayIntentBits, Events, ActivityType } = require('discord.js');
-const dotenv = require('dotenv');   // FIXED: installed now
+const dotenv = require('dotenv');
 
-dotenv.config();                    // Load TOKEN and CLIENT_ID automatically
+dotenv.config();   // Loads TOKEN and CLIENT_ID
 
 const client = new Client({
   intents: [
