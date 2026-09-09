@@ -1,10 +1,11 @@
 // ===============================================
-// TOR-UNA DISCORD BOT - FIXED FOR YOUR VARS
+// TOR-UNA DISCORD BOT - FINAL FIXED VERSION
 // ===============================================
 
-require('dotenv').config();
-
 const { Client, GatewayIntentBits, Events, ActivityType } = require('discord.js');
+const dotenv = require('dotenv');   // FIXED: installed now
+
+dotenv.config();                    // Load TOKEN and CLIENT_ID automatically
 
 const client = new Client({
   intents: [
@@ -38,7 +39,7 @@ client.on(Events.MessageCreate, async (message) => {
 
   // 8ball
   if (cmd === '8ball') {
-    const responses = ['Yes, definitely.', 'No way.', 'Maybe...', 'Ask again later.', 'Outlook not so good.', 'As I see it, yes.', 'You may rely on it.'];
+    const responses = ['Yes, definitely.', 'No way.', 'Maybe...', 'Ask again later.', 'Outlook not so good.', 'As I see it, yes.'];
     const reply = responses[Math.floor(Math.random() * responses.length)];
     message.reply(`🎱 **8-Ball Says:** ${reply}`);
   }
@@ -60,8 +61,7 @@ client.on(Events.MessageCreate, async (message) => {
 // ======================
 
 client.once(Events.ClientReady, () => {
-  console.log(`✅ ${client.user.tag} is online and ready! (using CLIENT_ID: ${process.env.CLIENT_ID})`);
-
+  console.log(`✅ ${client.user.tag} is online and ready!`);
   client.user.setActivity({
     name: 'Tor-UNA Mode Activated',
     type: ActivityType.Playing
@@ -69,7 +69,7 @@ client.once(Events.ClientReady, () => {
 });
 
 // ======================
-// LOGIN WITH YOUR VARS
+// START
 // ======================
 
 client.login(process.env.TOKEN);
