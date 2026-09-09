@@ -1,7 +1,7 @@
 {
   "name": "tor-una-discord-bot",
   "version": "1.0.0",
-  "description": "Tor-UNA Discord Bot - Fixed for Render (dotenv included)",
+  "description": "Tor-UNA Discord Bot - FIXED for Render (both dependencies now included)",
   "main": "index.js",
   "scripts": {
     "start": "node index.js"
