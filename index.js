@@ -1,238 +1,105 @@
-const http = require("http");
-const {
-  EmbedBuilder,
-  Client,
-  GatewayIntentBits,
-  Partials,
-  SlashCommandBuilder,
-  PermissionFlagsBits,
-} = require("discord.js");
+// ===============================================
+// TOR-UNA DISCORD BOT - FULLY WORKING 2026
+// Install: npm install
+// Deploy on Render: npm run start
+// ===============================================
 
-const TOKEN = process.env.TOKEN || process.env.DISCORD_TOKEN;
-const PORT = process.env.PORT || 3000;
-const FAME_GAME_NAME = process.env.FAME_GAME_NAME || "Fame";
-const FOUNDER_ROLE_ID = "1482560426972549232";
+require('dotenv').config();
 
-if (!TOKEN) {
-  console.error("Missing TOKEN environment variable");
-  process.exit(1);
-}
+const { Client, GatewayIntentBits, Events, ActivityType } = require('discord.js');
 
 const client = new Client({
   intents: [
     GatewayIntentBits.Guilds,
     GatewayIntentBits.GuildMessages,
     GatewayIntentBits.MessageContent,
-    GatewayIntentBits.GuildModeration,
-  ],
-  partials: [Partials.Channel],
+    GatewayIntentBits.GuildMembers,
+    GatewayIntentBits.DirectMessages
+  ]
 });
 
-// ==================== LINK FILTER ====================
-// Allowed: TikTok links (including short vm.tiktok.com links)
-const tiktokRegex = /https?:\/\/(?:www\.|m\.|vm\.)?tiktok\.com\/(?:@[\w.-]+\/video\/\d+|[\w-]+|Z[a-zA-Z0-9]+)/i;
+// ======================
+// COMMANDS
+// ======================
 
-// Dangerous / blocked patterns
-const dangerousPatterns = [
-  /discord\.(gg|com|app)\/(invite\/)?[a-zA-Z0-9-]+/i,
-  /grabify\.link|iplogger\.org|ipgrabber|blasze\.com|trackip|myip\.is|ip-tracker/i,
-  /roblox\.(com\.[a-z]{2,}|gg|app|site|xyz|fun|net|org|login|verify|gift|free|robux)/i,
-  /rblx\.|rblox\.|robloxx?\.|free-robux|robux\.gift|getrobux/i,
-  /cookie-logger|cookielogger|stealer|grabber|token-logger|beam\.link/i,
-];
-
-client.on("messageCreate", async (message) => {
+client.on(Events.MessageCreate, async (message) => {
   if (message.author.bot || !message.guild) return;
 
-  const urlRegex = /(https?:\/\/[^\s]+)/gi;
-  const urls = message.content.match(urlRegex) || [];
+  const prefix = '!';
+  if (!message.content.startsWith(prefix)) return;
 
-  let shouldBlock = false;
-  let reason = "";
+  const args = message.content.slice(prefix.length).trim().split(/ +/);
+  const cmd = args.shift().toLowerCase();
 
-  for (const url of urls) {
-    const lowerUrl = url.toLowerCase();
-
-    // 1. Allow TikTok links
-    if (tiktokRegex.test(url)) continue;
-
-    // 2. Completely ignore ALL GIF links
-    if (
-      lowerUrl.endsWith('.gif') ||
-      lowerUrl.includes('tenor.com') ||
-      lowerUrl.includes('giphy.com') ||
-      lowerUrl.includes('cdn.discordapp.com') ||
-      lowerUrl.includes('media.discordapp.net') ||
-      lowerUrl.includes('imgur.com')
-    ) {
-      continue;
-    }
-
-    // 3. Check for malicious patterns
-    for (const pattern of dangerousPatterns) {
-      if (pattern.test(lowerUrl)) {
-        shouldBlock = true;
-        reason = "Malicious link (Cookie Stealer, IP Grabber, or Fake Roblox)";
-        break;
-      }
-    }
-    if (shouldBlock) break;
-
-    // 4. Block any other link that is not TikTok or GIF
-    if (lowerUrl.startsWith('http')) {
-      shouldBlock = true;
-      reason = "Only TikTok links and GIFs are allowed in this server.";
-      break;
-    }
+  // Ping
+  if (cmd === 'ping') {
+    const sent = await message.reply('🏓 **Pong!**');
+    const ping = client.ws.ping;
+    await sent.edit(`🏓 **Pong!** \`${ping}ms\``);
   }
 
-  if (shouldBlock) {
-    try {
-      await message.delete().catch(() => {});
+  // 8ball (Tor-UNA style)
+  if (cmd === '8ball') {
+    const responses = [
+      'Yes, definitely.', 'No way.', 'Maybe...', 'Ask again later.',
+      'Outlook not so good.', 'As I see it, yes.', 'You may rely on it.',
+      'Signs point to yes.', 'Concentrate and ask again.',
+      'It is certain.', 'Without a doubt.', 'Yes - definitely.'
+    ];
+    const reply = responses[Math.floor(Math.random() * responses.length)];
+    message.reply(`🎱 **8-Ball Says:** ${reply}`);
+  }
 
-      const member = await message.guild.members.fetch(message.author.id).catch(() => null);
-      if (member) {
-        await member.timeout(10 * 60 * 1000, `Posted blocked link: ${reason}`).catch(() => {});
-      }
+  // 8ball (fun Tor-UNA mode)
+  if (cmd === 'tor') {
+    const torReplies = [
+      'Yes, perfect for Tor.',
+      'No, not recommended.',
+      'You should try it.',
+      'Absolutely not.',
+      'Depends on your setup.',
+      '100% yes.',
+      'Try it and see.',
+      'Tor-UNA approves ✅'
+    ];
+    const reply = torReplies[Math.floor(Math.random() * torReplies.length)];
+    message.reply(`🕵️ **Tor-UNA Says:** ${reply}`);
+  }
 
-      const warningEmbed = new EmbedBuilder()
-        .setTitle("🚫 Unsafe Link Blocked")
-        .setDescription(`${message.author}, your message has been removed.`)
-        .addFields(
-          { name: "Reason", value: reason, inline: false },
-          { name: "Allowed Links", value: "TikTok links and **any GIFs**", inline: false }
-        )
-        .setColor(0xff0000)
-        .setTimestamp();
-
-      const warningMsg = await message.channel.send({ embeds: [warningEmbed] });
-      setTimeout(() => warningMsg.delete().catch(() => {}), 10000);
-
-      console.log(`[LINK BLOCKED] ${message.author.tag} → ${reason}`);
-    } catch (err) {
-      console.error("[LINK BLOCKER ERROR]", err);
-    }
+  // Help command
+  if (cmd === 'help' || cmd === 'h') {
+    const helpMsg = `**Tor-UNA Bot Commands**  
+    \`!ping\` - Check bot latency  
+    \`!8ball <question>\` - 8-ball magic  
+    \`!tor <question>\` - Tor-UNA advice  
+    \`!help\` - This menu`;
+    message.reply(helpMsg);
   }
 });
 
-// ==================== SLASH COMMANDS ====================
+// ======================
+// READY EVENT
+// ======================
 
-client.once("ready", async () => {
-  console.log(`${FAME_GAME_NAME} Bot is online!`);
-  console.log(`→ TikTok links allowed`);
-  console.log(`→ ALL GIF links allowed`);
-  console.log(`→ Everything else blocked + 10 min timeout`);
+client.once(Events.ClientReady, () => {
+  console.log(`✅ ${client.user.tag} is online and ready for Tor-UNA!`);
 
-  // Register slash commands
-  const commands = [
-    new SlashCommandBuilder()
-      .setName("copyrole")
-      .setDescription("Copy role information")
-      .setDefaultMemberPermissions(PermissionFlagsBits.ManageRoles)
-      .addSubcommand(sub =>
-        sub
-          .setName("hex")
-          .setDescription("Copy the hex color(s) of a role")
-          .addRoleOption(option =>
-            option.setName("role").setDescription("The role to copy colors from").setRequired(true)
-          )
-      )
-      .addSubcommand(sub =>
-        sub
-          .setName("emoji")
-          .setDescription("Copy the emoji of a role")
-          .addRoleOption(option =>
-            option.setName("role").setDescription("The role to copy emoji from").setRequired(true)
-          )
-      )
-  ];
+  // Set status
+  client.user.setActivity({
+    name: 'Tor-UNA Mode Activated',
+    type: ActivityType.Playing
+  });
 
-  await client.application.commands.set(commands);
-  console.log("Slash commands registered: /copyrole hex and /copyrole emoji");
+  // Optional: DM welcome (uncomment if you want)
+  // client.guilds.cache.forEach(guild => {
+  //   guild.members.fetch().then(members => {
+  //     members.forEach(member => {
+  //       if (!member.user.bot) {
+  //         member.send('👋 Welcome to Tor-UNA Discord Bot! Type `!help` for commands.');
+  //       }
+  //     });
+  //   });
+  // });
 });
 
-client.on("interactionCreate", async (interaction) => {
-  if (!interaction.isChatInputCommand()) return;
-
-  if (interaction.commandName === "copyrole") {
-    const subcommand = interaction.options.getSubcommand();
-    const role = interaction.options.getRole("role");
-
-    if (subcommand === "hex") {
-      // Get role colors
-      const color = role.color ? `#${role.color.toString(16).padStart(6, '0').toUpperCase()}` : "No color (transparent)";
-
-      // For gradient roles (Discord supports up to 2 colors in some cases via unicode emoji tricks, but usually 1)
-      // We'll show the main color + note if it's a gradient role
-      let description = `**Main Color:** ${color}`;
-
-      if (role.icon) {
-        description += `\n**Note:** This role has a custom icon.`;
-      }
-
-      const embed = new EmbedBuilder()
-        .setTitle(`🎨 Role Colors - ${role.name}`)
-        .setDescription(description)
-        .setColor(role.color || 0x2f3136)
-        .addFields(
-          { name: "Hex Code", value: `\`${color}\``, inline: true },
-          { name: "Role ID", value: `\`${role.id}\``, inline: true }
-        )
-        .setTimestamp();
-
-      await interaction.reply({ embeds: [embed] });
-    }
-
-    else if (subcommand === "emoji") {
-      if (!role.unicodeEmoji && !role.icon) {
-        return interaction.reply({
-          content: `❌ The role **${role.name}** has no emoji or icon.`,
-          ephemeral: true
-        });
-      }
-
-      let emojiText = "";
-
-      if (role.unicodeEmoji) {
-        emojiText = role.unicodeEmoji;
-      } else if (role.icon) {
-        emojiText = `[Custom Icon] (Cannot be copied as text)`;
-      }
-
-      const embed = new EmbedBuilder()
-        .setTitle(`📋 Role Emoji - ${role.name}`)
-        .setDescription(`**Emoji:** ${emojiText}`)
-        .setColor(role.color || 0x2f3136)
-        .addFields({ name: "Role Name", value: role.name, inline: true })
-        .setTimestamp();
-
-      await interaction.reply({
-        embeds: [embed],
-        content: role.unicodeEmoji ? `**Copied Emoji:** ${role.unicodeEmoji}` : undefined
-      });
-    }
-  }
-
-  // Add your old /roleall command here if you still want it
-  // if (interaction.commandName === "roleall") { ... }
-});
-
-// ==================== ERROR HANDLING ====================
-function sleep(ms) {
-  return new Promise(resolve => setTimeout(resolve, ms));
-}
-
-process.on("unhandledRejection", console.error);
-process.on("uncaughtException", console.error);
-
-client.login(TOKEN);
-
-// HTTP Server for uptime monitoring
-http.createServer((req, res) => {
-  res.setHeader("Access-Control-Allow-Origin", "*");
-  res.setHeader("Content-Type", "application/json");
-  res.end(JSON.stringify({ 
-    status: "online", 
-    message: `${FAME_GAME_NAME} Bot - TikTok + All GIFs Allowed` 
-  }));
-}).listen(PORT);
+client.login(process.env.TOKEN);
