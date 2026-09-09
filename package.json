@@ -1,20 +1,16 @@
 {
-  "name": "fame-bot",
+  "name": "tor-una-discord-bot",
   "version": "1.0.0",
-  "description": "Fame Bot - Link Blocker + Role Copy Commands",
+  "description": "Tor-UNA Discord Bot - Fully working example with render.com deployment",
   "main": "index.js",
   "scripts": {
-    "start": "node index.js",
-    "deploy": "node deploy-commands.js"
+    "start": "node index.js"
   },
   "dependencies": {
-    "discord.js": "^14.15.3",
-    "dotenv": "^16.4.5"
+    "discord.js": "14.15.3",
+    "dotenv": "16.4.7"
   },
-  "keywords": [
-    "discord",
-    "bot",
-    "discord.js"
-  ],
-  "license": "MIT"
+  "engines": {
+    "node": "18.x"
+  }
 }
