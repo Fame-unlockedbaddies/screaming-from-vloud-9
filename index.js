@@ -66,9 +66,20 @@ client.on(Events.MessageCreate, (message) => {
   }
 });
 
-const token = process.env.DISCORD_TOKEN;
+const token = (process.env.DISCORD_TOKEN || '').trim();
+console.log(`ENV check - DISCORD_TOKEN: ${token ? 'set (' + token.length + ' chars)' : 'MISSING'}, CLIENT_ID: ${process.env.CLIENT_ID || 'MISSING'}, PORT: ${PORT}`);
 if (!token) {
   console.error('Missing DISCORD_TOKEN in environment variables. Web server will stay up, but bot will not login.');
 } else {
-  client.login(token);
+  client.login(token).then(() => {
+    console.log('Login call succeeded, waiting for ready event...');
+  }).catch((err) => {
+    console.error('LOGIN FAILED:', err.message);
+    console.error('Fix: Reset token in Discord Dev Portal > Bot > Reset Token, update DISCORD_TOKEN on Render, redeploy.');
+  });
 }
+
+client.on(Events.Error, console.error);
+client.on(Events.ShardError, console.error);
+process.on('unhandledRejection', (e) => console.error('UnhandledRejection:', e));
+process.on('uncaughtException', (e) => console.error('UncaughtException:', e));
