@@ -8,7 +8,18 @@ const app = express();
 const PORT = process.env.PORT || 10000;
 
 app.get('/', (req, res) => {
-  res.send('Bot is running!');
+  res.send(`Bot is running! Status: ${botStatus}${loginError ? ' - Error: ' + loginError : ''}`);
+});
+
+app.get('/status', (req, res) => {
+  res.json({
+    web: 'up',
+    bot: botStatus,
+    error: loginError,
+    hasToken: !!((process.env.DISCORD_TOKEN || '').trim()),
+    hasClientId: !!process.env.CLIENT_ID,
+    uptime: process.uptime()
+  });
 });
 
 app.listen(PORT, '0.0.0.0', () => {
@@ -16,6 +27,8 @@ app.listen(PORT, '0.0.0.0', () => {
 });
 
 // --- Discord Client ---
+let botStatus = 'starting';
+let loginError = null;
 const client = new Client({
   intents: [
     GatewayIntentBits.Guilds,
@@ -25,10 +38,11 @@ const client = new Client({
 });
 
 client.once(Events.ClientReady, async (c) => {
+  botStatus = `online as ${c.user.tag}`;
   console.log(`Logged in as ${c.user.tag}`);
 
   // Register slash commands using CLIENT_ID
-  const clientId = process.env.CLIENT_ID;
+  const clientId = (process.env.CLIENT_ID || '').trim();
   if (clientId) {
     const commands = [
       {
@@ -37,7 +51,7 @@ client.once(Events.ClientReady, async (c) => {
       }
     ];
 
-    const rest = new REST({ version: '10' }).setToken(process.env.DISCORD_TOKEN);
+    const rest = global._rest || new REST({ version: '10' }).setToken((process.env.DISCORD_TOKEN || '').trim().replace(/^Bot\s+/i, ''));
     try {
       console.log('Registering slash commands...');
       await rest.put(Routes.applicationCommands(clientId), { body: commands });
@@ -66,14 +80,21 @@ client.on(Events.MessageCreate, (message) => {
   }
 });
 
-const token = (process.env.DISCORD_TOKEN || '').trim();
-console.log(`ENV check - DISCORD_TOKEN: ${token ? 'set (' + token.length + ' chars)' : 'MISSING'}, CLIENT_ID: ${process.env.CLIENT_ID || 'MISSING'}, PORT: ${PORT}`);
+const token = (process.env.DISCORD_TOKEN || '').trim().replace(/^Bot\s+/i, '');
+console.log(`ENV check - DISCORD_TOKEN: ${token ? 'set (' + token.length + ' chars)' : 'MISSING'}, CLIENT_ID: ${(process.env.CLIENT_ID || '').trim() || 'MISSING'}, PORT: ${PORT}`);
 if (!token) {
+  botStatus = 'missing token';
   console.error('Missing DISCORD_TOKEN in environment variables. Web server will stay up, but bot will not login.');
 } else {
+  const rest = new REST({ version: '10' }).setToken(token);
+  // store for ready handler to reuse
+  global._rest = rest;
+  botStatus = 'logging in...';
   client.login(token).then(() => {
     console.log('Login call succeeded, waiting for ready event...');
   }).catch((err) => {
+    botStatus = 'login failed';
+    loginError = err.message;
     console.error('LOGIN FAILED:', err.message);
     console.error('Fix: Reset token in Discord Dev Portal > Bot > Reset Token, update DISCORD_TOKEN on Render, redeploy.');
   });
