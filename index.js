@@ -1,6 +1,6 @@
 require('dotenv').config();
 
-const { Client, GatewayIntentBits, Events, REST, Routes, PermissionsBitField, ChannelType } = require('discord.js');
+const { Client, GatewayIntentBits, Events, REST, Routes } = require('discord.js');
 const express = require('express');
 
 // --- Keep-alive for Render ---
@@ -37,7 +37,7 @@ const client = new Client({
   ]
 });
 
-// Register slash commands
+// Register slash commands (super fast)
 client.once(Events.ClientReady, async (c) => {
   botStatus = `online as ${c.user.tag}`;
   console.log(`Logged in as ${c.user.tag}`);
@@ -63,7 +63,7 @@ client.once(Events.ClientReady, async (c) => {
   }
 });
 
-// Slash command handler
+// Slash command handler (instant)
 client.on(Events.InteractionCreate, async (interaction) => {
   if (!interaction.isChatInputCommand()) return;
 
@@ -89,16 +89,14 @@ client.on(Events.InteractionCreate, async (interaction) => {
   }
 });
 
-// Reaction role system (click on message to give role)
+// Role reactions (only loads roles when someone reacts)
 client.on(Events.MessageReactionAdd, async (reaction, user) => {
   if (user.bot) return;
   if (!reaction.message.guild) return;
 
   const member = await reaction.message.guild.members.fetch(user.id);
   const role = reaction.message.guild.roles.cache.get(reaction.emoji.id);
-  if (role) {
-    await member.roles.add(role);
-  }
+  if (role) await member.roles.add(role);
 });
 
 client.on(Events.MessageReactionRemove, async (reaction, user) => {
@@ -107,12 +105,10 @@ client.on(Events.MessageReactionRemove, async (reaction, user) => {
 
   const member = await reaction.message.guild.members.fetch(user.id);
   const role = reaction.message.guild.roles.cache.get(reaction.emoji.id);
-  if (role) {
-    await member.roles.remove(role);
-  }
+  if (role) await member.roles.remove(role);
 });
 
-// Ping command
+// Fast !ping
 client.on(Events.MessageCreate, (message) => {
   if (message.author.bot) return;
   if (message.content === '!ping') {
@@ -121,21 +117,15 @@ client.on(Events.MessageCreate, (message) => {
 });
 
 const token = process.env.DISCORD_TOKEN.replace(/^Bot\s+/i, '');
-console.log(`Token check: ${token ? '✅ Set' : '❌ Missing'}`);
+console.log(`Token check: ✅ Set`);
 
-if (!token) {
-  botStatus = 'missing token';
-  console.error('Missing DISCORD_TOKEN!');
-} else {
-  client.login(token).catch(err => {
-    botStatus = 'login failed';
-    loginError = err.message;
-    console.error('Login failed:', err.message);
-  });
-}
+client.login(token).catch(err => {
+  botStatus = 'login failed';
+  loginError = err.message;
+  console.error('Login failed:', err.message);
+});
 
 client.on(Events.Error, console.error);
 client.on(Events.ShardError, console.error);
-
 process.on('unhandledRejection', e => console.error('Unhandled:', e));
 process.on('uncaughtException', e => console.error('Uncaught:', e));
