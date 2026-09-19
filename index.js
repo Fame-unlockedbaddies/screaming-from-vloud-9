@@ -1,5 +1,5 @@
 require('dotenv').config();
-const { Client, GatewayIntentBits, Events, REST, Routes, SlashCommandBuilder, PermissionsBitField } = require('discord.js');
+const { Client, GatewayIntentBits, Events, REST, Routes, SlashCommandBuilder, PermissionsBitField, MessageFlags } = require('discord.js');
 const express = require('express');
 
 // --- Keep-alive for Render ---
@@ -53,15 +53,19 @@ const slashCommands = [
     .toJSON()
 ];
 
+function getEnvToken() {
+  return (process.env.DISCORD_TOKEN || '').trim().replace(/^Bot\s+/i, '');
+}
+
 async function registerCommands(token, clientId, guildId) {
   const rest = new REST({ version: '10' }).setToken(token);
   if (guildId) {
-    // INSTANT: guild commands update in ~1-5 seconds - use for dev / instant builds
+    // INSTANT: guild commands update in ~1-5 seconds
     console.log(`Registering ${slashCommands.length} guild commands to ${guildId} (instant)...`);
     await rest.put(Routes.applicationGuildCommands(clientId, guildId), { body: slashCommands });
     console.log('Guild commands registered instantly.');
   } else {
-    // SLOW: global commands can take up to 1 hour to propagate
+    // SLOW: global commands can take up to 1 hour
     console.log('Registering slash commands globally (can take up to 1h)...');
     await rest.put(Routes.applicationCommands(clientId), { body: slashCommands });
     console.log(`Registered ${slashCommands.length} slash commands globally.`);
@@ -74,14 +78,18 @@ client.once(Events.ClientReady, async (c) => {
 
   const clientId = (process.env.CLIENT_ID || '').trim() || c.user.id;
   const guildId = (process.env.GUILD_ID || '').trim();
-  const token = (process.env.DISCORD_TOKEN || '').trim().replace(/^Bot\s+/i, '');
+  const token = getEnvToken();
+  if (!token) {
+    console.error('No token available for command registration.');
+    return;
+  }
   try {
     await registerCommands(token, clientId, guildId || null);
     if (!guildId) {
       console.log('TIP: Set GUILD_ID in .env for instant command updates.');
     }
   } catch (err) {
-    console.error('Failed to register slash commands:', err);
+    console.error('Failed to register slash commands:', err?.message || err);
   }
 });
 
@@ -92,36 +100,48 @@ client.on(Events.InteractionCreate, async (interaction) => {
   try {
     if (interaction.commandName === 'ping') {
       await interaction.reply('Pong!');
+      return;
     }
 
-    else if (interaction.commandName === 'rawr') {
+    if (interaction.commandName === 'rawr') {
       const messageContent = interaction.options.getString('message', true);
 
-      // Block @everyone / @here to prevent spam abuse - requires explicit permission
+      // Block @everyone / @here to prevent spam abuse
       if (/@(everyone|here)/i.test(messageContent)) {
-        await interaction.reply({ content: '❌ @everyone / @here is not allowed with this command.', ephemeral: true });
+        await interaction.reply({ content: '❌ @everyone / @here is not allowed with this command.', flags: MessageFlags.Ephemeral });
         return;
       }
 
       // Respect channel permissions - don't try to bypass locks with webhooks
-      const me = interaction.guild?.members.me;
-      if (interaction.channel && me) {
-        const perms = interaction.channel.permissionsFor(me);
-        if (perms && !perms.has(PermissionsBitField.Flags.SendMessages)) {
-          await interaction.reply({ content: '❌ I do not have permission to send messages in this channel.', ephemeral: true });
-          return;
+      try {
+        if (interaction.guild && interaction.channel) {
+          const me = interaction.guild.members.me ?? await interaction.guild.members.fetchMe().catch(() => null);
+          if (me && 'permissionsFor' in interaction.channel) {
+            const perms = interaction.channel.permissionsFor(me);
+            if (perms && !perms.has(PermissionsBitField.Flags.SendMessages)) {
+              await interaction.reply({ content: '❌ I do not have permission to send messages in this channel.', flags: MessageFlags.Ephemeral });
+              return;
+            }
+          }
         }
+      } catch (permErr) {
+        console.error('Permission check failed, continuing:', permErr?.message);
       }
 
       await interaction.reply(messageContent);
+      return;
     }
+
+    // Unknown command
+    await interaction.reply({ content: '❌ Unknown command.', flags: MessageFlags.Ephemeral });
   } catch (err) {
     console.error('Interaction error:', err);
     try {
+      const payload = { content: '❌ Something went wrong.', flags: MessageFlags.Ephemeral };
       if (interaction.replied || interaction.deferred) {
-        await interaction.followUp({ content: '❌ Something went wrong.', ephemeral: true });
+        await interaction.followUp(payload);
       } else {
-        await interaction.reply({ content: '❌ Something went wrong.', ephemeral: true });
+        await interaction.reply(payload);
       }
     } catch {}
   }
@@ -130,31 +150,35 @@ client.on(Events.InteractionCreate, async (interaction) => {
 // Prefix commands (!ping, !rawr ...) - backup / non-slash
 const PREFIX = '!';
 client.on(Events.MessageCreate, async (message) => {
-  if (message.author.bot) return;
-  if (!message.content.startsWith(PREFIX)) return;
+  try {
+    if (message.author.bot) return;
+    if (!message.content.startsWith(PREFIX)) return;
 
-  const args = message.content.slice(PREFIX.length).trim().split(/ +/);
-  const cmd = args.shift()?.toLowerCase();
+    const args = message.content.slice(PREFIX.length).trim().split(/ +/);
+    const cmd = args.shift()?.toLowerCase();
 
-  if (cmd === 'ping') {
-    await message.reply('Pong!');
-  }
-
-  if (cmd === 'rawr') {
-    const text = args.join(' ');
-    if (!text) {
-      await message.reply('Usage: `!rawr <message>`');
-      return;
+    if (cmd === 'ping') {
+      await message.reply('Pong!');
     }
-    if (/@(everyone|here)/i.test(text)) {
-      await message.reply('❌ @everyone / @here is not allowed.');
-      return;
+
+    else if (cmd === 'rawr') {
+      const text = args.join(' ');
+      if (!text) {
+        await message.reply('Usage: `!rawr <message>`');
+        return;
+      }
+      if (/@(everyone|here)/i.test(text)) {
+        await message.reply('❌ @everyone / @here is not allowed.');
+        return;
+      }
+      await message.channel.send(text);
     }
-    await message.channel.send(text);
+  } catch (err) {
+    console.error('Prefix command error:', err);
   }
 });
 
-const token = (process.env.DISCORD_TOKEN || '').trim().replace(/^Bot\s+/i, '');
+const token = getEnvToken();
 console.log(`Token: ${token ? '✅ Set' : '❌ MISSING'}`);
 
 if (!token) {
