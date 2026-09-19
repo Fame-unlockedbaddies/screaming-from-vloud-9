@@ -19,6 +19,7 @@ app.get('/status', (req, res) => {
     error: loginError,
     hasToken: !!((process.env.DISCORD_TOKEN || '').trim()),
     hasClientId: !!process.env.CLIENT_ID,
+    hasGuildId: !!process.env.GUILD_ID,
     uptime: process.uptime()
   });
 });
@@ -52,11 +53,19 @@ const slashCommands = [
     .toJSON()
 ];
 
-async function registerCommands(token, clientId) {
+async function registerCommands(token, clientId, guildId) {
   const rest = new REST({ version: '10' }).setToken(token);
-  console.log('Registering slash commands...');
-  await rest.put(Routes.applicationCommands(clientId), { body: slashCommands });
-  console.log(`Registered ${slashCommands.length} slash commands globally.`);
+  if (guildId) {
+    // INSTANT: guild commands update in ~1-5 seconds - use for dev / instant builds
+    console.log(`Registering ${slashCommands.length} guild commands to ${guildId} (instant)...`);
+    await rest.put(Routes.applicationGuildCommands(clientId, guildId), { body: slashCommands });
+    console.log('Guild commands registered instantly.');
+  } else {
+    // SLOW: global commands can take up to 1 hour to propagate
+    console.log('Registering slash commands globally (can take up to 1h)...');
+    await rest.put(Routes.applicationCommands(clientId), { body: slashCommands });
+    console.log(`Registered ${slashCommands.length} slash commands globally.`);
+  }
 }
 
 client.once(Events.ClientReady, async (c) => {
@@ -64,9 +73,13 @@ client.once(Events.ClientReady, async (c) => {
   console.log(`Logged in as ${c.user.tag}`);
 
   const clientId = (process.env.CLIENT_ID || '').trim() || c.user.id;
+  const guildId = (process.env.GUILD_ID || '').trim();
   const token = (process.env.DISCORD_TOKEN || '').trim().replace(/^Bot\s+/i, '');
   try {
-    await registerCommands(token, clientId);
+    await registerCommands(token, clientId, guildId || null);
+    if (!guildId) {
+      console.log('TIP: Set GUILD_ID in .env for instant command updates.');
+    }
   } catch (err) {
     console.error('Failed to register slash commands:', err);
   }
