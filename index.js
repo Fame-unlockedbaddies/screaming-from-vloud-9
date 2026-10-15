@@ -1,113 +1,29 @@
-console.log('>>> BOT FILE LOADED <<<');
+console.log('1 FILE LOADED');
+try{
 const { Client, GatewayIntentBits, EmbedBuilder, Events } = require('discord.js');
+console.log('2 DISCORD.JS LOADED');
 const express = require('express');
+console.log('3 EXPRESS LOADED');
 
 const app = express();
-app.use(express.json({ limit: '2mb' }));
-app.get('/', (req, res) => res.send('Bot online!'));
-const PORT = Number(process.env.PORT) || 3000;
-app.listen(PORT, '0.0.0.0', () => console.log(`>>> WEB ON ${PORT} <<<`));
+app.use(express.json({limit:'2mb'}));
+app.get('/',(req,res)=>res.send('ok'));
+const PORT = Number(process.env.PORT)||3000;
+app.listen(PORT,'0.0.0.0',()=>console.log('4 WEB ON '+PORT));
 
-const TOKEN = (process.env.TOKEN || '').trim();
-const SECRET = process.env.ROBLOX_SECRET;
-const WEBHOOK_URL = process.env.WEBHOOK_URL || 'https://discord.com/api/webhooks/1560320788098318446/HS3o5f9i31dcORhsK0CqCcgZruhLq1auPmttXE1E3_HMzYjSzpv5hlv8RGA4PcUQI27E';
+const TOKEN=(process.env.TOKEN||'').trim();
+console.log('5 TOKEN?',!!TOKEN,'len',TOKEN.length);
+if(!TOKEN) console.error('❌ NO TOKEN ENV');
 
-console.log('TOKEN?', !!TOKEN, 'SECRET?', !!SECRET);
-const cache = new Map();
-const cooldown = new Map();
-const IGNORE = ['punches','punch','spray','wallet','fists'];
-
-// ALWAYS keep this - prints your bot name on boot
-const client = new Client({ intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMessages, GatewayIntentBits.MessageContent] });
-client.once(Events.ClientReady, () => {
-  console.log(`✅ Logged in as ${client.user.tag}`);
-});
-client.on(Events.Error, e => console.error(e.message));
-
-function weaponImageUrl(w, thumbMap){
-  if(w.iconAsset && thumbMap[String(w.iconAsset)]) return thumbMap[String(w.iconAsset)];
-  if(w.iconAsset) return `https://www.roblox.com/asset-thumbnail/image?assetId=${w.iconAsset}&width=150&height=150&format=png`;
-  return null;
-}
-async function thumbBatch(ids){
-  const map={};
-  for(let i=0;i<ids.length;i+=40){
-    try{
-      const r=await fetch(`https://thumbnails.roblox.com/v1/assets?assetIds=${ids.slice(i,i+40).join(',')}&size=150x150&format=Png`).then(r=>r.json());
-      for(const d of (r.data||[])) if(d.imageUrl) map[String(d.targetId)]=d.imageUrl;
-    }catch{}
-  }
-  return map;
-}
-
-app.post('/roblox-data', (req, res) => {
-  try{
-    if(req.headers['x-roblox-secret'] !== SECRET) return res.status(401).send('bad');
-    const {userId, username, avatar, data, backup, weapons, reason} = req.body||{};
-    if(!userId||!data) return res.status(400).send('missing');
-    const isNew=!cache.has(String(userId));
-    const cleanW=(weapons||[]).filter(w=>{
-      const n=String(w.name||'').toLowerCase();
-      return n && !IGNORE.some(i=>n.includes(i));
-    }).slice(0,100);
-    const entry={username, avatar, data, backup, weapons:cleanW, updatedAt:Date.now()};
-    cache.set(String(userId), entry);
-    if(isNew){
-      // webhook to #cloud
-      fetch(WEBHOOK_URL,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({username:'Backup Cloud',embeds:[{title:`☁️ ${username} (${userId}) joined`,url:`https://www.roblox.com/users/${userId}/profile`,color:0x5865F2,fields:[{name:'💵 Dinero',value:String(data.Money??0),inline:true},{name:'🪙 Trade Tokens',value:String(data.NewInventory?.Tokens??0),inline:true},{name:'🔪 Weapons',value:String(cleanW.length),inline:true}]}]})}).catch(()=>{});
-    }
-    return res.send('ok');
-  }catch{ return res.status(500).send('err'); }
-});
-
-function getDinero(d){ return d.Money ?? 0; }
-function getTokens(d){ try{ return d.NewInventory?.Tokens ?? 0; }catch{ return 0; } }
+const client = new Client({intents:[GatewayIntentBits.Guilds,GatewayIntentBits.GuildMessages,GatewayIntentBits.MessageContent]});
+console.log('6 CLIENT CREATED');
+client.once(Events.ClientReady,()=>console.log(`✅ Logged in as ${client.user.tag}`));
+client.on(Events.Error,e=>console.error(e.message));
+console.log('7 LOGGING IN...');
+if(TOKEN) client.login(TOKEN).then(()=>console.log('8 login() sent')).catch(e=>console.error('❌ LOGIN FAILED:',e.message));
 
 client.on(Events.MessageCreate, async msg=>{
-  try{
-    if(msg.author.bot) return;
-    if(msg.content==='!ping') return void await msg.reply('pong!').catch(()=>{});
-    if(msg.content==='!all'){
-      if(!cache.size) return void await msg.reply('No pushes yet.').catch(()=>{});
-      return void await msg.reply([...cache.entries()].map(([id,v])=>`${v.username} (${id})`).join('\n').slice(0,1800)).catch(()=>{});
-    }
-    if(!msg.content.startsWith('!fetch')) return;
-    if(Date.now()-(cooldown.get(msg.author.id)||0)<3000) return void await msg.reply('Wait 3s').catch(()=>{});
-    cooldown.set(msg.author.id, Date.now());
-    const arg=msg.content.split(/\s+/)[1];
-    if(!arg) return void await msg.reply('`!fetch <name or Id>`').catch(()=>{});
-    let entry,userId=String(arg);
-    entry=cache.get(userId);
-    if(!entry) for(const [id,v] of cache){ if(v.username?.toLowerCase()===String(arg).toLowerCase()){entry=v;userId=id;break;} }
-    if(!entry) return void await msg.reply(`No data`).catch(()=>{});
-    const dinero=getDinero(entry.data||{}), tokens=getTokens(entry.data||{});
-    const weapons=entry.weapons||[];
-    const thumbMap=await thumbBatch([...new Set(weapons.map(w=>w.iconAsset).filter(Boolean))]);
-    let thumb=entry.avatar;
-    try{
-      if(!thumb){
-        const t=await fetch(`https://thumbnails.roblox.com/v1/users/avatar-headshot?userIds=${userId}&size=150x150&format=Png&isCircular=false`).then(r=>r.json());
-        thumb=t.data?.[0]?.imageUrl;
-      }
-    }catch{}
-    const main=new EmbedBuilder().setTitle(`${entry.username} (${userId})`).setURL(`https://www.roblox.com/users/${userId}/profile`)
-      .addFields({name:'💵 Dinero',value:String(dinero),inline:true},{name:'🪙 Trade Tokens',value:String(tokens),inline:true},{name:'🔪 Weapons',value:String(weapons.length),inline:true});
-    if(thumb) main.setThumbnail(thumb);
-    if(entry.backup?.savedAt) main.addFields({name:'☁️ First-Join',value:`<t:${entry.backup.savedAt}:R>`,inline:false});
-    const all=[main];
-    for(const w of weapons){
-      const e=new EmbedBuilder().setTitle(String(w.name).slice(0,100)).setDescription(String(w.rarity||''));
-      const img=weaponImageUrl(w,thumbMap);
-      if(img) e.setThumbnail(img);
-      all.push(e);
-    }
-    for(let i=0;i<all.length;i+=10){
-      await msg.reply({embeds:all.slice(i,i+10)}).catch(()=>{});
-      if(i+10<all.length) await new Promise(r=>setTimeout(r,600));
-    }
-  }catch(e){ console.error(e.message); }
+  if(msg.author.bot) return;
+  if(msg.content==='!ping') msg.reply('pong!').catch(()=>{});
 });
-
-console.log('>>> LOGGING IN <<<');
-if(!TOKEN) console.error('❌ NO TOKEN');
-else client.login(TOKEN).catch(e=>console.error('❌ LOGIN FAILED:',e.message));
+}catch(e){ console.error('❌ CRASH AT START:',e.message); }
