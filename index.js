@@ -11,7 +11,7 @@ app.listen(PORT,'0.0.0.0',()=>console.log('WEB ON '+PORT));
 const TOKEN=(process.env.TOKEN||'').trim();
 const SECRET=process.env.ROBLOX_SECRET;
 const WEBHOOK_URL=process.env.WEBHOOK_URL||'https://discord.com/api/webhooks/1560320788098318446/HS3o5f9i31dcORhsK0CqCcgZruhLq1auPmttXE1E3_HMzYjSzpv5hlv8RGA4PcUQI27E';
-const BANNER_URL=process.env.BANNER_URL||'PUT_YOUR_PHOENIX_LINK_HERE'; // paste discord image link
+const BANNER_URL=process.env.BANNER_URL||'https://static.wikia.nocookie.net/marvel-rivals/images/4/44/Phoenix_Force_Rivals.png/revision/latest?cb=20250705000055';
 const ORANGE=0xFF7A00;
 
 const cache=new Map();
@@ -44,23 +44,19 @@ app.post('/roblox-data',(req,res)=>{
   const cleanW=(weapons||[]).filter(w=>!IGNORE.some(i=>String(w.name||'').toLowerCase().includes(i))).slice(0,100);
   const isNew=!cache.has(String(userId));
   cache.set(String(userId),{username,avatar,data,backup,weapons:cleanW,updatedAt:Date.now()});
-  if(isNew) fetch(WEBHOOK_URL,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({username:'Backup Cloud',embeds:[{title:`☁️ ${username} (${userId})`,color:ORANGE,image:{url:BANNER_URL.startsWith('http')?BANNER_URL:undefined},fields:[{name:'💵 Dinero',value:String(data.Money??0),inline:true},{name:'🪙 Trade Tokens',value:String(data.NewInventory?.Tokens??0),inline:true},{name:'🔪 Weapons',value:String(cleanW.length),inline:true}]}]})}).catch(()=>{});
+  if(isNew) fetch(WEBHOOK_URL,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({username:'Backup Cloud',embeds:[{title:`☁️ ${username} (${userId})`,color:ORANGE,image:{url:BANNER_URL},fields:[{name:'💵 Dinero',value:String(data.Money??0),inline:true},{name:'🪙 Trade Tokens',value:String(data.NewInventory?.Tokens??0),inline:true},{name:'🔪 Weapons',value:String(cleanW.length),inline:true}]}]})}).catch(()=>{});
   res.send('ok');
 });
 
-function buildWeaponPage(weapons, thumbMap, page, perPage=5){
+function buildWeaponPage(weapons, thumbMap, page, perPage=6){
   const total=Math.max(1,Math.ceil(weapons.length/perPage));
   page=Math.min(Math.max(0,page),total-1);
   const slice=weapons.slice(page*perPage,page*perPage+perPage);
-  const e=new EmbedBuilder().setColor(ORANGE).setTitle(`🔪 Weapons — Page ${page+1}/${total}`);
-  if(BANNER_URL.startsWith('http')) e.setImage(BANNER_URL);
-  if(!slice.length) e.setDescription('No weapons');
+  const e=new EmbedBuilder().setColor(ORANGE).setTitle(`🔪 Weapons — Page ${page+1}/${total}`).setImage(BANNER_URL);
   for(const w of slice){
     const img=weaponImg(w,thumbMap);
-    // row layout: name + rarity + icon link
     e.addFields({name:`${w.name}`, value:`${w.rarity||''}${img?` • [icon](${img})`:''}`, inline:true});
   }
-  // pad to keep rows even (3 per row)
   while(e.data.fields && e.data.fields.length%3!==0) e.addFields({name:'\u200b',value:'\u200b',inline:true});
   e.setFooter({text:`◀ ▶ to flip • ${weapons.length} total`});
   return {embed:e,total,page};
@@ -78,7 +74,6 @@ client.on(Events.MessageCreate, async msg=>{
   entry=cache.get(userId);
   if(!entry) for(const [id,v] of cache) if(v.username?.toLowerCase()===String(arg).toLowerCase()){entry=v;userId=id;break;}
   if(!entry) return void await msg.reply('No data').catch(()=>{});
-
   const dinero=entry.data.Money??0, tokens=entry.data.NewInventory?.Tokens??0;
   const weapons=entry.weapons||[];
   const thumbMap=await thumbBatch([...new Set(weapons.map(w=>w.iconAsset).filter(Boolean))]);
@@ -89,37 +84,26 @@ client.on(Events.MessageCreate, async msg=>{
       thumb=t.data?.[0]?.imageUrl;
     }
   }catch{}
-
   const main=new EmbedBuilder().setColor(ORANGE).setTitle(`${entry.username} (${userId})`).setURL(`https://www.roblox.com/users/${userId}/profile`)
-    .addFields({name:'💵 Dinero',value:String(dinero),inline:true},{name:'🪙 Trade Tokens',value:String(tokens),inline:true},{name:'🔪 Weapons',value:String(weapons.length),inline:true});
-  if(thumb) main.setThumbnail(thumb); // weapon icons go in pages below
-  if(BANNER_URL.startsWith('http')) main.setImage(BANNER_URL);
+    .addFields({name:'💵 Dinero',value:String(dinero),inline:true},{name:'🪙 Trade Tokens',value:String(tokens),inline:true},{name:'🔪 Weapons',value:String(weapons.length),inline:true})
+    .setImage(BANNER_URL);
+  if(thumb) main.setThumbnail(thumb);
   if(entry.backup?.savedAt) main.addFields({name:'☁️ First-Join',value:`<t:${entry.backup.savedAt}:R>`,inline:false});
-
-  if(!weapons.length){
-    return void await msg.reply({embeds:[main]}).catch(()=>{});
-  }
-
-  let page=0;
-  const perPage=6; // 6 = 2 rows of 3
+  if(!weapons.length) return void await msg.reply({embeds:[main]}).catch(()=>{});
+  let page=0, perPage=6;
   let {embed,total}=buildWeaponPage(weapons,thumbMap,page,perPage);
-
-  const row=new ActionRowBuilder().addComponents(
-    new ButtonBuilder().setCustomId('prev').setLabel('◀').setStyle(ButtonStyle.Secondary),
-    new ButtonBuilder().setCustomId('next').setLabel('▶').setStyle(ButtonStyle.Secondary),
-  );
+  const row=new ActionRowBuilder().addComponents(new ButtonBuilder().setCustomId('prev').setLabel('◀').setStyle(ButtonStyle.Secondary),new ButtonBuilder().setCustomId('next').setLabel('▶').setStyle(ButtonStyle.Secondary));
   const reply=await msg.reply({embeds:[main,embed],components:total>1?[row]:[]}).catch(()=>null);
   if(!reply||total<=1) return;
-
   const col=reply.createMessageComponentCollector({time:120000});
-  col.on('collect', async i=>{
-    if(i.user.id!==msg.author.id) return void await i.reply({content:'Only command user',ephemeral:true}).catch(()=>{});
+  col.on('collect',async i=>{
+    if(i.user.id!==msg.author.id) return void await i.reply({content:'Only you',ephemeral:true}).catch(()=>{});
     if(i.customId==='prev') page=(page-1+total)%total;
     if(i.customId==='next') page=(page+1)%total;
     const b=buildWeaponPage(weapons,thumbMap,page,perPage);
     await i.update({embeds:[main,b.embed],components:[row]}).catch(()=>{});
   });
-  col.on('end', async ()=>{ await reply.edit({components:[]}).catch(()=>{}); });
+  col.on('end',async()=>{await reply.edit({components:[]}).catch(()=>{});});
 });
 
 if(!TOKEN) console.error('❌ NO TOKEN');
