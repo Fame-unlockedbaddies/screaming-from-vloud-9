@@ -20,7 +20,11 @@ const cooldown=new Map();
 const IGNORE=['punches','punch','spray','wallet','fists'];
 
 const client=new Client({intents:[GatewayIntentBits.Guilds,GatewayIntentBits.GuildMessages,GatewayIntentBits.MessageContent]});
-client.once(Events.ClientReady,()=>console.log(`✅ Logged in as ${client.user.tag}`));
+
+// NEVER REMOVED - always prints your bot name
+client.once(Events.ClientReady,()=>{
+  console.log(`✅ Logged in as ${client.user.tag}`);
+});
 
 async function getAvatars(userId){
   let head=null, full=null;
@@ -72,49 +76,34 @@ client.on(Events.MessageCreate, async msg=>{
   entry=cache.get(userId);
   if(!entry) for(const [id,v] of cache) if(v.username?.toLowerCase()===String(arg).toLowerCase()){entry=v;userId=id;break;}
   if(!entry) return void await msg.reply('No data').catch(()=>{});
-
   const {head,full}=await getAvatars(userId);
-  const avatarHead=entry.avatar||head;
-  const avatarFull=full||head;
+  const avatarHead=entry.avatar||head, avatarFull=full||head;
   const dinero=entry.data.Money??0, tokens=entry.data.NewInventory?.Tokens??0;
   const weapons=entry.weapons||[];
   const thumbMap=await thumbBatch([...new Set(weapons.map(w=>w.iconAsset).filter(Boolean))]);
-
-  const main=new EmbedBuilder()
-    .setColor(ORANGE)
-    .setAuthor({name:`${entry.username} • ${userId}`, iconURL:avatarHead||undefined, url:`https://www.roblox.com/users/${userId}/profile`})
+  const main=new EmbedBuilder().setColor(ORANGE)
+    .setAuthor({name:`${entry.username} • ${userId}`,iconURL:avatarHead||undefined,url:`https://www.roblox.com/users/${userId}/profile`})
     .setTitle(`🔥 ${entry.username}'s Profile`)
-    .setDescription(`> [View Roblox Profile](https://www.roblox.com/users/${userId}/profile)`)
-    .setThumbnail(GIF_URL) // square gif at top-right
-    .setImage(avatarFull||BANNER_URL) // big profile avatar image
-    .addFields(
-      {name:'💵 Dinero', value:`**${Number(dinero).toLocaleString()}**`, inline:true},
-      {name:'🪙 Trade Tokens', value:`**${Number(tokens).toLocaleString()}**`, inline:true},
-      {name:'🔪 Weapons', value:`**${weapons.length}**`, inline:true},
-    )
-    .setTimestamp(new Date(entry.updatedAt))
-    .setFooter({text:`${client.user?.username||'Phoenix'} • Backup Cloud`, iconURL:client.user?.displayAvatarURL()||undefined});
-  if(entry.backup?.savedAt) main.addFields({name:'☁️ Backup First-Join', value:`\`${entry.backup.reason||'first-join'}\` <t:${entry.backup.savedAt}:R>`, inline:false});
-
+    .setThumbnail(GIF_URL).setImage(avatarFull||BANNER_URL)
+    .addFields({name:'💵 Dinero',value:`**${Number(dinero).toLocaleString()}**`,inline:true},{name:'🪙 Trade Tokens',value:`**${Number(tokens).toLocaleString()}**`,inline:true},{name:'🔪 Weapons',value:`**${weapons.length}**`,inline:true})
+    .setTimestamp(new Date(entry.updatedAt)).setFooter({text:`${client.user?.username||'Phoenix'} • Backup Cloud`});
+  if(entry.backup?.savedAt) main.addFields({name:'☁️ First-Join',value:`<t:${entry.backup.savedAt}:R>`,inline:false});
   if(!weapons.length) return void await msg.reply({embeds:[main]}).catch(()=>{});
-  const perPage=6, total=Math.ceil(weapons.length/perPage);
+  const perPage=6,total=Math.ceil(weapons.length/perPage);
   let page=0;
   const makePage=(p)=>{
     const slice=weapons.slice(p*perPage,p*perPage+perPage);
     const e=new EmbedBuilder().setColor(ORANGE).setTitle(`🔪 Weapons • ${p+1}/${total}`).setThumbnail(GIF_URL).setImage(BANNER_URL);
     for(const w of slice){
       const img=wImg(w,thumbMap);
-      e.addFields({name:`⚔️ ${w.name}`, value:`✨ ${w.rarity||''}${img?`\n[icon](${img})`:''}`, inline:true});
+      e.addFields({name:`⚔️ ${w.name}`,value:`✨ ${w.rarity||''}${img?`\n[icon](${img})`:''}`,inline:true});
     }
     while(e.data.fields.length%3!==0) e.addFields({name:'\u200b',value:'\u200b',inline:true});
-    const f=wImg(slice[0],thumbMap);
-    // keep gif at top, weapon icon also visible via fields - thumbnail stays gif per request
     e.setFooter({text:`◀ ▶ flip • ${weapons.length} total`});
     return e;
   };
-  let wEmbed=makePage(page);
   const row=new ActionRowBuilder().addComponents(new ButtonBuilder().setCustomId('prev').setLabel('◀').setStyle(ButtonStyle.Secondary),new ButtonBuilder().setCustomId('next').setLabel('▶').setStyle(ButtonStyle.Secondary));
-  const reply=await msg.reply({embeds:[main,wEmbed],components:total>1?[row]:[]}).catch(()=>null);
+  const reply=await msg.reply({embeds:[main,makePage(page)],components:total>1?[row]:[]}).catch(()=>null);
   if(!reply||total<=1) return;
   const col=reply.createMessageComponentCollector({time:120000});
   col.on('collect',async i=>{
@@ -122,8 +111,8 @@ client.on(Events.MessageCreate, async msg=>{
     if(i.customId==='prev') page=(page-1+total)%total; else page=(page+1)%total;
     await i.update({embeds:[main,makePage(page)],components:[row]}).catch(()=>{});
   });
-  col.on('end',async()=>{await reply.edit({components:[]}).catch(()=>{});});
 });
 
+console.log('>>> LOGGING IN <<<');
 if(!TOKEN) console.error('❌ NO TOKEN');
-else client.login(TOKEN).catch(e=>console.error(e.message));
+else client.login(TOKEN).catch(e=>console.error('❌ LOGIN FAILED:',e.message));
