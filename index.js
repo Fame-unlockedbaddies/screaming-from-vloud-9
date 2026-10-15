@@ -15,27 +15,23 @@ const BANNER_URL='https://static.wikia.nocookie.net/marvel-rivals/images/4/44/Ph
 const GIF_URL='https://i.pinimg.com/originals/7d/6e/8a/7d6e8ae0eb5450aaa3863a4e7cf469fb.gif';
 const ORANGE=0xFF7A00;
 
+// Icons from your Weapons module (fallback when push has no iconAsset)
+const WEAPONS_ICONS = {
+"stopsignal":"17724939918","toilet":"7344738286","trashbag":"17724935502","Dagger":"136254033056151","Loveboard":"18208773981","Flamethrower":"17729420263","GoldenStopSign":"18199671086","Golden Sledgehammer":"18199671086","Sledgehammer":"128257569042086","Sledge Hammer":"128257569042086","GoldenPipe":"18199672855","RPG":"17724938259","Gas Mask":"131972692672543","Gas Bomb":"72714495178494","Snowball Launcher":"71364687241971","Golden Snowball Launcher":"110062290771533","SpikedPurse":"18198635722","Dog Leash":"18895444353","Hanger":"120744935763387","Baddie Mask":"71183982504920","Glitter Bomb":"127998959033560","Spiked Kitty Stanli":"128112471659428","TurkeySkewers":"100312172464534","Sakura Blade":"111639380397731","Pan":"85547938260049","Yardstick":"119109721012087","Textbook":"96603367489239","Brass Knuckles":"122336505596550","RiotShield":"75337258382093","BeachShovel":"90865961854855","Fan of Requiem":"81282983811798","Spiked Knuckles":"105761940402851","Kitty Purse":"18560510870","Spiked Nightmare Purse":"126124408405738","Shiny Purse":"18561466519","Chain Mace":"92157181856760","Crowbar":"92362406030483","Champion Gloves":"88293139610302","Nunchucks":"98918963282426","Cupids Bow":"124821495846898","Golden Flamethrower":"136548897879669","Golden RPG":"94045965088486","Golden Taser":"113420120306640","PinkStopSignal":"17824902074","SpikedBaseballBat":"18364041365","DogPurse":"122179397547689","Chainsaw":"131772201723334","Handcuffs":"85213537454139","Boxing Gloves":"85213537454139","Harpoon":"102024070787005","Trashbin Disguise":"90341841578510","Freeze Gun":"71864495855399","Lunch Tray":"139419273569383","Spatula":"91764156477198","Chocolate Milk":"107572634767993","Scythe":"130765913787347","Trident":"117058605304202","Cannon":"79533370612265","Slasher Claws":"111926038012106","Grim Reaper Cloak":"112579335646597","Stick":"118634164656896","Spearhead Stick":"115902649906441","Slingshot":"98909104474571","Rusty Bow":"104887933125876","Regular Bow":"93849279274928","Blast Bow":"104012711698142","Golden Knuckles":"98677453897467","Golden Sakura Blade":"107185542990184","Roller Skates":"100849832982887","Witch Scepter":"124512130942721","Witch Wand":"118775888730320","Ghostly Gloves":"128578502145828","Axe":"73680117560786","Parasol":"121518284878347","Santa's Naughty or Nice Launcher":"108427592647631","Ice Crown Queen":"101893568508166","Reindeer Purse":"124493777120672","Grenade Launcher":"133258186563644","Bewitched Chaos":"133258186563644","Dance Bomb":"87763934711205","Chakram":"71549061483249","Inferno Blade":"124875961709695","Golden Cupids Bow":"79876088386663","Firework Gun":"110844715179353","Glitter Blue Spray":"112782528233059","Gravity Gun":"107505773665016","Grapple Hook":"127598464410935","Ice Katana":"96219364808568","Love Me Hate Me Taser":"110291208425188","Medic Spray":"84843134989169","Golden Nunchucks":"94625624597477","Poison Knuckles":"129992151534039","Twin Blade":"115605425801679","Text Sign":"135049278951789","Bunny Shoes":"112325940183206","Vine Bomb":"75690753643077","Sakura Sword and Shield Set":"131891873343753","Water Fan":"104388587665269","Yin Yang Knives":"74690350427146","Spa Slippers":"88244907752354","Towel Whip":"138737990393924","Katana & Kunai Set":"81475251525721","Golden Scythe":"72369454764748","Wingblades":"82851163041641","Tidal Fists":"78896456775321","Rainbow Portal Gun":"124135637245739","Water Balloon Gun":"114306142483850","Spear":"97411896340236","Toothbrush Shiv":"139220638507687","Sock with Rocks":"84756816343627","Kiss Kiss":"103871716868187","Golden Chainsaw":"104878733520034","Electric Love Baton":"82794938777869","Ribbon Dancer":"116986901396454","Dual Sais":"125110054091819","Apex Shield":"117612855042286","Apex Blade":"135733140799200","Spiked Boots":"139030224720289","Siphon Scythe":"121760141052290","Golden Poison Knuckles":"81436666409683","Trick or Treat RPG":"83712186787206"
+};
+
 const cache=new Map();
 const cooldown=new Map();
 const IGNORE=['punches','punch','spray','wallet','fists'];
 
 const client=new Client({intents:[GatewayIntentBits.Guilds,GatewayIntentBits.GuildMessages,GatewayIntentBits.MessageContent]});
+client.once(Events.ClientReady,()=>{ console.log(`✅ Logged in as ${client.user.tag}`); });
 
-// NEVER REMOVED - always prints your bot name
-client.once(Events.ClientReady,()=>{
-  console.log(`✅ Logged in as ${client.user.tag}`);
-});
-
-async function getAvatars(userId){
-  let head=null, full=null;
-  try{
-    const [h,f]=await Promise.all([
-      fetch(`https://thumbnails.roblox.com/v1/users/avatar-headshot?userIds=${userId}&size=420x420&format=Png&isCircular=false`).then(r=>r.json()).catch(()=>null),
-      fetch(`https://thumbnails.roblox.com/v1/users/avatar?userIds=${userId}&size=720x720&format=Png`).then(r=>r.json()).catch(()=>null),
-    ]);
-    head=h?.data?.[0]?.imageUrl||null; full=f?.data?.[0]?.imageUrl||null;
-  }catch{}
-  return {head,full};
+function getIconId(w){
+  if(w.iconAsset) return String(w.iconAsset);
+  if(w.icon){ const m=String(w.icon).match(/\d+/); if(m) return m[0]; }
+  if(WEAPONS_ICONS[w.name]) return WEAPONS_ICONS[w.name];
+  return null;
 }
 async function thumbBatch(ids){
   const m={};
@@ -47,10 +43,16 @@ async function thumbBatch(ids){
   }
   return m;
 }
-function wImg(w,map){
-  if(w.iconAsset&&map[String(w.iconAsset)]) return map[String(w.iconAsset)];
-  if(w.iconAsset) return `https://www.roblox.com/asset-thumbnail/image?assetId=${w.iconAsset}&width=150&height=150&format=png`;
-  return null;
+async function getAvatars(userId){
+  let head=null, full=null;
+  try{
+    const [h,f]=await Promise.all([
+      fetch(`https://thumbnails.roblox.com/v1/users/avatar-headshot?userIds=${userId}&size=420x420&format=Png&isCircular=false`).then(r=>r.json()).catch(()=>null),
+      fetch(`https://thumbnails.roblox.com/v1/users/avatar?userIds=${userId}&size=720x720&format=Png`).then(r=>r.json()).catch(()=>null),
+    ]);
+    head=h?.data?.[0]?.imageUrl||null; full=f?.data?.[0]?.imageUrl||null;
+  }catch{}
+  return {head,full};
 }
 
 app.post('/roblox-data',(req,res)=>{
@@ -58,9 +60,11 @@ app.post('/roblox-data',(req,res)=>{
   const {userId,username,avatar,data,backup,weapons}=req.body||{};
   if(!userId||!data) return res.status(400).send('missing');
   const cleanW=(weapons||[]).filter(w=>!IGNORE.some(i=>String(w.name||'').toLowerCase().includes(i))).slice(0,100);
+  // fill missing iconAsset from module
+  for(const w of cleanW){ if(!w.iconAsset){ const id=getIconId(w); if(id) w.iconAsset=id; } }
   const isNew=!cache.has(String(userId));
   cache.set(String(userId),{username,avatar,data,backup,weapons:cleanW,updatedAt:Date.now()});
-  if(isNew) fetch(WEBHOOK_URL,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({username:'Phoenix Cloud',embeds:[{title:`🔥 ${username} (${userId})`,color:ORANGE,thumbnail:{url:GIF_URL},image:{url:BANNER_URL},fields:[{name:'💵 Dinero',value:String(data.Money??0),inline:true},{name:'🪙 Tokens',value:String(data.NewInventory?.Tokens??0),inline:true},{name:'🔪 Weapons',value:String(cleanW.length),inline:true}]}]})}).catch(()=>{});
+  if(isNew) fetch(WEBHOOK_URL,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({username:'Phoenix Cloud',embeds:[{title:`${username} (${userId})`,color:ORANGE,thumbnail:{url:GIF_URL},image:{url:BANNER_URL},fields:[{name:'Dinero',value:String(data.Money??0),inline:true},{name:'Trade Tokens',value:String(data.NewInventory?.Tokens??0),inline:true},{name:'Weapons',value:String(cleanW.length),inline:true}]}]})}).catch(()=>{});
   res.send('ok');
 });
 
@@ -76,43 +80,74 @@ client.on(Events.MessageCreate, async msg=>{
   entry=cache.get(userId);
   if(!entry) for(const [id,v] of cache) if(v.username?.toLowerCase()===String(arg).toLowerCase()){entry=v;userId=id;break;}
   if(!entry) return void await msg.reply('No data').catch(()=>{});
+
   const {head,full}=await getAvatars(userId);
-  const avatarHead=entry.avatar||head, avatarFull=full||head;
+  const avatarHead=entry.avatar||head;
+  const avatarFull=full||head;
   const dinero=entry.data.Money??0, tokens=entry.data.NewInventory?.Tokens??0;
   const weapons=entry.weapons||[];
-  const thumbMap=await thumbBatch([...new Set(weapons.map(w=>w.iconAsset).filter(Boolean))]);
+  const thumbMap=await thumbBatch([...new Set(weapons.map(getIconId).filter(Boolean))]);
+
   const main=new EmbedBuilder().setColor(ORANGE)
-    .setAuthor({name:`${entry.username} • ${userId}`,iconURL:avatarHead||undefined,url:`https://www.roblox.com/users/${userId}/profile`})
-    .setTitle(`🔥 ${entry.username}'s Profile`)
-    .setThumbnail(GIF_URL).setImage(avatarFull||BANNER_URL)
-    .addFields({name:'💵 Dinero',value:`**${Number(dinero).toLocaleString()}**`,inline:true},{name:'🪙 Trade Tokens',value:`**${Number(tokens).toLocaleString()}**`,inline:true},{name:'🔪 Weapons',value:`**${weapons.length}**`,inline:true})
+    .setAuthor({name:`${entry.username} • ${userId}`, iconURL:avatarHead||undefined, url:`https://www.roblox.com/users/${userId}/profile`})
+    .setTitle(`${entry.username}'s Profile`)
+    .setThumbnail(avatarHead||GIF_URL) // roblox avatar profile kept (small top)
+    .setImage(avatarFull||BANNER_URL) // big profile avatar image
+    .addFields(
+      {name:'Dinero', value:`**${Number(dinero).toLocaleString()}**`, inline:true},
+      {name:'Trade Tokens', value:`**${Number(tokens).toLocaleString()}**`, inline:true},
+      {name:'Weapons', value:`**${weapons.length}**`, inline:true},
+    )
     .setTimestamp(new Date(entry.updatedAt)).setFooter({text:`${client.user?.username||'Phoenix'} • Backup Cloud`});
-  if(entry.backup?.savedAt) main.addFields({name:'☁️ First-Join',value:`<t:${entry.backup.savedAt}:R>`,inline:false});
+  if(entry.backup?.savedAt) main.addFields({name:'Backup First-Join', value:`<t:${entry.backup.savedAt}:R>`, inline:false});
+
   if(!weapons.length) return void await msg.reply({embeds:[main]}).catch(()=>{});
   const perPage=6,total=Math.ceil(weapons.length/perPage);
   let page=0;
   const makePage=(p)=>{
     const slice=weapons.slice(p*perPage,p*perPage+perPage);
-    const e=new EmbedBuilder().setColor(ORANGE).setTitle(`🔪 Weapons • ${p+1}/${total}`).setThumbnail(GIF_URL).setImage(BANNER_URL);
+    const e=new EmbedBuilder().setColor(ORANGE).setTitle(`Weapons • ${p+1}/${total}`).setThumbnail(GIF_URL).setImage(BANNER_URL);
     for(const w of slice){
-      const img=wImg(w,thumbMap);
-      e.addFields({name:`⚔️ ${w.name}`,value:`✨ ${w.rarity||''}${img?`\n[icon](${img})`:''}`,inline:true});
+      const id=getIconId(w);
+      const img=id?(thumbMap[id]||`https://www.roblox.com/asset-thumbnail/image?assetId=${id}&width=150&height=150&format=png`):null;
+      e.addFields({name:`${w.name}`, value:`${w.rarity||''}`, inline:true});
+      // small icon can't go per-field, so thumbnail = first weapon icon, rest via links
+      if(img && !e.data.thumbnail) e.setThumbnail(img); // small weapon image on embed
     }
+    // add small icons as separate embeds for true small images (1 per weapon, paged)
     while(e.data.fields.length%3!==0) e.addFields({name:'\u200b',value:'\u200b',inline:true});
     e.setFooter({text:`◀ ▶ flip • ${weapons.length} total`});
-    return e;
+    return {embed:e, slice};
   };
+
+  // Build pages where each weapon gets its own small-icon embed (max 10 per message)
+  const weaponSmallEmbeds = [];
+  for(const w of weapons){
+    const id=getIconId(w);
+    const img=id?(thumbMap[id]||`https://www.roblox.com/asset-thumbnail/image?assetId=${id}&width=150&height=150&format=png`):null;
+    const e=new EmbedBuilder().setColor(ORANGE).setTitle(`${w.name}`).setDescription(`${w.rarity||''}`);
+    if(img) e.setThumbnail(img); // small weapon image
+    weaponSmallEmbeds.push(e);
+  }
+
+  let wPage=makePage(page).embed;
   const row=new ActionRowBuilder().addComponents(new ButtonBuilder().setCustomId('prev').setLabel('◀').setStyle(ButtonStyle.Secondary),new ButtonBuilder().setCustomId('next').setLabel('▶').setStyle(ButtonStyle.Secondary));
-  const reply=await msg.reply({embeds:[main,makePage(page)],components:total>1?[row]:[]}).catch(()=>null);
-  if(!reply||total<=1) return;
+  // first message: main (avatar) + weapon list page + first 3 small icons
+  const firstSmall = weaponSmallEmbeds.slice(0,3);
+  const reply=await msg.reply({embeds:[main, wPage, ...firstSmall].slice(0,10), components:total>1?[row]:[]}).catch(()=>null);
+  if(!reply) return;
+  if(total<=1 && weapons.length<=3) return;
+  let smallIdx=3;
   const col=reply.createMessageComponentCollector({time:120000});
   col.on('collect',async i=>{
     if(i.user.id!==msg.author.id) return void await i.reply({content:'Only you',ephemeral:true}).catch(()=>{});
     if(i.customId==='prev') page=(page-1+total)%total; else page=(page+1)%total;
-    await i.update({embeds:[main,makePage(page)],components:[row]}).catch(()=>{});
+    const pg=makePage(page).embed;
+    const nextSmall = weaponSmallEmbeds.slice(page*3, page*3+3);
+    await i.update({embeds:[main, pg, ...nextSmall].slice(0,10), components:[row]}).catch(()=>{});
   });
 });
 
 console.log('>>> LOGGING IN <<<');
 if(!TOKEN) console.error('❌ NO TOKEN');
-else client.login(TOKEN).catch(e=>console.error('❌ LOGIN FAILED:',e.message));
+else client.login(TOKEN).catch(e=>console.error(e.message));
