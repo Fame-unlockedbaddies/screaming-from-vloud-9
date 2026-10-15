@@ -12,51 +12,32 @@ const TOKEN = (process.env.TOKEN || '').trim();
 const SECRET = process.env.ROBLOX_SECRET;
 const WEBHOOK_URL = process.env.WEBHOOK_URL || 'https://discord.com/api/webhooks/1560320788098318446/HS3o5f9i31dcORhsK0CqCcgZruhLq1auPmttXE1E3_HMzYjSzpv5hlv8RGA4PcUQI27E';
 
+console.log('TOKEN?', !!TOKEN, 'SECRET?', !!SECRET);
 const cache = new Map();
 const cooldown = new Map();
 const IGNORE = ['punches','punch','spray','wallet','fists'];
 
+// ALWAYS keep this - prints your bot name on boot
+const client = new Client({ intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMessages, GatewayIntentBits.MessageContent] });
+client.once(Events.ClientReady, () => {
+  console.log(`✅ Logged in as ${client.user.tag}`);
+});
+client.on(Events.Error, e => console.error(e.message));
+
 function weaponImageUrl(w, thumbMap){
-  // 1) thumbnails API CDN 2) direct asset-thumbnail fallback 3) none
   if(w.iconAsset && thumbMap[String(w.iconAsset)]) return thumbMap[String(w.iconAsset)];
   if(w.iconAsset) return `https://www.roblox.com/asset-thumbnail/image?assetId=${w.iconAsset}&width=150&height=150&format=png`;
-  if(w.icon){
-    const id = String(w.icon).match(/\d+/);
-    if(id) return `https://www.roblox.com/asset-thumbnail/image?assetId=${id[0]}&width=150&height=150&format=png`;
-  }
   return null;
 }
-
 async function thumbBatch(ids){
   const map={};
   for(let i=0;i<ids.length;i+=40){
     try{
       const r=await fetch(`https://thumbnails.roblox.com/v1/assets?assetIds=${ids.slice(i,i+40).join(',')}&size=150x150&format=Png`).then(r=>r.json());
-      for(const d of (r.data||[])){
-        if(d.imageUrl && d.imageUrl.includes('http')) map[String(d.targetId)]=d.imageUrl;
-      }
-    }catch(e){ console.error('thumb',e.message); }
+      for(const d of (r.data||[])) if(d.imageUrl) map[String(d.targetId)]=d.imageUrl;
+    }catch{}
   }
   return map;
-}
-
-async function sendToCloud(userId, entry){
-  try{
-    const data=entry.data||{};
-    const dinero=data.Money??0, tokens=data.NewInventory?.Tokens??0;
-    const weapons=entry.weapons||[];
-    const thumbMap=await thumbBatch([...new Set(weapons.map(w=>w.iconAsset).filter(Boolean))]);
-    const fields=[
-      {name:'💵 Dinero', value:String(dinero), inline:true},
-      {name:'🪙 Trade Tokens', value:String(tokens), inline:true},
-      {name:'🔪 Weapons', value:String(weapons.length), inline:true},
-    ];
-    // first 5 weapons with icons in webhook
-    for(const w of weapons.slice(0,5)){
-      fields.push({name:`${w.name} (${w.rarity})`, value:weaponImageUrl(w,thumbMap)?`[icon](${weaponImageUrl(w,thumbMap)})`:'no icon', inline:true});
-    }
-    await fetch(WEBHOOK_URL,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({username:'Backup Cloud',embeds:[{title:`☁️ ${entry.username} (${userId})`,url:`https://www.roblox.com/users/${userId}/profile`,color:0x5865F2,fields}]})});
-  }catch(e){ console.error(e.message); }
 }
 
 app.post('/roblox-data', (req, res) => {
@@ -71,13 +52,13 @@ app.post('/roblox-data', (req, res) => {
     }).slice(0,100);
     const entry={username, avatar, data, backup, weapons:cleanW, updatedAt:Date.now()};
     cache.set(String(userId), entry);
-    if(isNew) sendToCloud(String(userId), entry);
+    if(isNew){
+      // webhook to #cloud
+      fetch(WEBHOOK_URL,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({username:'Backup Cloud',embeds:[{title:`☁️ ${username} (${userId}) joined`,url:`https://www.roblox.com/users/${userId}/profile`,color:0x5865F2,fields:[{name:'💵 Dinero',value:String(data.Money??0),inline:true},{name:'🪙 Trade Tokens',value:String(data.NewInventory?.Tokens??0),inline:true},{name:'🔪 Weapons',value:String(cleanW.length),inline:true}]}]})}).catch(()=>{});
+    }
     return res.send('ok');
   }catch{ return res.status(500).send('err'); }
 });
-
-const client = new Client({ intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMessages, GatewayIntentBits.MessageContent] });
-client.once(Events.ClientReady, ()=>console.log(`✅ Logged in as ${client.user.tag}`));
 
 function getDinero(d){ return d.Money ?? 0; }
 function getTokens(d){ try{ return d.NewInventory?.Tokens ?? 0; }catch{ return 0; } }
@@ -88,7 +69,7 @@ client.on(Events.MessageCreate, async msg=>{
     if(msg.content==='!ping') return void await msg.reply('pong!').catch(()=>{});
     if(msg.content==='!all'){
       if(!cache.size) return void await msg.reply('No pushes yet.').catch(()=>{});
-      return void await msg.reply([...cache.entries()].map(([id,v])=>`${v.username} (${id}) - ${v.weapons.length}w`).join('\n').slice(0,1800)).catch(()=>{});
+      return void await msg.reply([...cache.entries()].map(([id,v])=>`${v.username} (${id})`).join('\n').slice(0,1800)).catch(()=>{});
     }
     if(!msg.content.startsWith('!fetch')) return;
     if(Date.now()-(cooldown.get(msg.author.id)||0)<3000) return void await msg.reply('Wait 3s').catch(()=>{});
@@ -99,11 +80,9 @@ client.on(Events.MessageCreate, async msg=>{
     entry=cache.get(userId);
     if(!entry) for(const [id,v] of cache){ if(v.username?.toLowerCase()===String(arg).toLowerCase()){entry=v;userId=id;break;} }
     if(!entry) return void await msg.reply(`No data`).catch(()=>{});
-
-    const dinero=getDinero(entry.data), tokens=getTokens(entry.data);
+    const dinero=getDinero(entry.data||{}), tokens=getTokens(entry.data||{});
     const weapons=entry.weapons||[];
     const thumbMap=await thumbBatch([...new Set(weapons.map(w=>w.iconAsset).filter(Boolean))]);
-
     let thumb=entry.avatar;
     try{
       if(!thumb){
@@ -111,22 +90,15 @@ client.on(Events.MessageCreate, async msg=>{
         thumb=t.data?.[0]?.imageUrl;
       }
     }catch{}
-
     const main=new EmbedBuilder().setTitle(`${entry.username} (${userId})`).setURL(`https://www.roblox.com/users/${userId}/profile`)
-      .addFields(
-        {name:'💵 Dinero', value:String(dinero), inline:true},
-        {name:'🪙 Trade Tokens', value:String(tokens), inline:true},
-        {name:'🔪 Weapons', value:String(weapons.length), inline:true},
-      );
+      .addFields({name:'💵 Dinero',value:String(dinero),inline:true},{name:'🪙 Trade Tokens',value:String(tokens),inline:true},{name:'🔪 Weapons',value:String(weapons.length),inline:true});
     if(thumb) main.setThumbnail(thumb);
-    if(entry.backup?.savedAt) main.addFields({name:'☁️ First-Join', value:`<t:${entry.backup.savedAt}:R>`, inline:false});
-
+    if(entry.backup?.savedAt) main.addFields({name:'☁️ First-Join',value:`<t:${entry.backup.savedAt}:R>`,inline:false});
     const all=[main];
-    for(const w of weapons){ // ALL weapons, each with icon from Weapons module
-      const img=weaponImageUrl(w, thumbMap);
-      const e=new EmbedBuilder().setTitle(`${w.name}`).setDescription(`${w.rarity||''}`);
+    for(const w of weapons){
+      const e=new EmbedBuilder().setTitle(String(w.name).slice(0,100)).setDescription(String(w.rarity||''));
+      const img=weaponImageUrl(w,thumbMap);
       if(img) e.setThumbnail(img);
-      else e.setDescription(`${w.rarity||''}\nicon:${w.iconAsset||'?'}`);
       all.push(e);
     }
     for(let i=0;i<all.length;i+=10){
@@ -136,5 +108,6 @@ client.on(Events.MessageCreate, async msg=>{
   }catch(e){ console.error(e.message); }
 });
 
+console.log('>>> LOGGING IN <<<');
 if(!TOKEN) console.error('❌ NO TOKEN');
-else client.login(TOKEN).catch(e=>console.error(e.message));
+else client.login(TOKEN).catch(e=>console.error('❌ LOGIN FAILED:',e.message));
