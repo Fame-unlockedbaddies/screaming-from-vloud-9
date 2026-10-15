@@ -1,13 +1,12 @@
 const { Client, GatewayIntentBits, EmbedBuilder, Events } = require('discord.js');
 const express = require('express');
 
-// --- Keep Render Web Service alive ---
+// --- Keep Render alive ---
 const app = express();
 app.get('/', (req, res) => res.send('Bot online!'));
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => console.log(`Web server on ${PORT}`));
 
-// --- Env check (does NOT print tokens) ---
 console.log('--- ENV CHECK ---');
 console.log('TOKEN exists?', !!process.env.TOKEN);
 console.log('ROBLOX_API_KEY exists?', !!process.env.ROBLOX_API_KEY);
@@ -15,11 +14,7 @@ console.log('ROBLOX_UNIVERSE_ID:', process.env.ROBLOX_UNIVERSE_ID || 'MISSING');
 console.log('ROBLOX_DATASTORE:', process.env.ROBLOX_DATASTORE || 'MISSING');
 console.log('Node:', process.version);
 
-if (!process.env.TOKEN) {
-  console.error('❌ MISSING TOKEN env! Add TOKEN in Render > Environment');
-}
-
-const UNIVERSE_ID = process.env.ROBLOX_UNIVERSE_ID;
+const UNIVERSE_ID = process.env.ROBLOX_UNIVERSE_ID; // Teleporter = 10770699965
 const API_KEY = process.env.ROBLOX_API_KEY;
 const STORE = process.env.ROBLOX_DATASTORE || 'PrivateDataUsersASync';
 
@@ -34,10 +29,9 @@ const client = new Client({
 client.once(Events.ClientReady, () => {
   console.log(`✅ Logged in as ${client.user.tag}`);
 });
-
 client.on(Events.Error, console.error);
 
-// --- Roblox helpers ---
+// --- NEVER show these ---
 const BLOCKED_KEYS = ['password','pass','backup','code','token','acsession','secret','recovery'];
 function sanitize(obj) {
   if (!obj || typeof obj !== 'object') return obj;
@@ -70,16 +64,20 @@ async function getProfile(userId) {
   return { name: u.name, display: u.displayName, thumb: t.data?.[0]?.imageUrl };
 }
 
+// --- v2 Cloud (matches your Teleporter universe-datastores perms) ---
 async function getDataStore(userId) {
   const key = `Player_${userId}`;
-  const url = `https://apis.roblox.com/datastores/v1/universes/${UNIVERSE_ID}/standard-datastores/datastore/entries/entry?datastoreName=${STORE}&entryKey=${key}&scope=global`;
+  const storeEnc = encodeURIComponent(STORE);
+  const keyEnc = encodeURIComponent(key);
+  const url = `https://apis.roblox.com/cloud/v2/universes/${UNIVERSE_ID}/data-stores/${storeEnc}/scopes/global/entries/${keyEnc}`;
   const r = await fetch(url, { headers:{'x-api-key': API_KEY} });
   if (r.status === 404) return null;
   if (!r.ok) {
     const txt = await r.text();
-    throw new Error(`Roblox API ${r.status} - ${txt.slice(0,200)}`);
+    throw new Error(`Roblox API ${r.status} - ${txt.slice(0,300)}`);
   }
-  return await r.json();
+  const j = await r.json();
+  return j.value ?? j;
 }
 
 client.on(Events.MessageCreate, async msg => {
@@ -114,10 +112,8 @@ client.on(Events.MessageCreate, async msg => {
   }
 });
 
-// --- Login with error log ---
 client.login(process.env.TOKEN).catch(err => {
   console.error('❌ LOGIN FAILED:', err.message);
-  console.error('Check: 1) TOKEN correct? 2) Bot > Reset Token and update Render? 3) Message Content Intent ON in Discord portal?');
 });
 
 process.on('unhandledRejection', console.error);
