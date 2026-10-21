@@ -596,12 +596,13 @@ client.once(Events.ClientReady, async () => {
 console.log('>>> LOGGING IN <<<');
 if (!TOKEN) console.error('❌ NO TOKEN FOUND — set the TOKEN (or DISCORD_BOT_TOKEN) environment variable on Render.');
 else {
+  console.log('Calling client.login()...');
   client.login(TOKEN)
     .then(() => {
-      console.log('login sent, waiting Ready...');
+      console.log('✅ client.login() resolved — waiting for ClientReady event...');
       setTimeout(() => {
-        if (!client.readyAt) console.error('❌ ClientReady did NOT fire within 20s. Check token validity, intents, and Render network. readyAt=', client.readyAt);
-      }, 20000);
+        if (!client.readyAt) console.error('❌ ClientReady did NOT fire within 15s. Most likely cause: "Message Content Intent" is NOT enabled in Discord Developer Portal (Bot -> Privileged Gateway Intents). Also verify token validity and Render network. readyAt=', client.readyAt);
+      }, 15000);
     })
-    .catch((e) => console.error('❌ LOGIN FAILED:', e.message));
+    .catch((e) => console.error('❌ LOGIN FAILED:', e && e.message ? e.message : e, '| code:', e && e.code));
 }
