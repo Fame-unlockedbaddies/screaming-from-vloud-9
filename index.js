@@ -1,4 +1,3 @@
-require("dotenv").config();
 console.log('>>> BOOT <<<');
 
 const { Client, GatewayIntentBits, Events } = require('discord.js');
