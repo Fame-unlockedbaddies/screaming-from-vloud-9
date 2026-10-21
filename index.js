@@ -6,6 +6,7 @@
  */
 
 console.log('>>> BOOT <<<');
+console.log('TOKEN present:', !!TOKEN, '| WEBHOOK_URL present:', !!WEBHOOK_URL);
 
 const {
   Client, GatewayIntentBits, EmbedBuilder, Events,
@@ -94,6 +95,11 @@ app.post('/rap-handler', async (req, res) => {
 });
 
 const client = new Client({ intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMessages, GatewayIntentBits.MessageContent] });
+
+client.on('error', (e) => console.error('❌ CLIENT ERROR:', e && e.message ? e.message : e));
+client.on('warn', (m) => console.warn('⚠️ CLIENT WARN:', m));
+process.on('unhandledRejection', (e) => console.error('❌ UNHANDLED REJECTION:', e && e.message ? e.message : e));
+process.on('uncaughtException', (e) => console.error('❌ UNCAUGHT EXCEPTION:', e && e.message ? e.message : e));
 
 client.once(Events.ClientReady, () => {
   console.log('========================================');
@@ -589,4 +595,13 @@ client.once(Events.ClientReady, async () => {
 
 console.log('>>> LOGGING IN <<<');
 if (!TOKEN) console.error('❌ NO TOKEN FOUND — set the TOKEN (or DISCORD_BOT_TOKEN) environment variable on Render.');
-else client.login(TOKEN).then(() => console.log('login sent, waiting Ready...')).catch((e) => console.error('❌ LOGIN FAILED:', e.message));
+else {
+  client.login(TOKEN)
+    .then(() => {
+      console.log('login sent, waiting Ready...');
+      setTimeout(() => {
+        if (!client.readyAt) console.error('❌ ClientReady did NOT fire within 20s. Check token validity, intents, and Render network. readyAt=', client.readyAt);
+      }, 20000);
+    })
+    .catch((e) => console.error('❌ LOGIN FAILED:', e.message));
+}
