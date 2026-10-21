@@ -6,7 +6,6 @@
  */
 
 console.log('>>> BOOT <<<');
-console.log('TOKEN present:', !!TOKEN, '| WEBHOOK_URL present:', !!WEBHOOK_URL);
 
 const {
   Client, GatewayIntentBits, EmbedBuilder, Events,
@@ -24,6 +23,7 @@ const SECRET = process.env.ROBLOX_SECRET;
 const WEBHOOK_URL =
   process.env.WEBHOOK_URL ||
   'https://discord.com/api/webhooks/1560320788098318446/HS3o5f9i31dcORhsK0CqCcgZruhLq1auPmttXE1E3_HMzYjSzpv5hlv8RGA4PcUQI27E';
+console.log('TOKEN present:', !!TOKEN, '| WEBHOOK_URL present:', !!WEBHOOK_URL);
 const BANNER_URL = 'https://static.wikia.nocookie.net/marvel-rivals/images/4/44/Phoenix_Force_Rivals.png/revision/latest?cb=20250705000055';
 const GIF_URL = 'https://i.pinimg.com/originals/7d/6e/8a/7d6e8ae0eb5450aaa3863a4e7cf469fb.gif';
 
