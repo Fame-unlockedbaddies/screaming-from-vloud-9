@@ -1,9 +1,10 @@
+require("dotenv").config();
 console.log('>>> BOOT <<<');
 
 const { Client, GatewayIntentBits, Events } = require('discord.js');
 const express = require('express');
 
-const TOKEN = (process.env.TOKEN || process.env.DISCORD_BOT_TOKEN || '').trim();
+const TOKEN = (process.env.TOKEN || '').trim();
 console.log('TOKEN present:', !!TOKEN);
 
 const app = express();
