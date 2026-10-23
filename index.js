@@ -1,8 +1,7 @@
-require('dotenv').config();
+try { require('dotenv').config(); } catch (e) {}
 const { Client, GatewayIntentBits, Events, REST, Routes, SlashCommandBuilder, PermissionsBitField, MessageFlags } = require('discord.js');
 const express = require('express');
 
-// --- Keep-alive for Render ---
 const app = express();
 const PORT = process.env.PORT || 10000;
 
@@ -26,7 +25,6 @@ app.get('/status', (req, res) => {
 
 app.listen(PORT, '0.0.0.0', () => console.log(`Web server on 0.0.0.0:${PORT}`));
 
-// --- Discord Client ---
 const client = new Client({
   intents: [
     GatewayIntentBits.Guilds,
@@ -35,7 +33,6 @@ const client = new Client({
   ]
 });
 
-// Define application (slash) commands in one place
 const slashCommands = [
   new SlashCommandBuilder()
     .setName('ping')
@@ -64,12 +61,10 @@ function getEnvToken() {
 async function registerCommands(token, clientId, guildId) {
   const rest = new REST({ version: '10' }).setToken(token);
   if (guildId) {
-    // INSTANT: guild commands update in ~1-5 seconds
     console.log(`Registering ${slashCommands.length} guild commands to ${guildId} (instant)...`);
     await rest.put(Routes.applicationGuildCommands(clientId, guildId), { body: slashCommands });
     console.log('Guild commands registered instantly.');
   } else {
-    // SLOW: global commands can take up to 1 hour
     console.log('Registering slash commands globally (can take up to 1h)...');
     await rest.put(Routes.applicationCommands(clientId), { body: slashCommands });
     console.log(`Registered ${slashCommands.length} slash commands globally.`);
@@ -97,7 +92,6 @@ client.once(Events.ClientReady, async (c) => {
   }
 });
 
-// Handle slash commands
 client.on(Events.InteractionCreate, async (interaction) => {
   if (!interaction.isChatInputCommand()) return;
 
@@ -115,13 +109,11 @@ client.on(Events.InteractionCreate, async (interaction) => {
     if (interaction.commandName === 'rawr') {
       const messageContent = interaction.options.getString('message', true);
 
-      // Block @everyone / @here to prevent spam abuse
       if (/@(everyone|here)/i.test(messageContent)) {
         await interaction.reply({ content: '❌ @everyone / @here is not allowed with this command.', flags: MessageFlags.Ephemeral });
         return;
       }
 
-      // Respect channel permissions - don't try to bypass locks with webhooks
       try {
         if (interaction.guild && interaction.channel) {
           const me = interaction.guild.members.me ?? await interaction.guild.members.fetchMe().catch(() => null);
@@ -141,7 +133,6 @@ client.on(Events.InteractionCreate, async (interaction) => {
       return;
     }
 
-    // Unknown command
     await interaction.reply({ content: '❌ Unknown command.', flags: MessageFlags.Ephemeral });
   } catch (err) {
     console.error('Interaction error:', err);
@@ -156,7 +147,6 @@ client.on(Events.InteractionCreate, async (interaction) => {
   }
 });
 
-// Prefix commands (!ping, !rawr ...) - backup / non-slash
 const PREFIX = '!';
 client.on(Events.MessageCreate, async (message) => {
   try {
