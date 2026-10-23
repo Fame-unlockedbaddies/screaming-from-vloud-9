@@ -2,7 +2,8 @@ try { require('dotenv').config(); } catch (e) {}
 const { Client, GatewayIntentBits, Events, REST, Routes, SlashCommandBuilder, PermissionsBitField, MessageFlags } = require('discord.js');
 const express = require('express');
 
-const TOKEN = (process.env.TOKEN || '').trim();
+const TOKEN = (process.env.TOKEN || process.env.DISCORD_TOKEN || process.env.BOT_TOKEN || process.env.DISCORD_BOT_TOKEN || '').trim();
+console.log('Env TOKEN found:', !!process.env.TOKEN, '| DISCORD_TOKEN:', !!process.env.DISCORD_TOKEN, '| BOT_TOKEN:', !!process.env.BOT_TOKEN);
 
 // --- Keep-alive for Render ---
 const app = express();
@@ -202,7 +203,7 @@ console.log(`Token: ${token ? '✅ Set' : '❌ MISSING'}`);
 
 if (!token) {
   botStatus = 'missing token';
-  console.error('Missing DISCORD_TOKEN in environment variables.');
+  console.error('Missing TOKEN in environment variables. Set an env var named TOKEN (or DISCORD_TOKEN / BOT_TOKEN).');
 } else {
   botStatus = 'logging in...';
   client.login(token).catch(err => {
