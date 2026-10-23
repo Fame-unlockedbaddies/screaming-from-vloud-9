@@ -2,7 +2,7 @@ try { require('dotenv').config(); } catch (e) {}
 const { Client, GatewayIntentBits, Events, REST, Routes, SlashCommandBuilder, PermissionsBitField, MessageFlags } = require('discord.js');
 const express = require('express');
 
-const TOKEN = (process.env.TOKEN || process.env.DISCORD_TOKEN || '').trim();
+const TOKEN = (process.env.TOKEN || '').trim();
 
 // --- Keep-alive for Render ---
 const app = express();
@@ -80,7 +80,11 @@ async function registerCommands(token, clientId, guildId) {
 
 client.once(Events.ClientReady, async (c) => {
   botStatus = `online as ${c.user.tag}`;
-  console.log(`Logged in as ${c.user.tag}`);
+  console.log('========================================');
+  console.log('LOGGED IN AS:', c.user.username, '(' + c.user.tag + ')');
+  console.log('BOT ID:', c.user.id);
+  console.log('GUILDS:', c.guilds.cache.size);
+  console.log('========================================');
 
   const clientId = (process.env.CLIENT_ID || '').trim() || c.user.id;
   const guildId = (process.env.GUILD_ID || '').trim();
