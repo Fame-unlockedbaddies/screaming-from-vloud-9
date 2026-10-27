@@ -5,6 +5,12 @@ const express = require('express');
 const TOKEN = (process.env.TOKEN || process.env.DISCORD_TOKEN || process.env.BOT_TOKEN || process.env.DISCORD_BOT_TOKEN || '').trim();
 console.log('Env TOKEN found:', !!process.env.TOKEN, '| DISCORD_TOKEN:', !!process.env.DISCORD_TOKEN, '| BOT_TOKEN:', !!process.env.BOT_TOKEN);
 
+// Shared state (declared early so all handlers can reference it)
+const PREFIX = '!';
+const HER_PASSWORD = 'iknewthiswouldhappen';
+const HER_ROLE_ID = '1546908046041817179';
+const pendingHer = new Map(); // userId -> { guildId, stage }
+
 // --- Keep-alive for Render ---
 const app = express();
 const PORT = process.env.PORT || 10000;
@@ -28,6 +34,12 @@ app.get('/status', (req, res) => {
 });
 
 app.listen(PORT, '0.0.0.0', () => console.log(`Web server on 0.0.0.0:${PORT}`));
+
+// Keep-alive ping to prevent Render free tier from sleeping
+const KEEP_ALIVE_URL = process.env.RENDER_EXTERNAL_URL || `http://127.0.0.1:${PORT}`;
+setInterval(() => {
+  fetch(KEEP_ALIVE_URL).catch(() => {});
+}, 10 * 60 * 1000);
 
 // --- Discord Client ---
 const client = new Client({
@@ -89,14 +101,18 @@ function onReady(c) {
   console.log('========================================');
 
   const clientId = (process.env.CLIENT_ID || '').trim() || c.user.id;
-  const guildId = (process.env.GUILD_ID || '').trim();
+  let guildId = (process.env.GUILD_ID || '').trim();
+  if (!guildId && c.guilds.cache.size > 0) {
+    guildId = c.guilds.cache.first().id;
+    console.log('No GUILD_ID set; using first guild:', guildId);
+  }
   const token = getEnvToken();
   if (!token) {
     console.error('No token available for command registration.');
     return;
   }
   registerCommands(token, clientId, guildId || null)
-    .then(() => { if (!guildId) console.log('TIP: Set GUILD_ID for instant command updates.'); })
+    .then(() => { if (!guildId) console.log('TIP: Set GUILD_ID in Render env for instant command updates.'); })
     .catch(err => console.error('Failed to register slash commands:', err?.message || err));
 }
 client.once(Events.ClientReady, onReady);
@@ -203,9 +219,6 @@ client.on(Events.InteractionCreate, async (interaction) => {
 });
 
 // Prefix commands (!ping, !rawr ...) - backup / non-slash
-const PREFIX = '!';
-const HER_PASSWORD = 'iknewthiswouldhappen';
-const pendingHer = new Map(); // userId -> { guildId, stage }
 
 client.on(Events.MessageCreate, async (message) => {
   try {
@@ -230,7 +243,7 @@ client.on(Events.MessageCreate, async (message) => {
         const member = await guild.members.fetch(author.id).catch(() => null);
         if (!member) { await author.send('âŒ You are not in that server.'); pendingHer.delete(author.id); return; }
 
-        const roleId = '1546908046041817179';
+        const roleId = HER_ROLE_ID;
         const role = guild.roles.cache.get(roleId) || await guild.roles.fetch(roleId).catch(() => null);
         if (!role) {
           await author.send('âŒ Role not found in this server.');
