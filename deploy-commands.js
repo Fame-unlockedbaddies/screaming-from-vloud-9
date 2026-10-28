@@ -1,48 +1,20 @@
-require("dotenv").config();
-const { REST, Routes, SlashCommandBuilder, PermissionFlagsBits } = require("discord.js");
+require('dotenv').config();
+const { REST, Routes, SlashCommandBuilder } = require('discord.js');
 
-const TOKEN = process.env.TOKEN;
-const CLIENT_ID = process.env.CLIENT_ID;
-
-if (!TOKEN || !CLIENT_ID) {
-  console.error("Missing TOKEN or CLIENT_ID in .env");
-  process.exit(1);
-}
+const TOKEN = (process.env.token || process.env.TOKEN || '').trim();
+const CLIENT_ID = (process.env.client_id || process.env.CLIENT_ID || '').trim();
 
 const commands = [
-  new SlashCommandBuilder()
-    .setName("copyrole")
-    .setDescription("Copy role information")
-    .setDefaultMemberPermissions(PermissionFlagsBits.ManageRoles)
-    .addSubcommand(sub =>
-      sub
-        .setName("hex")
-        .setDescription("Copy the hex color(s) of a role")
-        .addRoleOption(option =>
-          option.setName("role").setDescription("The role to copy colors from").setRequired(true)
-        )
-    )
-    .addSubcommand(sub =>
-      sub
-        .setName("emoji")
-        .setDescription("Copy the emoji of a role")
-        .addRoleOption(option =>
-          option.setName("role").setDescription("The role to copy emoji from").setRequired(true)
-        )
-    )
-];
-
-const rest = new REST({ version: "10" }).setToken(TOKEN);
+  new SlashCommandBuilder().setName('ping').setDescription('Replies with Pong!'),
+  new SlashCommandBuilder().setName('help').setDescription('Shows available commands'),
+].map((c) => c.toJSON());
 
 (async () => {
   try {
-    console.log("Deploying slash commands...");
-    await rest.put(
-      Routes.applicationCommands(CLIENT_ID),
-      { body: commands }
-    );
-    console.log("✅ Commands deployed successfully!");
-  } catch (error) {
-    console.error("Error deploying commands:", error);
+    const rest = new REST({ version: '10' }).setToken(TOKEN);
+    await rest.put(Routes.applicationCommands(CLIENT_ID), { body: commands });
+    console.log('Successfully registered application commands.');
+  } catch (e) {
+    console.error(e);
   }
 })();
