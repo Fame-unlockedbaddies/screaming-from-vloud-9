@@ -2,50 +2,38 @@ console.log('>>> BOOT <<<');
 
 require('dotenv').config();
 
-const { Client, GatewayIntentBits, Events, REST, Routes, SlashCommandBuilder } = require('discord.js');
+const { Client, GatewayIntentBits, Events, REST, Routes, SlashCommandBuilder, ActivityType } = require('discord.js');
 const express = require('express');
 
-// Render environment variables (lowercase names as configured on Render)
 const TOKEN = (process.env.token || process.env.TOKEN || '').trim();
 const CLIENT_ID = (process.env.client_id || process.env.CLIENT_ID || '').trim();
 
 console.log('TOKEN present:', !!TOKEN, '| CLIENT_ID present:', !!CLIENT_ID);
 
-// ---- Web server (keeps the Render service alive + health checks) ----
 const app = express();
 app.get('/', (req, res) => res.send('Bot online!'));
 app.get('/health', (req, res) => res.send('ok'));
 const PORT = Number(process.env.PORT) || 3000;
 app.listen(PORT, '0.0.0.0', () => console.log('WEB ON ' + PORT));
 
-// ---- Discord client ----
 const client = new Client({
-  intents: [
-    GatewayIntentBits.Guilds,
-    GatewayIntentBits.GuildMessages,
-    GatewayIntentBits.MessageContent,
-  ],
+  intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMessages, GatewayIntentBits.MessageContent],
 });
 
-// ---- Slash commands ----
 const commands = [
   new SlashCommandBuilder().setName('ping').setDescription('Replies with Pong!'),
   new SlashCommandBuilder().setName('help').setDescription('Shows available commands'),
 ].map((c) => c.toJSON());
 
 client.once(Events.ClientReady, async (c) => {
-  console.log('========================================');
   console.log('LOGGED IN AS:', c.user.username, '(' + c.user.tag + ')');
-  console.log('BOT ID:', c.user.id);
-  console.log('GUILDS:', c.guilds.cache.size);
-  console.log('========================================');
-
-  // Register slash commands globally using the bot application id (client_id)
+  console.log('BOT ID:', c.user.id, '| GUILDS:', c.guilds.cache.size);
+  c.user.setActivity('online', { type: ActivityType.Playing });
   const appId = CLIENT_ID || c.user.id;
   try {
     const rest = new REST({ version: '10' }).setToken(TOKEN);
     await rest.put(Routes.applicationCommands(appId), { body: commands });
-    console.log('Slash commands registered for application', appId);
+    console.log('Slash commands registered for', appId);
   } catch (e) {
     console.error('Failed to register slash commands:', e && e.message ? e.message : e);
   }
@@ -54,11 +42,8 @@ client.once(Events.ClientReady, async (c) => {
 client.on(Events.InteractionCreate, async (interaction) => {
   if (!interaction.isChatInputCommand()) return;
   try {
-    if (interaction.commandName === 'ping') {
-      await interaction.reply(`Pong! ${client.ws.ping}ms`);
-    } else if (interaction.commandName === 'help') {
-      await interaction.reply('Available commands: /ping, /help');
-    }
+    if (interaction.commandName === 'ping') await interaction.reply(`Pong! ${client.ws.ping}ms`);
+    else if (interaction.commandName === 'help') await interaction.reply('Available commands: /ping, /help');
   } catch (e) {
     console.error('Interaction error:', e && e.message ? e.message : e);
   }
@@ -72,26 +57,21 @@ process.on('uncaughtException', (e) => console.error('UNCAUGHT EXCEPTION:', e &&
 if (!TOKEN) {
   console.error('NO TOKEN FOUND - set the "token" env var on Render.');
 } else {
-  console.log('Waiting 15s before connecting (rate-limit safety)...');
-  setTimeout(() => {
-    let attempt = 0;
-    const maxAttempts = 5;
-    function tryLogin() {
-      attempt++;
-      console.log('Login attempt', attempt, 'of', maxAttempts);
-      client.login(TOKEN)
-        .then(() => console.log('client.login() resolved. Bot should be online now.'))
-        .catch((e) => {
-          console.error('LOGIN FAILED:', e && e.message ? e.message : e, '| code:', e && e.code);
-          if (attempt < maxAttempts) {
-            const delay = Math.min(30000 * attempt, 120000);
-            console.log('Retrying in', delay / 1000, 'seconds...');
-            setTimeout(tryLogin, delay);
-          } else {
-            console.error('All login attempts failed. Stopping.');
-          }
-        });
-    }
-    tryLogin();
-  }, 15000);
+  let attempt = 0;
+  const maxAttempts = 5;
+  function tryLogin() {
+    attempt++;
+    console.log('Login attempt', attempt, 'of', maxAttempts);
+    client.login(TOKEN)
+      .then(() => console.log('client.login() resolved. Bot is online.'))
+      .catch((e) => {
+        console.error('LOGIN FAILED:', e && e.message ? e.message : e, '| code:', e && e.code);
+        if (attempt < maxAttempts) {
+          const delay = Math.min(15000 * attempt, 60000);
+          console.log('Retrying in', delay / 1000, 'seconds...');
+          setTimeout(tryLogin, delay);
+        } else console.error('All login attempts failed. Stopping.');
+      });
+  }
+  tryLogin();
 }
