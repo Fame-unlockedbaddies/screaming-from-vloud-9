@@ -1,15 +1,15 @@
 {
   "name": "discord-bot",
   "version": "1.0.0",
+  "description": "Discord bot hosted on Render",
   "main": "index.js",
-  "engines": { "node": ">=18" },
   "scripts": {
-    "start": "node index.js",
-    "deploy": "node deploy-commands.js"
+    "start": "node index.js"
+  },
+  "engines": {
+    "node": ">=18"
   },
   "dependencies": {
-    "discord.js": "^14.14.1",
-    "express": "^4.18.2",
-    "dotenv": "^16.4.5"
+    "discord.js": "^14.16.3"
   }
 }
