@@ -31,9 +31,27 @@ client.on("messageCreate", (message) => {
   }
 });
 
-if (!process.env.TOKEN) {
+// Clean the token: remove whitespace/newlines, wrapping quotes and a "Bot " prefix
+const token = (process.env.TOKEN || "")
+  .trim()
+  .replace(/^["']|["']$/g, "")
+  .replace(/^Bot\s+/i, "")
+  .trim();
+
+if (!token) {
   console.error("Missing TOKEN environment variable.");
   process.exit(1);
 }
 
-client.login(process.env.TOKEN);
+// Discord tokens only contain letters, numbers, dots, dashes and underscores
+if (!/^[\w.-]+$/.test(token)) {
+  console.error(
+    "TOKEN contains invalid characters. Re-copy it from the Discord Developer Portal (Bot > Reset Token) and paste it into Render with no spaces, quotes or line breaks."
+  );
+  process.exit(1);
+}
+
+client.login(token).catch((err) => {
+  console.error("Login failed:", err.message);
+  process.exit(1);
+});
